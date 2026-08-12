@@ -1,139 +1,125 @@
-# Work Plan — Multi-Agent Activity Coordination
+# Work Plan — SquadLock
 
-This document translates the [spec](../docs/spec.md) into a phased work plan. The guiding idea: **don't build everything at once — prove the heart of the system works, then expand.** Each phase builds on the last, and each has an explicit "done" condition so it is easy to tell when to move on.
+This plan turns the [spec](../docs/spec.md) into work for **3 people over ~12 weeks**. It replaces the earlier single-threaded plan, which would have left two people idle at any moment.
 
-Governing principle: **a brutally minimal MVP** — 3 users, one activity type (restaurants), coordination on time and place only. Everything else (more domains, more activity types, vector DB, multiple APIs) is deliberately deferred.
+The task backlog is in [tasks/todo.md](todo.md).
 
----
+> **Revised 2026-08-12, twice.** First for the architecture change in [spec §4.2](../docs/spec.md) — one matching agent replaces the personal-agent negotiation, which shrinks Track A. Then for the interface decisions in [spec §5.6–5.7](../docs/spec.md) — a feed of meeting cards, several meetings in parallel, and conflict detection across groups. **Net effect: work moved from Track A to Tracks B and C.** Track C now owns three screens instead of a decision screen plus a viewer, and Track B owns a cross-group query that shapes the schema.
 
-## Open Decisions — settle before Phase 0
+## Shape of the plan
 
-Three questions that shape the architecture. While they are open, coding cannot start.
+Three tracks running in parallel, joined by hard integration milestones:
 
-**1. How do Python and Next.js divide the work?**
-The spec mandates Python + LangChain/CrewAI, but the existing repo (`squad_lock`) is an empty Next.js 16 scaffold.
-Recommendation: **two separate components** — a Python agent backend (Phases 1–3), and Next.js as the real UI shell (Phase 4). The current repo is the future UI; agent code lives in a separate Python project.
+```
+Week 1        FOUNDATION (all three together)
+              contracts · eval set · deploy skeleton · DB schema
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        ▼                       ▼                       ▼
+   TRACK A                 TRACK B                 TRACK C
+   Matching Agent          Data, Auth &            UI & Product
+   & Rejection Loop        Calendar                Flow
+        │                       │                       │
+        └───────────────────────┼───────────────────────┘
+                                ▼
+Week 4-5      MILESTONE 1 — thin slice, end to end, fake venues
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        ▼                       ▼                       ▼
+   rejection loop          real venues +           full flow +
+   fairness tuning         availability            meeting screen
+        │                       │                       │
+        └───────────────────────┼───────────────────────┘
+                                ▼
+Week 9        MILESTONE 2 — full flow, real data
+                                ▼
+Week 10-12    DOGFOODING · POLISH · REPORT
+              (optional: multi-agent comparison — spec §4.2)
+```
 
-**2. What exactly counts as a "good decision"?**
-Not a philosophical question but a measurement definition. Without it there is no way to know whether Phase 1 succeeded. See Phase 0.
+**Why parallel tracks with hard merge points:** three people on a strictly sequential plan means one working and two waiting. Three people on fully independent tracks means three things that never fit together. The milestones are the fix — everything must integrate on those dates, and nothing proceeds until it does.
 
-**3. Who does what, and on what timeline?**
-The plan defines phases but not people or dates. Each phase needs an owner and a time estimate.
-
----
-
-## Phase 0 — Setup and Alignment
-
-**Goal:** get concrete and remove ambiguity before writing a line of code.
-
-- **Build an eval set of 8–12 scenarios** before writing the engine. Each scenario: 3 user profiles + the answer we agree is correct, and why. This is what turns "a good decision" from a vague notion into something measurable — and it is the yardstick for every phase from here on.
-  - At least two scenarios must have **no perfect solution** — that is where the Consensus Coordinator is genuinely tested.
-- Lock the MVP boundaries: 3 users, restaurants only, and what is deliberately *out*.
-- Set up a shared development environment (Git, Python 3.10+) and provision one LLM API key.
-
-**Done when:** an agreed-upon eval-set file exists, and there is a repo with a "hello world" that runs and talks to the LLM.
-
----
-
-## Phase 1 — Negotiation Engine Prototype (the heart)
-
-**Goal:** prove the core idea works at all. This is the most novel and least certain part, so it comes first.
-
-- Write a simple script (no UI, no DB, no calendar) in which 3 Personal User Agents with fabricated profiles negotiate to a decision.
-- Implement a first version of the Consensus Coordinator: collect proposals, rank by a group utility function, handle the trade-off case.
-- **Run it against the Phase 0 eval set** — not a one-off manual check.
-
-### Three technical decisions that save pain later
-
-**a. Inter-agent messages are structured output, not free text.**
-If agent A sends B free text and B parses it, any change in phrasing breaks the flow. Use structured outputs (`output_config.format` with a JSON Schema) — the API guarantees the output matches the schema. Free text stays in the user-facing interface only.
-
-**b. A round cap.**
-The negotiation needs a hard cap (say 5 rounds). Without one, two agents can keep talking until the budget is gone. No solution within N rounds → return the best trade-off found so far.
-
-**c. Measure cost from day one.**
-Log tokens and dollar cost for every full negotiation. This is the number that determines whether the product is viable. If one negotiation costs $0.40, the system will not survive a real audience — and it is far better to learn that in Phase 1 than in Phase 5.
-
-**Done when:** the script runs against every eval scenario, reaches the agreed answer in most cases, and there is a known figure for the cost and latency of a single negotiation.
+**Why Week 1 is shared:** the tracks can only run in parallel if they agree on the contracts between them first. One week of the three of you defining shared types and the database schema buys eight weeks of independent work.
 
 ---
 
-## Phase 2 — Connecting to the Real World
+## Week 1 — Foundation (all three)
 
-**Goal:** make proposals concrete and real rather than fabricated.
+**Goal:** agree on everything the tracks need from each other, so they can then stop talking daily.
 
-- Build a first version of the World Interface Agent.
-- Connect **exactly one external API** (Google Places or Yelp) to pull real restaurants.
-- Feed the real results into the Phase 1 negotiation engine.
-- Add caching for API results — the same query should not go out twice.
+- **Shared types** — the TypeScript contracts every track codes against: preference profile, proposal, match run, match option, decision, rejection. Track C can build screens against them before Track A produces a real decision.
+- **Database schema** — the entities in spec §6.2.
+- **Eval set** — 8–12 scenarios with agreed-correct answers, including two with no perfect solution and two with rejection reasons.
+- **Deployed skeleton** — an empty app live on Vercel with a shareable URL. From here on, every merge deploys. A demo that has been live since week 1 never has a "but it worked locally" moment.
+- **One measurement** — the worst-case duration of a matching run against the Vercel function timeout (spec §13.4). Small now that it is a single streamed call, but the number belongs on paper before Track A builds on the assumption.
 
-**Done when:** agents negotiate over restaurants that exist in the real world. The eval set still passes.
-
----
-
-## Phase 3 — Infrastructure: Calendar and Data
-
-**Goal:** connect the system to real users and persist state.
-
-- Google Calendar integration (OAuth / Sign in with Google).
-- PostgreSQL for user profiles and preferences.
-- Everything still runs locally — **no cloud and no vector DB** (deliberately deferred).
-
-> ⚠️ **A known OAuth trap.** Calendar access is a sensitive scope requiring verification from Google — a process that takes weeks. **The MVP does not need it:** set the app to "Testing" mode, add team members as test users (up to 100), and everything works. Verification is only required before exposing the product to a real audience. Plan for this now so it does not ambush you at the end.
-
-**Done when:** a real user signs in with Google, the system reads their availability, and their profile persists across restarts.
+**Done when:** the contracts are merged, the eval set is agreed, and there is a live URL.
 
 ---
 
-## Phase 4 — User Experience and End-to-End Wiring
+## Track A — Matching Agent and Rejection Loop
 
-**Goal:** turn the components into a single flow a person can actually use.
+Still the project's novel contribution, but the risk has moved. The matching agent itself is now a few days of work, not weeks. **The rejection loop is the hard part and the part worth reporting** — plan the track around it, not around getting a first decision out.
 
-- **Visual prototype** (base44 / lovable / Claude), including the preference-selection game. This can and should start **in parallel from Phase 1** — it clarifies what the system needs to do, and it is a one-off throwaway.
-- **The real UI** is built in the Next.js repo, not in the prototyping tool. These are two different things: the prototype is a thinking tool, the Next.js app is the product.
-- Wire the full chain: profile setup → availability lookup → negotiation → final proposal.
+| Weeks | Work |
+|---|---|
+| 2–4 | Group Matching Agent with structured output · hard-constraint filter and post-check · distance fairness scoring · cost and token logging · runs against the eval set |
+| 5–8 | **The rejection loop:** free-text reason → structured constraint update → new cycle · cycle cap · fairness tuning against eval results · per-participant justification quality |
+| 9–12 | Model tuning (can Haiku hold six profiles at once, or does this need Sonnet?) · effort tuning · prompt caching across cycles · **optional:** build the superseded multi-agent variant and run both on the eval set (spec §4.2) |
 
-**Done when:** a complete coordination can be run end to end through an interface, with 3 real users.
+**The one thing that must not slip:** an engine that reaches a decision, even a mediocre one, by Week 4. Everything else depends on it — and it should now arrive earlier than Week 4, which is the point of the change.
 
----
-
-## Phase 5 — Cloud and Polish
-
-**Goal:** get the system off a personal laptop and stabilize it.
-
-- Deploy to GCP (Cloud Run + Cloud SQL).
-- Move from the cheap model to the stronger one where evaluation shows it pays off — **a measurement-driven decision, not a gut call**.
-- Polish, error handling, and testing with real users.
-
-**Done when:** the system runs in the cloud and is usable outside the development environment.
+**Where the freed time goes:** Track C, which grew to own three screens and the conflict warnings, and dogfooding. Not into new features.
 
 ---
 
-## Correction: Models and Costs
+## Track B — Data, Auth and Calendar
 
-> ⚠️ **The LLM section of the spec was out of date.** Claude 3.5 Sonnet and Claude 3.5 Haiku have been **retired** — calls to them return 404. The pricing there belonged to a generation that no longer exists. Current state below.
+The least glamorous track and the one most likely to be underestimated. OAuth always takes longer than expected.
 
-| Model | ID | Input / Output per 1M tokens | Context |
-|---|---|---|---|
-| Claude Opus 5 | `claude-opus-5` | $5 / $25 | 1M |
-| Claude Sonnet 5 | `claude-sonnet-5` | $3 / $15 (promo: $2 / $10 through 2026-08-31) | 1M |
-| Claude Haiku 4.5 | `claude-haiku-4-5` | $1 / $5 | 200K |
+| Weeks | Work |
+|---|---|
+| 2–4 | Postgres set up and migrated · Google sign-in · groups and membership · meetings and responses · **cross-group conflict query** |
+| 5–8 | Google Calendar read · availability computation for a set of participants · venue provider integration with caching · **conflict cancellation as a transaction** |
+| 9–12 | Email delivery · reliability and error handling on external calls |
 
-**Recommended mapping** — the strategy in the spec was right, only the names changed:
+**Start Google OAuth in Week 2, not Week 5.** It is the item most likely to surprise you, and finding that out in Week 5 costs the schedule.
 
-- **Development and repeated runs:** `claude-haiku-4-5`
-- **Production:** `claude-sonnet-5` — close to Opus quality on agentic work at a third of the price
-- **Only if evaluation shows a real gap:** `claude-opus-5`
+**Get the meeting index right in Week 1.** Conflict detection reads every open meeting for a user across every group ([spec §5.7](../docs/spec.md)). Indexing meetings by group alone is the easy default and the one that forces a migration over every row later.
 
-### Two mechanisms that cut cost dramatically
+---
 
-**Prompt caching.** In negotiating agents, every repeated call carries the same system prompt and the same preference profile. Caching that prefix costs 1.25× on write and **0.1× on read** — roughly a 90% discount on the repeated portion. In a system where agents talk a lot, this is the difference between viable and not. Watch the minimum cacheable prefix: 512 tokens on Opus 5, 1,024 on Sonnet 5, and 4,096 on Haiku 4.5 — anything shorter simply is not cached, with no error raised.
+## Track C — UI and Product Flow
 
-**The `effort` parameter.** Controls reasoning depth and token spend (`low` / `medium` / `high` / `xhigh` / `max`). Routine negotiation is fine at `low` or `medium`; save the higher settings for complex trade-off cases.
+The track that grew. It now owns the whole product surface — three nested screens and the entire status vocabulary — and this is where "user-friendly" is either achieved or not. Give it the capacity freed from Track A.
 
-### A note on the cloud choice
+| Weeks | Work |
+|---|---|
+| 2–4 | PWA shell, mobile-first · preference game · home location · group creation and invite · **group feed with meeting cards, sorted by date** |
+| 5–8 | **Meeting screen: the three blocks** · two rejection buttons · **all-groups screen and conflict warnings** · in-app notifications |
+| 9–12 | Polish, empty states, loading states, error states · everything a stranger hits that you never do |
 
-"GCP because it supports Claude via the Anthropic API" is not a reason — the Anthropic API is callable from any cloud and any machine. **The real reasons for GCP stand on their own:** Cloud Run is essentially free during development, $200 monthly credit for the Places API, and Google Calendar API in the same console. No need to lean on a bad argument.
+**Build the meeting screen early.** Its "why this suits you" and "what happened so far" blocks are how Track A debugs, they are the most demonstrable thing in the project, and after the §4.2 change they are what makes a single agent's decision feel accountable rather than arbitrary. They got more important, not less.
+
+**The status vocabulary is a shared contract, not styling.** `waiting on you` / `waiting on N` / `re-weighing` / `conflicting` / `stuck` / `closed` appear in the database, the API, and the UI. Agree them in Week 1 with the shared types.
+
+---
+
+## Milestone 1 — Week 4–5: thin slice, end to end
+
+The whole flow works with **fabricated venues and simplified profiles**: create a group → propose → confirm → the agent matches → decision appears with per-person reasoning → approve. Real restaurants come later.
+
+**This is the most important date in the plan.** A thin slice that runs at Week 5 leaves seven weeks to deepen it. Three separate half-built tracks at Week 5 leaves a crisis.
+
+## Milestone 2 — Week 9: full flow, real data
+
+Real restaurants, real calendars, the rejection loop working. From here, no new features — only fixing what real use reveals.
+
+## Weeks 10–12 — Dogfooding, polish, report
+
+**Use it yourselves, for real.** You are the target users; that is a feedback loop most student projects never get. Every time you actually want to meet, use the app. The friction you hit in real use is worth more than any test plan.
+
+Reserve the last two weeks for the report and the demo. Not one week.
 
 ---
 
@@ -141,16 +127,17 @@ Log tokens and dollar cost for every full negotiation. This is the number that d
 
 | Risk | Why it's dangerous | Mitigation |
 |---|---|---|
-| **Negotiation cost** | Agents that talk a lot mean a bill that grows fast, discovered late | Measure from Phase 1; round cap; prompt caching |
-| **Decision quality** | "Algorithmic trade-off" sounds good on paper and may produce results that read as arbitrary | Phase 0 eval set, including scenarios with no perfect solution |
-| **OAuth verification** | Sensitive scope; Google verification takes weeks | Testing mode for the MVP; plan verification in advance |
-| **Split stack** | Python + Next.js means two projects, two environments | Settle open decision #1 before Phase 1 |
-| **Scope creep** | The spec lists 4 expansion domains and 4 APIs | Breadth comes only after one slice runs end to end |
+| **Three tracks that never converge** | The classic failure of parallel student work | Hard milestones; Week 1 contracts; deploy on every merge |
+| **Google OAuth surprises** | Sensitive scope, fiddly consent flow | Start Week 2; Testing mode; read-only scope |
+| **"It's just a prompt"** | The new headline risk. With one agent, a reviewer can reasonably ask what the engineering contribution is | The contribution is the rejection loop, the deterministic fairness layer, and the §4.2 decision made with evidence — not the agent count. Say so early and in writing |
+| **The agent quietly drops a participant** | Six profiles in one context, and the one whose constraint is inconvenient gets skipped | Hard constraints filtered in code and re-checked after (spec §4.1b); a dedicated eval trap scenario; per-person justification makes an omission visible |
+| **A conflict cancels a meeting other people already approved** | Real people are told an evening is off because of someone in another group. The worst failure the product can have, because it is social, not technical | The cancelled meeting returns to weighing rather than being deleted (spec §5.7), so the others get a new time instead of a cancellation notice. Cancellation must be one transaction across both meetings |
+| **Decision quality is mediocre** | "Algorithmic trade-off" can produce results that read as arbitrary | Eval set from Week 1; the viewer makes reasoning inspectable |
+| **The rejection loop is harder than it looks** | Free text → constraint is the novel part, and novel means unproven | Two eval scenarios dedicated to it; if it fails, it is still a finding worth reporting |
+| **Scope creep** | The flow already has 11 feature areas | Spec §11 is the answer to every "should we also…" |
 
----
+## Priority order
 
-## Priority Order in Brief
+**Contracts → engine that decides → thin slice live → rejection loop → real data → polish.**
 
-**Eval set → negotiation engine → real API → calendar + DB → end-to-end UX → cloud.**
-
-Breadth — more domains (B2B, travel, community, study), more activity types, vector DB — comes **only after** the single slice runs end to end. One narrow product that works beats five half-built ones.
+One narrow product that works beats five half-built ones.
