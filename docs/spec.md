@@ -159,7 +159,9 @@ Initial setup runs as a **this-or-that game**: "Loud bar or quiet café?" · "Hi
 
 ### 5.2 Calendar
 
-Google Calendar, **read-only scope**, v1 only. Availability is computed for confirmed participants only.
+Google Calendar, v1 only. Availability is computed for confirmed participants only.
+
+**The scope is `calendar.freebusy`, not `calendar.readonly`.** v1 needs to know *when someone is busy*, never *what they are busy with* — the availability computation in §5.4 consumes free/busy intervals and nothing else. Requesting the narrower scope is not only §10's minimum-scope rule; it appears to be what keeps the app out of Google's verification process entirely. See §6.3.
 
 Beyond raw availability, the agent may infer habits from past events (a 07:00 gym slot every weekday is effectively a hard constraint). **Habit inference is a stretch goal, not v1.**
 
@@ -315,8 +317,8 @@ Core entities. Field lists are indicative, not final:
 
 | Service | Role | Cost | Note |
 |---|---|---|---|
-| Google OAuth + Calendar | Sign-in and availability | Free at this scale | Read-only scope. See OAuth warning below |
-| **Google Places** | Real restaurant data — the v1 source | $200 free credit/month, sufficient for development and the demo | Also supplies the coordinates the distance calculation needs (§5.4), plus **opening hours and business status**. **No table availability** — that is a reservations platform, and out of scope (§11). Check the terms on caching and attribution, and the current field masks and price tiers, before building |
+| Google OAuth + Calendar | Sign-in and availability | Free at this scale | Scope `calendar.freebusy` — free/busy intervals only. See the access model below |
+| **Google Places** | Real restaurant data — the v1 source | Per-SKU free monthly thresholds — see below | Supplies coordinates (§5.4), **opening hours and business status**. **No table availability** — that is a reservations platform, out of scope (§11). Authenticates by **API key**, not by user OAuth |
 | Easy (easy.co.il) | Candidate enrichment source — **blocked** | Unknown | Israeli local search with restaurant filters that map unusually well to our constraints: kosher type, vegetarian, vegan, child-friendly, atmosphere. **No public API documentation found** as of Aug 2026. Ask them directly; do not scrape. Only integrate if they grant access — see §13.1 |
 | PostgreSQL | Persistence | Free tier sufficient | Managed Postgres on Vercel or an equivalent provider |
 | Email delivery | Invitations and notifications | Free tier sufficient | Transactional email provider |
@@ -325,7 +327,51 @@ Core entities. Field lists are indicative, not final:
 
 Opening hours are cached **separately and briefly**, and fetched only for the shortlist. Hours change for holidays and closures, and proposing a restaurant that is shut on the night is a real failure; detailed fields also sit in a higher price tier than basic ones, so fetching them for twenty candidates rather than three hundred is what makes the funnel pay for itself twice.
 
-> ⚠️ **OAuth warning.** Calendar access is a sensitive scope requiring Google verification — a process that takes weeks. **v1 does not need it:** set the app to "Testing" mode and add users as test users (up to 100). Verification is only required before a wider release. Request the minimum scope now: broadening it later is easy, narrowing it after users have consented is not.
+#### Access model — two different mechanisms
+
+The two Google integrations are often spoken of as one thing. They are not, and conflating them is what produces the wrong plan.
+
+| | Google Calendar | Google Places |
+|---|---|---|
+| Authenticates as | **the user**, via OAuth consent | **the project**, via an API key |
+| Needs user permission | Yes — a consent screen per participant | No |
+| Subject to app verification | Depends entirely on the scope | Not applicable |
+| Free allowance | API quota, free at this scale | Per-SKU monthly thresholds |
+
+#### Calendar: the scope choice decides whether verification applies
+
+Google classifies OAuth scopes as non-sensitive, sensitive, or restricted, and **only sensitive and restricted scopes pull an app into the verification process.** Reading the events stored in a calendar is Google's own example of a sensitive scope, so `calendar.readonly` and `calendar.events.readonly` are sensitive. `calendar.freebusy` — "view your availability in your calendars" — returns busy intervals with no event content, and appears to be **non-sensitive**.
+
+That distinction decides the whole OAuth plan, because of what Testing status costs:
+
+> ⚠️ **An app in "Testing" publishing status has its refresh tokens expired by Google after 7 days.** This is by design and it is not configurable. Over an 8-week project it means every team member re-consenting weekly, and it can break a demo on the day. Testing status also caps the app at 100 test users.
+
+Earlier drafts of this document treated Testing mode as a free pass for v1. It is not — it is a 7-day timer. If `calendar.freebusy` is confirmed non-sensitive, the app can be published **In production** with no verification, no test-user cap, and refresh tokens that do not expire on a schedule.
+
+**Before Week 2, confirm the classification in the Cloud Console.** Adding a scope to the consent screen displays its classification directly; that check is definitive and takes minutes. The plan branches on the answer:
+
+- **Non-sensitive** → publish In production immediately. The 7-day expiry, the test-user cap and the verification queue all disappear, and token refresh becomes ordinary housekeeping rather than a weekly outage.
+- **Sensitive** → stay in Testing, accept weekly re-consent for the team, and make sure a fresh consent happens shortly before any demo.
+
+Either way, request the minimum scope now. Broadening later is easy; narrowing after users have consented is not. Note that the habit inference deferred in §5.2 would need event content and therefore a sensitive scope — a reason to keep it out of v1 beyond the effort it costs.
+
+#### Places: the $200 credit no longer exists
+
+> ⚠️ **Correction against earlier drafts.** The flat $200 monthly credit was **replaced on 1 March 2025** with a free monthly usage threshold per SKU tier. Any plan resting on "the $200 covers development and the demo" is resting on something that was withdrawn.
+
+| Tier | Free events per month | Fields relevant to us |
+|---|---|---|
+| Essentials | 10,000 | `location` |
+| Pro | 5,000 | `businessStatus` |
+| **Enterprise** | **1,000** | `regularOpeningHours`, `currentOpeningHours`, `rating`, `priceLevel` |
+
+**A request is billed at the highest tier any requested field belongs to.** This has a direct consequence for the funnel in §5.4: **opening hours and rating are both Enterprise fields**, and the funnel uses rating to fill half the shortlist and opening hours to gate `(venue, time)` pairs. Requesting either one anywhere makes that whole request an Enterprise request, against the smallest allowance of the three.
+
+This does not break the design, but it does change the caching from a nice-to-have into the thing that keeps the project inside the free tier:
+
+- **Never put an Enterprise field in the wide search field mask.** Search on Essentials/Pro fields; fetch Enterprise fields only for the ~20 candidates that reach the shortlist.
+- The neighbourhood-keyed search cache and the short-lived hours cache are what turn a per-meeting cost into a near-zero marginal one.
+- ⚠️ **Confirm Nearby Search's tier as a function of its field mask before building**, and measure real call counts against the 1,000 Enterprise events during Week 2 rather than assuming.
 
 ### 6.4 Language Models and Cost
 
@@ -428,7 +474,8 @@ The eval set does not change with the §4.2 architecture — it describes correc
 
 **Never:**
 - Commit API keys, secrets, or OAuth tokens.
-- Request a broader calendar scope than read-only.
+- Request a broader calendar scope than `calendar.freebusy` while v1 needs only availability (§5.2, §6.3).
+- Put an Enterprise-tier Places field in a wide search request rather than a shortlist detail request (§6.3).
 - Run a rejection loop without the cycle cap.
 - Rely on the agent alone to respect a hard constraint.
 - Show more than one proposal at a time.
