@@ -79,4 +79,6 @@ Individual gates: `npm run format` (writes) · `format:check` (reads) · `lint` 
 
 **Setup for a new participant** is `npm install` and nothing else: the `prepare` script points git at `.husky/`, so the hooks are live from the first clone.
 
+**Hooks find Node themselves.** A git hook does not load your shell profile, so the `PATH` inside one is not the `PATH` you see in a terminal — and on at least one machine here Node was on neither. `.husky/common.sh` looks in the usual places (Homebrew, `/usr/local`, Volta, nvm) before anything runs, and fails with a readable message instead of `npm: command not found` if it comes up empty. If your Node lives somewhere unusual, add it to `PATH` in `~/.config/husky/init.sh`, which husky sources for every hook.
+
 **If a hook blocks you**, the fix is the failure it printed — not `--no-verify`. That flag skips the local gates and CI catches the same problem five minutes later, on a pull request everyone can see.
