@@ -1,14 +1,12 @@
 # Work Plan — SquadLock
 
-This plan turns the [spec](../docs/spec.md) into work for **3 people over ~12 weeks**. It replaces the earlier single-threaded plan, which would have left two people idle at any moment.
+This plan turns the [spec](../docs/spec.md) into work for **3 people over 8 weeks**.
 
 The task backlog is in [tasks/todo.md](todo.md).
 
-> **Revised 2026-08-12, twice.** First for the architecture change in [spec §4.2](../docs/spec.md) — one matching agent replaces the personal-agent negotiation, which shrinks Track A. Then for the interface decisions in [spec §5.6–5.7](../docs/spec.md) — a feed of meeting cards, several meetings in parallel, and conflict detection across groups. **Net effect: work moved from Track A to Tracks B and C.** Track C now owns three screens instead of a decision screen plus a viewer, and Track B owns a cross-group query that shapes the schema.
+> **Revised for 8 weeks**, down from 12. Also revised for the design decisions recorded in [spec §4.3](../docs/spec.md) and [§5.4](../docs/spec.md): a Context Resolver that supplies parameters to a deterministic geography layer, leximin fairness, opening hours as a hard constraint, and a feed on adaptive polling. **Net effect: Track A grows back** — it reclaims the Resolver and its validation layer, having shrunk when §4.2 removed the personal agents.
 
 ## Shape of the plan
-
-Three tracks running in parallel, joined by hard integration milestones:
 
 ```
 Week 1        FOUNDATION (all three together)
@@ -22,24 +20,37 @@ Week 1        FOUNDATION (all three together)
         │                       │                       │
         └───────────────────────┼───────────────────────┘
                                 ▼
-Week 4-5      MILESTONE 1 — thin slice, end to end, fake venues
+Week 3        ★ MILESTONE 1 — thin slice, end to end, fake venues
                                 │
         ┌───────────────────────┼───────────────────────┐
         ▼                       ▼                       ▼
-   rejection loop          real venues +           full flow +
-   fairness tuning         availability            meeting screen
+   rejection loop          real venues +           meeting screen +
+   Context Resolver        availability            conflict warnings
         │                       │                       │
         └───────────────────────┼───────────────────────┘
                                 ▼
-Week 9        MILESTONE 2 — full flow, real data
+Week 6        ★ MILESTONE 2 — full flow, real data
                                 ▼
-Week 10-12    DOGFOODING · POLISH · REPORT
-              (optional: multi-agent comparison — spec §4.2)
+Weeks 7-8     DOGFOODING · POLISH · REPORT
 ```
 
 **Why parallel tracks with hard merge points:** three people on a strictly sequential plan means one working and two waiting. Three people on fully independent tracks means three things that never fit together. The milestones are the fix — everything must integrate on those dates, and nothing proceeds until it does.
 
-**Why Week 1 is shared:** the tracks can only run in parallel if they agree on the contracts between them first. One week of the three of you defining shared types and the database schema buys eight weeks of independent work.
+**Why Week 1 is still shared, even at 8 weeks.** This is the week it is most tempting to compress and the one where compressing costs most. The tracks can only run in parallel if they agree on the contracts first; a day saved here is paid back with interest at the first integration. It is also where the decisions in §5.4 become types — leximin, `tolerance_km`, the sparse per-meeting context, time-aware signatures — and every one of those is a three-file refactor if it arrives in week 5 instead.
+
+---
+
+## What the 8-week schedule means
+
+Twelve weeks became eight. Week 1 is contracts and weeks 7–8 are the report, so the build window is **weeks 2–6 — five weeks, with both integration milestones inside them.**
+
+**Nothing has been cut.** Every task in [todo.md](todo.md) is in scope, including the multi-agent comparison, prompt caching, token refresh, and the notification centre. The schedule absorbs the compression through sequencing and through one deliberate piece of slack, not through scope.
+
+**The slack is the Context Resolver** ([#52](https://github.com/ron14y-sys/squad_lock/issues/52), [#53](https://github.com/ron14y-sys/squad_lock/issues/53)). It ships dark: the validation layer falls back to the deterministic path, so an unfinished Resolver costs nothing — the system runs, the eval set still produces a number, and no other track is blocked. It is the one substantial item that can absorb a slip without leaving a hole, which is why it is scheduled into weeks 4–5 rather than earlier.
+
+**Where the pressure actually sits.** Milestone 2 at Week 6 needs real venues, real calendars, the rejection loop *and* cross-group conflicts, in three weeks. That is the tightest stretch in the plan, and it is the one to re-examine once Milestone 1 lands and there is a real velocity to measure against instead of an estimate.
+
+**Two items are structurally riskier than their size suggests.** Per-meeting amendments ([#55](https://github.com/ron14y-sys/squad_lock/issues/55) and the fourth control in [#43](https://github.com/ron14y-sys/squad_lock/issues/43)) need a new entity, a new cap and UI, and — unlike the Resolver — do not degrade gracefully: a half-built control is a visibly broken control. The multi-agent comparison ([#20](https://github.com/ron14y-sys/squad_lock/issues/20)) is a second full implementation of a superseded architecture; it is the most valuable thing in the plan for the report and the least valuable for the product, so it belongs at the end, after Milestone 2, where slipping it costs the report a paragraph rather than costing the product a feature.
 
 ---
 
@@ -47,29 +58,29 @@ Week 10-12    DOGFOODING · POLISH · REPORT
 
 **Goal:** agree on everything the tracks need from each other, so they can then stop talking daily.
 
-- **Shared types** — the TypeScript contracts every track codes against: preference profile, proposal, match run, match option, decision, rejection. Track C can build screens against them before Track A produces a real decision.
-- **Database schema** — the entities in spec §6.2.
-- **Eval set** — 8–12 scenarios with agreed-correct answers, including two with no perfect solution and two with rejection reasons.
+- **Shared types** — preference profile, proposal, match run, match option, response, the status vocabulary, `ResolvedContext`. Track C can build screens against them before Track A produces a real decision.
+- **Database schema** — the entities in spec §6.2, including the sparse `ParticipantMeetingContext` and `ConflictDismissal`, and the `(participant, scheduled_time)` index.
+- **Eval set** — 8–12 scenarios with agreed-correct answers, including the four traps in §9.
 - **Deployed skeleton** — an empty app live on Vercel with a shareable URL. From here on, every merge deploys. A demo that has been live since week 1 never has a "but it worked locally" moment.
-- **One measurement** — the worst-case duration of a matching run against the Vercel function timeout (spec §13.4). Small now that it is a single streamed call, but the number belongs on paper before Track A builds on the assumption.
+- **One measurement** — the worst-case duration of a matching run against the Vercel function timeout.
 
 **Done when:** the contracts are merged, the eval set is agreed, and there is a live URL.
 
 ---
 
-## Track A — Matching Agent and Rejection Loop
+## Track A — Matching Agent, Rejection Loop and Context Resolver
 
-Still the project's novel contribution, but the risk has moved. The matching agent itself is now a few days of work, not weeks. **The rejection loop is the hard part and the part worth reporting** — plan the track around it, not around getting a first decision out.
+The project's novel contribution. **The rejection loop is the hard part and the part worth reporting** — plan the track around it, not around getting a first decision out.
 
 | Weeks | Work |
 |---|---|
-| 2–4 | Group Matching Agent with structured output · hard-constraint filter and post-check · distance fairness scoring · cost and token logging · runs against the eval set |
-| 5–8 | **The rejection loop:** free-text reason → structured constraint update → new cycle · cycle cap · fairness tuning against eval results · per-participant justification quality |
-| 9–12 | Model tuning (can Haiku hold six profiles at once, or does this need Sonnet?) · effort tuning · prompt caching across cycles · **optional:** build the superseded multi-agent variant and run both on the eval set (spec §4.2) |
+| 2–3 | Group Matching Agent with structured output · hard-constraint filter and post-check · **leximin fairness scoring** · cost and token logging · runs against the eval set |
+| 4–6 | **The rejection loop:** free-text reason → structured constraint update → new cycle · cycle cap · per-participant justification quality · **Context Resolver and its validation layer** |
+| 7–8 | Model and effort tuning · eval runs with the Resolver on and off · report |
 
-**The one thing that must not slip:** an engine that reaches a decision, even a mediocre one, by Week 4. Everything else depends on it — and it should now arrive earlier than Week 4, which is the point of the change.
+**The one thing that must not slip:** an engine that reaches a decision, even a mediocre one, by the end of Week 3.
 
-**Where the freed time goes:** Track C, which grew to own three screens and the conflict warnings, and dogfooding. Not into new features.
+**Why the Resolver belongs here and not in Track B**, even though its output feeds Track B's funnel: it is the twin of the Constraint Updater. Same model, same shape — free text in, validated typed object out — same prompt, schema, and validation conventions. One person building both writes those conventions once. Build it in weeks 4–5 and ship it dark; the fallback means turning it on is a separate, later decision.
 
 ---
 
@@ -79,11 +90,11 @@ The least glamorous track and the one most likely to be underestimated. OAuth al
 
 | Weeks | Work |
 |---|---|
-| 2–4 | Postgres set up and migrated · Google sign-in · groups and membership · meetings and responses · **cross-group conflict query** |
-| 5–8 | Google Calendar read · availability computation for a set of participants · venue provider integration with caching · **conflict cancellation as a transaction** |
-| 9–12 | Email delivery · reliability and error handling on external calls |
+| 2–3 | Postgres set up and migrated · Google sign-in · groups and membership · meetings and responses · **cross-group conflict query** |
+| 4–6 | Google Calendar read · availability · Places with **two-tier caching, opening hours and business status** · search area and funnel · **conflict cancellation as a transaction** |
+| 7–8 | Reliability on external calls · email · report |
 
-**Start Google OAuth in Week 2, not Week 5.** It is the item most likely to surprise you, and finding that out in Week 5 costs the schedule.
+**Start Google OAuth in Week 2.** It is the item most likely to surprise you, and at eight weeks there is no slack to absorb the surprise.
 
 **Get the meeting index right in Week 1.** Conflict detection reads every open meeting for a user across every group ([spec §5.7](../docs/spec.md)). Indexing meetings by group alone is the easy default and the one that forces a migration over every row later.
 
@@ -91,35 +102,37 @@ The least glamorous track and the one most likely to be underestimated. OAuth al
 
 ## Track C — UI and Product Flow
 
-The track that grew. It now owns the whole product surface — three nested screens and the entire status vocabulary — and this is where "user-friendly" is either achieved or not. Give it the capacity freed from Track A.
+The whole product surface, and where "user-friendly" is either achieved or not.
 
 | Weeks | Work |
 |---|---|
-| 2–4 | PWA shell, mobile-first · preference game · home location · group creation and invite · **group feed with meeting cards, sorted by date** |
-| 5–8 | **Meeting screen: the three blocks** · two rejection buttons · **all-groups screen and conflict warnings** · in-app notifications |
-| 9–12 | Polish, empty states, loading states, error states · everything a stranger hits that you never do |
+| 2–3 | PWA shell, mobile-first · preference game · home location and tolerance · group creation and invite · **group feed with meeting cards, sorted by date** |
+| 4–6 | **Meeting screen: the three blocks** · the rejection controls · **all-groups screen and conflict warnings with both escape hatches** |
+| 7–8 | Empty, loading and error states · a stranger completes the flow unaided · report |
 
-**Build the meeting screen early.** Its "why this suits you" and "what happened so far" blocks are how Track A debugs, they are the most demonstrable thing in the project, and after the §4.2 change they are what makes a single agent's decision feel accountable rather than arbitrary. They got more important, not less.
+**Build the meeting screen early.** Its "why this suits you" and "what happened so far" blocks are how Track A debugs, they are the most demonstrable thing in the project, and they are what makes a single agent's decision feel accountable rather than arbitrary.
 
-**The status vocabulary is a shared contract, not styling.** `waiting on you` / `waiting on N` / `re-weighing` / `conflicting` / `stuck` / `closed` appear in the database, the API, and the UI. Agree them in Week 1 with the shared types.
+**The status vocabulary is a shared contract, not styling.** It appears in the database, the API, and the UI. Agree it in Week 1 with the shared types.
+
+**Note the change in what a proposal shows.** Each person sees why a proposal suits *them*; nobody is told what it cost them relative to a fairer option they did not get ([spec §5.6](../docs/spec.md)). Naming a cost manufactures a grievance that did not exist.
 
 ---
 
-## Milestone 1 — Week 4–5: thin slice, end to end
+## Milestone 1 — Week 3: thin slice, end to end
 
-The whole flow works with **fabricated venues and simplified profiles**: create a group → propose → confirm → the agent matches → decision appears with per-person reasoning → approve. Real restaurants come later.
+The whole flow works with **fabricated venues and simplified profiles**: create a group → initiate → the agent matches → a proposal appears with per-person reasoning → approve. Real restaurants come later.
 
-**This is the most important date in the plan.** A thin slice that runs at Week 5 leaves seven weeks to deepen it. Three separate half-built tracks at Week 5 leaves a crisis.
+**This is the most important date in the plan.** A thin slice running at Week 3 leaves three weeks to deepen it. Three half-built tracks at Week 3 leaves a crisis with no room to recover.
 
-## Milestone 2 — Week 9: full flow, real data
+## Milestone 2 — Week 6: full flow, real data
 
-Real restaurants, real calendars, the rejection loop working. From here, no new features — only fixing what real use reveals.
+Real restaurants, real calendars, the rejection loop working, conflicts warned and repaired. From here, no new features — only fixing what real use reveals.
 
-## Weeks 10–12 — Dogfooding, polish, report
+## Weeks 7–8 — Dogfooding, polish, report
 
 **Use it yourselves, for real.** You are the target users; that is a feedback loop most student projects never get. Every time you actually want to meet, use the app. The friction you hit in real use is worth more than any test plan.
 
-Reserve the last two weeks for the report and the demo. Not one week.
+Two weeks, and they are not spare capacity for slipped features. That is what the cut list above is for.
 
 ---
 
@@ -127,14 +140,15 @@ Reserve the last two weeks for the report and the demo. Not one week.
 
 | Risk | Why it's dangerous | Mitigation |
 |---|---|---|
+| **Eight weeks is not twelve** | The plan lost a third of its build time, the design grew, and nothing was cut | One deliberate slip item that degrades gracefully because it ships dark; the report-only work sequenced last; and Milestone 2's scope re-examined once Milestone 1 gives a real velocity |
 | **Three tracks that never converge** | The classic failure of parallel student work | Hard milestones; Week 1 contracts; deploy on every merge |
 | **Google OAuth surprises** | Sensitive scope, fiddly consent flow | Start Week 2; Testing mode; read-only scope |
-| **"It's just a prompt"** | The new headline risk. With one agent, a reviewer can reasonably ask what the engineering contribution is | The contribution is the rejection loop, the deterministic fairness layer, and the §4.2 decision made with evidence — not the agent count. Say so early and in writing |
-| **The agent quietly drops a participant** | Six profiles in one context, and the one whose constraint is inconvenient gets skipped | Hard constraints filtered in code and re-checked after (spec §4.1b); a dedicated eval trap scenario; per-person justification makes an omission visible |
-| **A conflict cancels a meeting other people already approved** | Real people are told an evening is off because of someone in another group. The worst failure the product can have, because it is social, not technical | The cancelled meeting returns to weighing rather than being deleted (spec §5.7), so the others get a new time instead of a cancellation notice. Cancellation must be one transaction across both meetings |
-| **Decision quality is mediocre** | "Algorithmic trade-off" can produce results that read as arbitrary | Eval set from Week 1; the viewer makes reasoning inspectable |
+| **"It's just a prompt"** | With one agent, a reviewer can reasonably ask what the engineering contribution is | Three answers, all in writing: the rejection loop; a **deterministic fairness layer** where code does the arithmetic and the model only sets parameters (§4.1f, §4.3); and two architecture decisions made with evidence rather than taste (§4.2, §4.3) |
+| **The agent quietly drops a participant** | Six profiles in one context, and the one whose constraint is inconvenient gets skipped | Hard constraints filtered in code and re-checked after; a dedicated eval trap; per-person justification makes an omission visible |
+| **A model-supplied parameter is wrong** | A bad radius or tolerance silently distorts every score | Every value clamped, sanity-checked, and reversible to the deterministic path; retrieval may only widen, so the worst case is one extra query (§4.1g) |
+| **A conflict cancels a meeting other people already approved** | Real people are told an evening is off because of someone in another group. The worst failure the product can have, because it is social, not technical | The cancelled meeting returns to weighing rather than being deleted; cancellation is one transaction across both; and the warning offers "these don't clash" so a false positive is not destructive (§5.7) |
 | **The rejection loop is harder than it looks** | Free text → constraint is the novel part, and novel means unproven | Two eval scenarios dedicated to it; if it fails, it is still a finding worth reporting |
-| **Scope creep** | The flow already has 11 feature areas | Spec §11 is the answer to every "should we also…" |
+| **Scope creep** | The design grew three times during specification | Spec §11 is the answer to every "should we also…", and the cut list above is the answer to "can we still fit…" |
 
 ## Priority order
 

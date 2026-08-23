@@ -1,0 +1,29 @@
+# Design Decisions — closing the open questions
+
+Resolved in a single review session before implementation began. Each decision is written up in full in the [spec](../spec.md); this page is the index and the one-line reason.
+
+The spec is the source of truth. If this page and the spec disagree, the spec is right.
+
+| # | Decision | Why | Spec |
+|---|---|---|---|
+| D1 | **Leximin** over normalized burden, not plain minimax | Plain minimax is degenerate: two candidates with the same worst-off participant are equivalent to it, so ties get broken by star rating and the fairness silently disappears | §5.4 |
+| D2 | Travel tolerance stored in **kilometres**, presented as a labelled slider | A 1–5 scale is an invisible mapping table nobody remembers by week 6; kilometres can be unit-tested and printed back to the user | §5.1, §5.4 |
+| D3 | Above the gate, fairness is **advice, not binding** | Every candidate that survives the gate is valid, and choosing among valid options is the agent's job. The gate is where fairness is enforced | §5.4, §4.1f |
+| D4 | Fairness **gates**; the shortlist is filled from **two parallel ranked lists** | There is no exchange rate between kilometres and stars, and a weighted sum lets a great rating buy its way past unfairness — the thing the fairness layer exists to prevent | §5.4 |
+| D5 | **Adaptive polling** for the feed, not a live connection | A held-open connection bills by duration, needs a pub/sub service to fan out, and brings reconnection work — for a surface where seconds of staleness are acceptable by design. The initiator's live progress already comes free from her own streaming request | §5.6 |
+| D6 | **One query per neighbourhood**, cached by rounded coordinates | A local search API caps results per query, so one wide query means worse coverage per participant. Keying the cache on the neighbourhood makes it shared across meetings and users — and the rounding already exists, for privacy | §5.4, §6.3 |
+| D7 | **Track A** owns the Context Resolver end to end | It is the twin of the Constraint Updater — same model, same shape, same validation conventions. One person writes those conventions once | plan.md |
+| D8 | Shortlist of **20–24** | Two parallel lists need room for both | §5.4 |
+| D9 | A rejection **always** triggers a new run; previous ranks stay as candidates; the rejected option may not return | Answering from a pre-computed rank cannot address an objection it never saw, and reads as not having listened — while the visible response to the objection *is* the product | §13, §9 |
+| D10 | Conflict = same day, **under 4 hours apart**, with two escape hatches | A meeting has no duration, so literal overlap is not computable. And because a conflict triggers a cancellation, a false positive destroys someone else's evening — so it needs a way out | §5.7 |
+| D11 | **Weather is out of scope** | Forecasts for a meeting proposed days ahead are unreliable and are never refreshed on the night, so the data would be wrong precisely when it mattered | §11 |
+| D12 | Amendments are **batched in a ~90-second window**, closed by the feed poll | Amendments cluster — several people open the same proposal within two minutes — so firing immediately runs the match twice and replaces a proposal before anyone finished reading it | §3.2 |
+| — | **No comparative cost line** in a proposal | Naming a cost manufactures a grievance that did not exist. Naming a *constraint* is not the same as naming a *comparison* | §5.6 |
+
+## The two that shaped everything else
+
+**The principle.** Code narrows only on what is true or false. The model decides among what is valid. This is what answers both "should the agent be bound by the fairness ranking?" and "should the model compute the search area?" with one rule instead of two unrelated ones.
+
+**The invariant.** The model may only widen retrieval; it may narrow only in scoring. Narrowing at retrieval is irreversible — a venue never fetched cannot be recovered by any later stage, including the rejection loop. Narrowing at scoring is recoverable. So the worst case of a bad model output is one extra API query, never a starved candidate set.
+
+Both are recorded as binding decisions in [spec §4.1f and §4.1g](../spec.md), with the architecture decision they produced in [§4.3](../spec.md).

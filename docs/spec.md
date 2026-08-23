@@ -39,7 +39,7 @@ Groups of 3–6 friends coordinating a night out. Not organizations, not work te
 1. **Free-text rejection as a learning signal** — "this place isn't to my taste" is not a button. It is parsed into a structured constraint update that drives the next matching cycle. **This is the project's central novel mechanism**, and after the architecture change in §4.2 it is unambiguously the thing the project is about.
 2. **One agent that holds the whole group at once** — not a recommender run per person and not a poll. A single agent reasons over every participant's hard constraints, soft preferences, location, and calendar simultaneously, and must justify its choice per participant.
 3. **Multi-layered preferences** — hard constraints (kosher, allergies, fixed hours) crossed against soft preferences (budget, atmosphere, cuisine), plus habits learned from the calendar.
-4. **Grounding in real data** — proposals validated against live APIs: venue availability, opening hours, weather.
+4. **Grounding in real data** — proposals validated against live sources: **opening hours and business status** from Google Places, real calendar availability, and real coordinates for the distance calculation. Table availability and weather are **not** obtainable at v1 scope — see §11.
 
 ---
 
@@ -63,6 +63,7 @@ This flow is the specification. Everything else in this document serves it.
 - **Reject-and-rematch cycles** — default 3 per meeting. Exceeded → the meeting enters the `stuck` state: the best option is shown with an explanation and the group decides manually. Without this cap, a group loops indefinitely and people abandon.
 - **Open meetings per group** — default 3. Beyond it, the initiate button is disabled with an explanation. Without this cap, the feed becomes a to-do list and members stop responding at all.
 - **One proposal on screen at a time.** Not a numeric cap but a hard rule: showing the ranked options side by side turns the product back into a poll, which is the thing it replaces.
+- **Context amendments per participant per meeting** — default 1 free. A second amendment by the same person costs a re-weighing cycle. An amendment is a correction to the *input* (§3.2), so charging the first one would punish someone for giving the system information it lacked; leaving it uncapped would let a single participant spend the group's runs without limit.
 
 There is no round cap: a matching run is a single agent call, not a multi-round exchange.
 
@@ -74,8 +75,13 @@ A single "reject" button would carry two incompatible meanings, and the agent ca
 |---|---|---|---|
 | **"I can't make it"** | I am unavailable, regardless of the plan | Drops the user from this meeting's calculation only. Group membership is untouched; they receive the next meeting normally | **No** — they did not ask for a different option, they left |
 | **"Something here doesn't work for me"** | I'm in, the proposal is wrong | The free text becomes a structured constraint and enters the next weighing | **Yes** — one of three |
+| **"My situation tonight is different"** | I'm in, the proposal is fine — the facts about *me* changed | Writes a `ParticipantMeetingContext` row (origin, mobility window) and triggers a re-weighing after the batching window | **No** — see below |
 
 Without the split, the agent spends a scarce re-weighing trying to please someone who was never coming.
+
+**Why the third control does not spend a cycle.** It is a correction to the *input*, not a rejection of the *output*. "I have no car tonight" is not "this proposal is wrong" — it is information the system never had. Charging it a cycle is the same category error the two-button split exists to fix. It is bounded instead by the amendment cap in §3.1.
+
+**Amendments are batched, not immediate.** An amendment opens a ~90-second window; further amendments reset it; when it closes, **one** run covers all of them. Amendments cluster — several people open the same proposal within the same two minutes — so firing immediately would run the match twice and replace a proposal before anyone finished reading it. The window is closed lazily by the next feed poll (§5.6), so this needs no cron and no background job.
 
 ---
 
@@ -83,6 +89,7 @@ Without the split, the agent spends a scarce re-weighing trying to please someon
 
 | Component | Responsibility | Owns | LLM? |
 |---|---|---|---|
+| **Context Resolver** | Turns messy human facts — free-text tolerance, "no car tonight", "coming from work", an occasion note, adjacent neighbourhoods, barriers like a motorway with no crossing — into **bounded numeric parameters** for the deterministic layer. Runs once per meeting, before the search. Never sees a venue | Nothing — its output is validated, clamped, and discardable | Yes |
 | **Candidate Funnel** | Search area → venues → drop hard-constraint violations → fairness/rating pre-rank → shortlist | Candidate selection | No — deterministic |
 | **Group Matching Agent** | Receives every confirmed participant's profile, location, and availability *together* with the shortlist; returns a ranked set of options, each justified per participant | The decision | Yes |
 | **World Interface** | Queries Google Places and Google Calendar; caching | API connections | No |
@@ -108,6 +115,12 @@ The shortlist that went in, the ranked options that came out, the per-participan
 **e. A matching run may stream inside a request; it no longer needs a background job.**
 A single agent call over a shortlist of ~15 venues takes seconds, not the 30–90 that a multi-round negotiation took. The route streams the response and reports progress from the deterministic stages. The Vercel function timeout still has to be checked against a real worst case and written down (§13.4), but the background-job infrastructure this architecture used to require is no longer needed.
 
+**f. The model sets parameters; code runs the function.**
+Where judgement is genuinely needed on something that is *not* a fact — how far "a bit" is for this person tonight, whether two neighbourhoods are really one area — an LLM supplies a **bounded, typed parameter** and deterministic code then runs unchanged. The model never performs arithmetic, never sorts a candidate set, and never returns a distance. This is what keeps a global guarantee global: `argmin` still runs over every candidate.
+
+**g. The model may only widen retrieval. It may narrow only in scoring.**
+Narrowing at retrieval is irreversible — a venue never fetched cannot be recovered by any later stage, including the rejection loop. Narrowing at scoring is recoverable — a venue ranked low is still in the set and can rise in the next cycle. So the Context Resolver may add search regions, merge them, or enlarge a radius; it may never remove one or shrink below the deterministic baseline. It may freely shrink a tolerance, because that only moves a candidate down a list. **The worst case of a bad model output is therefore an extra Places query, never a starved candidate set.**
+
 ### 4.2 Recorded Decision — one agent, not personal agents per participant
 
 **Superseded design.** Earlier drafts specified one Personal User Agent per participant negotiating against a Consensus Coordinator over capped rounds. That is no longer the architecture.
@@ -116,7 +129,19 @@ A single agent call over a shortlist of ~15 venues takes seconds, not the 30–9
 
 **What it cost.** The negotiation was the project's original headline. Two things go with it: the idea that a personal agent *represents* you, which is a real product property and not only theatre, and a claim that reads as more ambitious on a slide. Both were traded deliberately for a system that decides better and ships.
 
-**Worth reporting.** This decision, with the reasoning above, belongs in the report. If time remains after Milestone 2, building the multi-agent variant and running both against the same eval set (§9) turns the assumption into a measured result — an optional stretch, not a v1 requirement.
+**Worth reporting.** This decision, with the reasoning above, belongs in the report. Building the multi-agent variant and running both against the same eval set would turn the assumption into a measured result. It is in scope, scheduled after Milestone 2 — the point in the plan where slipping it would cost the report a paragraph rather than cost the product a feature. §4.3 provides evidence of the same kind independently, by running the eval set with the Context Resolver on and off.
+
+### 4.3 Recorded Decision — an LLM in the geography layer, as parameters only
+
+**What was considered.** Whether the search area and the distance layer should be computed deterministically or handed to a model.
+
+**Why it changed.** A fixed radius around each participant cannot serve both a dense-centre group and a dispersed one, and straight-line distance does not know that two neighbourhoods are effectively one area, or that three kilometres across a motorway with no crossing is not three kilometres. Those are real defects and a model is genuinely better at them.
+
+**What was rejected, and why.** Handing the model the geometry or the arithmetic. It would estimate 320 haversine distances confidently and wrongly, approximate a sort instead of performing one — which dissolves the minimise-the-worst-burden guarantee rather than weakening it — and remove the unit tests that make a failing eval scenario attributable to a stage. It would also inflate the cost-per-decision figure that §6.4 exists to report, with arithmetic a library does for free.
+
+**The resolution** is §4.1f and §4.1g: the model supplies parameters, code runs the function, and the invariant makes a bad parameter cheap instead of dangerous. The Resolver is an enhancement layer with a full fallback to the deterministic baseline — which also means the eval set can be run with it on and off, turning this decision into a measured delta rather than a matter of taste.
+
+**Worth reporting.** The deterministic fairness layer is one of the three things that answer "isn't this just a prompt?" — alongside the rejection loop and the §4.2 decision. Keeping the arithmetic in code and giving the model the parameters is what preserves that answer while still getting the semantic geography.
 
 ---
 
@@ -126,7 +151,9 @@ A single agent call over a shortlist of ~15 venues takes seconds, not the 30–9
 
 **Hard constraints** (kosher, allergies, fixed unavailable hours) and **soft preferences** (cuisine, budget, atmosphere, noise level, travel tolerance).
 
-Each user also sets a **home location** — see §5.4.
+Each user also sets a **home location** and a **travel tolerance in kilometres** — see §5.4. The tolerance is presented as a labelled slider ("on foot · the neighbourhood · half the city · anywhere"); the stored value is kilometres, because a 1–5 scale is an invisible mapping table nobody remembers by week 6, while kilometres can be unit-tested and printed back to the user.
+
+**Recurring mobility rules** — "no car on Fridays", "Tuesdays I come from work" — are part of the profile, not of any single meeting. They are distinct from the fixed unavailable hours above: those affect *availability*, these affect *distance*. They are also the cheap half of §5.7's amendment mechanism, because most of what varies is predictable and, once in the profile, is applied to the **first** proposal rather than to a correction of it.
 
 Initial setup runs as a **this-or-that game**: "Loud bar or quiet café?" · "Hike in nature or a museum tour?" · "Student budget or once-in-a-lifetime splurge?" — the agent gets an initial preference set immediately, without a long form.
 
@@ -144,25 +171,54 @@ Groups of 3–6. Invitation by email. A proposal carries optional `date`, `time`
 
 Distance is a first-class factor in the matching, not an afterthought. A venue that is perfect on every other axis but an hour away for one participant is not a good group decision.
 
-**Home location.** Each user sets a home location during onboarding, stored at **neighborhood granularity, not a street address** — enough for the distance calculation, and it avoids holding precise home addresses for a group of friends. Home is the default travel origin; a user can override it per proposal ("I'm coming from work today").
+**Home location.** Each user sets a home location during onboarding, stored at **neighbourhood granularity, not a street address** — enough for the distance calculation, and it avoids holding precise home addresses for a group of friends. Home is the default travel origin; it can be overridden per meeting (§5.7). The coarse granularity turned out to pay twice: it is also what makes the venue cache shared across meetings and users (§6.3).
 
-**Fairness over averages.** The scoring minimizes the **worst** travel burden across participants, not the average. Averaging lets a group repeatedly pick venues next door to three people and far from the fourth; that person stops showing up. This is the same fairness principle as open question §13.2 and is one of the more defensible design choices to write up in the report.
-
-**Straight-line distance for v1.** Travel time is the honest metric — 3 km can be ten minutes or forty — but it requires a routing API, which is another integration and another cost. v1 computes straight-line distance from coordinates: free, instant, and a good enough proxy at city scale. Routing is a documented upgrade path, not a v1 requirement (§11).
-
-**Search area — the union of participants' neighborhoods and their surroundings.** Candidates are drawn from every participant's own neighborhood plus the neighborhoods around each of them, not from a single computed midpoint. This sidesteps the failure mode of centroid approaches, where the geometric middle of four friends lands in a park, an industrial zone, or the sea. It also degrades gracefully for a dispersed group: instead of one meaningless central point you get several real clusters, and the fairness scoring picks between them.
-
-Implementation note: "the neighborhoods around X" is modeled as a **radius around the neighborhood's center**, not as a true adjacency graph. Adjacency would require a dataset we do not have and would have to maintain; a radius produces the same result from the coordinates Google Places already gives us.
-
-**Candidate funnel.** The search area can easily yield hundreds of venues, and handing all of them to the agent is both slow and expensive. The pipeline narrows before the agent sees anything:
+**The burden of a venue on a person.**
 
 ```
-search area → all venues → filter out hard-constraint violations
-            → pre-rank by distance fairness and rating
-            → top N (start at ~15) → matching agent
+burden = straight_line_distance × detour_factor / tolerance_km
 ```
 
-Only the final shortlist reaches the agent, and each candidate arrives with its per-participant distance already computed. The funnel is deterministic code, not an LLM — it is cheap, testable, and keeps the expensive reasoning focused on the choice that actually requires judgment. It is also the enforcement point for hard constraints (§4.1b): a venue that violates one never reaches the agent at all.
+Dimensionless. `1.0` means exactly at the limit that person stated; `1.4` means half again as far as they are comfortable with. The detour factor is described below.
+
+**Fairness is leximin over burdens.** Sort every participant's burden from worst to best and compare candidates lexicographically: worst against worst, and only on a tie move to the second-worst, then the third.
+
+```
+[1.8, 1.2, 0.9]  beats  [1.8, 1.5, 0.4]      — tie on the worst, decided on the second
+```
+
+Plain minimax — comparing only `max(burden)` — is what §5.4 originally described, and it is degenerate: two candidates with the same worst-off participant are exactly equivalent to it, even when one is far better for everyone else, so ties get broken downstream by star rating and the fairness silently disappears. Leximin is the standard refinement of maximin in social choice theory, it costs about five lines, and its name is worth a paragraph in the report.
+
+**Why worst-case and not average.** Averaging lets a group repeatedly pick venues next door to three people and far from the fourth; that person stops showing up. Leximin is jumpy — a small change for the worst-off participant reorders everything — and that is a feature for the rejection loop, where §12.4 requires the next proposal to be *materially* different.
+
+**Straight-line distance, corrected.** Travel time is the honest metric but requires a routing API — another integration and another cost, and out of scope for v1 (§11). v1 uses straight-line distance from coordinates, multiplied by a **detour factor** supplied per region-pair by the Context Resolver: `1.0` by default, higher where two areas are geographically close but practically far (a motorway or a river with no crossing between them). This is a cheap approximation of routing, sits honestly between the two, and can be measured against both.
+
+**Search area — the union of participants' neighbourhoods and their surroundings.** Candidates are drawn from every participant's own neighbourhood plus the area around each of them, not from a single computed midpoint. This sidesteps the failure mode of centroid approaches, where the geometric middle of four friends lands in a park, an industrial zone, or the sea. It also degrades gracefully for a dispersed group: instead of one meaningless central point you get several real clusters, and the fairness scoring picks between them.
+
+Implementation note: "the area around X" is modelled as a **radius around the neighbourhood's centre**, not a true adjacency graph. Adjacency would require a dataset we do not have and would have to maintain.
+
+⚠️ **A local search API returns a capped number of results per query, not everything in an area.** Earlier drafts of this section said the area "can easily yield hundreds of venues" and that the funnel starts from "all venues in the area". Neither is true: what you get is top-K per query, by the provider's own ordering. Two consequences follow, and both shape the design:
+
+1. **One query per participant neighbourhood**, deduplicated — a single wide bounding query returns the same capped count spread over a larger area, which means worse coverage near each individual participant, and the dispersed group is exactly the case the union geometry exists to serve.
+2. **Adaptive expansion adds query centres, it does not enlarge the radius.** A larger radius under a result cap trades near venues for far ones rather than returning more. Adding a centre is also pure widening, which is what §4.1g requires; enlarging a radius is not.
+
+**Candidate funnel.**
+
+```
+per-neighbourhood queries → dedupe → drop hard-constraint violations
+   → drop anything open at no viable time (§5.7)
+   → gate: drop any candidate where some participant's burden exceeds T
+   → top N/2 by leximin  +  top N/2 by rating   (overlap frees slots)
+   → shortlist of N ≈ 20–24 → matching agent
+```
+
+The funnel is deterministic code, not an LLM. It is cheap, testable, and keeps the expensive reasoning focused on the choice that actually requires judgement. It is also the enforcement point for hard constraints (§4.1b).
+
+**Why fairness gates rather than being weighted against rating.** A weighted sum of a fairness score and a star rating requires an exchange rate between kilometres and stars, which does not exist, and it lets an excellent rating buy its way past unfairness — the thing this section exists to prevent. So fairness acts as a **gate** (beyond `T`, a venue is simply unreachable for someone and is dropped) and then the shortlist is filled from **two parallel ranked lists**, one by leximin and one by rating. Where the two agree, a venue occupies one slot instead of two and frees room for the next. The agent then sees both ends of the trade-off and decides between them, which is exactly the division of labour in §4.1f.
+
+**The agent is advised by the fairness ranking, not bound by it.** Every candidate that survives the gate is *valid*, and choosing among valid options is the agent's job. It may prefer a better-rated venue over the leximin leader. The gate is where fairness is enforced; above it, fairness is an input.
+
+**Every distance question is really a (venue, time) question.** A mobility window ("no car between 18:00 and 21:00") and a venue's opening hours both depend on when the meeting is, so the funnel scores `candidates × participants × time slots`, not `candidates × participants`. For a handful of common free slots this is a few hundred cells — trivial to compute. The pre-rank uses each participant's **most permissive** slot, so that time-dependence never narrows what gets retrieved (§4.1g); the agent, which chooses the slot, receives the per-slot tolerances, and its chosen pair is re-checked against all of them afterwards.
 
 ### 5.5 Notifications
 
@@ -186,9 +242,15 @@ Only the final shortlist reaches the agent, and each candidate arrives with its 
 
 **Three blocks inside a meeting:**
 
-1. **The proposal** — venue, date, time, an expandable *"why this suits you"* written for the viewer specifically, and an explicit line naming what it costs them. The trade-off line is required: without it the justification reads like advertising and stops being believed by the third proposal.
+1. **The proposal** — venue, date, time, and an expandable *"why this suits you"* written for the viewer specifically.
+
+   **No comparative cost line.** Earlier drafts required each person to be told what the proposal costs *them* relative to a fairer alternative. That was dropped deliberately: naming a cost manufactures a grievance that did not exist. Yoav would not have noticed the extra fifteen minutes until we told him he had drawn the short straw. Naming a *constraint* is not the same as naming a *comparison* — "a twenty-five minute ride for you" is a fact, "twenty minutes worse for you than the fairest option" is a complaint we planted.
+
+   The honesty that the trade-off line was there to provide comes instead from framing that acknowledges limits without ranking people against each other: *"the quietest place we found that fits everyone's calendars."* The agent still computes and persists what each option trades away and for whom (§4.1c) — that feeds the timeline, the eval set, and the report. It is simply never shown to the person who bore the cost.
 2. **Where it stands** — a progress bar, a one-line summary ("1 of 2 approved"), and every participant with their state and timestamp. Members who dropped out stay listed rather than disappearing, so nobody wonders whether they were asked.
-3. **What happened so far** — a timeline: who initiated, what was proposed, who rejected and why, which weighing is running.
+3. **What happened so far** — a timeline: who initiated, what was proposed, who rejected and why, which weighing is running, which amendments triggered a re-weighing ("re-weighed because Dana has no car tonight"), and what was passed over. The unused ranks 2 and 3 (§4.1c) surface here — *"we also considered X and Y"* — which is the job §4.1c actually assigns them.
+
+**How the feed refreshes: adaptive polling.** A meeting in `re-weighing` on screen polls every ~3 seconds; otherwise every ~30 seconds; backgrounded, not at all. The initiator gets live progress for free, because the matching streams inside her own still-open request (§4.1e) — that is one request answered gradually, not a second channel. A held-open connection was rejected: it bills by duration on a serverless host, needs a pub/sub service to fan one user's action out to others (§10, "ask first"), and brings reconnection and mobile-backgrounding work for a product where seconds of staleness are acceptable by design. Polling only ever has to cover the foreground; email carries the rest (§5.5). The same poll is what closes the amendment batching window (§3.2), so amendments need no scheduler either.
 
 Blocks 1 and 3 replace what a separate reasoning viewer would have shown. With a single agent deciding, there is no visible argument to watch — the per-person justification and the decision history are what make the outcome accountable rather than arbitrary. **"Why this and not that" is the product, not a debug view.**
 
@@ -200,9 +262,18 @@ Several meetings run in parallel, and a user belongs to several groups, so two p
 
 **Rules:**
 
+**What counts as a conflict:** two open meetings of the same user **on the same calendar day, less than 4 hours apart**. A meeting has a start but no duration (§6.2), so literal interval overlap is not even computable; and two dinners three hours apart on the same evening are a conflict once travel is counted, whatever the clock says. Four hours is a number to tune, not a design.
+
+**The cost of a false positive is higher than a false negative here**, because a detected conflict triggers a cancellation. A definition that is too eager does not merely nag — it takes an evening away from people in another group who had already agreed to it.
+
+**Rules:**
+
 - A detected conflict is surfaced in three places: a banner on the feed, a `conflicting` label on the row, and a warning strip **directly above the approve button**. It must be impossible to approve without having seen it.
+- **The warning offers two ways out, not one.** *"These don't clash — keep both"* and *"One of these needs to change"*. Without an escape hatch the only available actions are to approve (destroying the other meeting) or to do nothing, and with a 4-hour rule there will be false positives — someone who really can go from drinks at 18:00 to dinner at 21:00. **A dismissal is persisted** per user and meeting pair, or the warning returns on the next poll and every reload. *The exact shape of these two controls is deliberately left to be refined when the screen is built.*
 - **Approving one meeting automatically cancels the conflicting one.** A single transaction writing to two meetings in two groups — not two calls that can half-fail.
 - **A cancelled meeting is not deleted. It returns to weighing**, with the user who caused the cancellation marked "can't make it", and the agent proposes a new time to the others. This matters because the others may have already approved: cancellation is something the system repairs, not something it merely announces.
+
+**Per-meeting context.** What varies for one evening — "no car between 18:00 and 21:00", "I'm coming from work today" — is recorded as a sparse `ParticipantMeetingContext` row and feeds the Context Resolver at a higher priority than the recurring rules in §5.1, which in turn outrank the profile default. There is deliberately **no step before matching where everyone declares their situation**: that is the participation-confirmation step §3.2 exists to absorb, and it would replace "press one button and a proposal appears" with a synchronous wait. Instead the information is collected where it actually exists — recurring rules in the profile, the initiator's own at initiation, and everyone else's through the third control on the proposal card (§3.2).
 
 ---
 
@@ -235,16 +306,24 @@ Core entities. Field lists are indicative, not final:
 | `MatchRun` | One weighing cycle of a meeting; carries cycle number, the shortlist that went in, and the constraint updates that triggered it |
 | `MatchOption` | One of the ranked options a run produced: venue, datetime, rank, per-participant justification, what it trades away. Only rank 1 is ever shown |
 | `Response` | Per-user, per-meeting: `pending` / `approved` / `cant_make_it` / `doesnt_suit` + free-text reason + timestamp. The two rejection kinds are distinct values, not a boolean with a note (§3.2) |
+| `ParticipantMeetingContext` | **Sparse** — a row exists only when someone amends. Per user and meeting: origin override, mobility windows with mode (`car`/`transit`/`walk`), free-text note, timestamp. Each `MatchRun` records which rows it saw, so the timeline can say *why* a re-weighing happened (§3.2, §5.7) |
+| `ConflictDismissal` | Per user and unordered meeting pair: this user has said the two do not clash. Without it the warning returns on every poll (§5.7) |
+
+`PreferenceProfile` additionally carries `tolerance_km` and the recurring mobility rules of §5.1; `Meeting` additionally carries an optional free-text `occasion` set at initiation, which is one of the Context Resolver's inputs.
 
 ### 6.3 External Services
 
 | Service | Role | Cost | Note |
 |---|---|---|---|
 | Google OAuth + Calendar | Sign-in and availability | Free at this scale | Read-only scope. See OAuth warning below |
-| **Google Places** | Real restaurant data — the v1 source | $200 free credit/month, sufficient for development and the demo | Also supplies the coordinates the distance calculation needs (§5.4). Check the terms on caching and attribution before building the cache |
+| **Google Places** | Real restaurant data — the v1 source | $200 free credit/month, sufficient for development and the demo | Also supplies the coordinates the distance calculation needs (§5.4), plus **opening hours and business status**. **No table availability** — that is a reservations platform, and out of scope (§11). Check the terms on caching and attribution, and the current field masks and price tiers, before building |
 | Easy (easy.co.il) | Candidate enrichment source — **blocked** | Unknown | Israeli local search with restaurant filters that map unusually well to our constraints: kosher type, vegetarian, vegan, child-friendly, atmosphere. **No public API documentation found** as of Aug 2026. Ask them directly; do not scrape. Only integrate if they grant access — see §13.1 |
 | PostgreSQL | Persistence | Free tier sufficient | Managed Postgres on Vercel or an equivalent provider |
 | Email delivery | Invitations and notifications | Free tier sufficient | Transactional email provider |
+
+**Two-tier caching, keyed by neighbourhood.** The search query is a property of a *neighbourhood*, not of a meeting: "Dana's neighbourhood plus radius R" is the same query for every meeting, in every group she belongs to, forever. Keying the cache on rounded coordinates rather than on a meeting id therefore makes it shared across meetings and users — and the rounding is already there, because §5.4 stores homes at neighbourhood granularity for privacy. Cycles 2 and 3 of a meeting are pure cache hits.
+
+Opening hours are cached **separately and briefly**, and fetched only for the shortlist. Hours change for holidays and closures, and proposing a restaurant that is shut on the night is a real failure; detailed fields also sit in a higher price tier than basic ones, so fetching them for twenty candidates rather than three hundred is what makes the funnel pay for itself twice.
 
 > ⚠️ **OAuth warning.** Calendar access is a sensitive scope requiring Google verification — a process that takes weeks. **v1 does not need it:** set the app to "Testing" mode and add users as test users (up to 100). Verification is only required before a wider release. Request the minimum scope now: broadening it later is easy, narrowing it after users have consented is not.
 
@@ -259,6 +338,8 @@ Core entities. Field lists are indicative, not final:
 | Claude Haiku 4.5 | `claude-haiku-4-5` | $1 / $5 | 200K |
 
 **Mapping:** `claude-haiku-4-5` for development and repeated runs · `claude-sonnet-5` for the demo and real use · `claude-opus-5` only if evaluation proves a gap.
+
+The **Context Resolver** (§4) and the **Constraint Updater** are twins: both are small extraction tasks turning free text into a validated typed object, both sit on `claude-haiku-4-5` from the start, and both share the same prompt, schema, and validation conventions — which is why one person builds both. ⚠️ Neither prompt is long enough to reach Haiku 4.5's 4,096-token minimum cacheable prefix, so **do not try to cache them**: below the minimum, caching fails silently and without an error.
 
 The matching agent is the one place where model choice actually matters — it does all the reasoning in the system, and there is no second agent to catch its mistakes. Start it on Sonnet 5 and only try to move it down to Haiku 4.5 once the eval set can prove the drop is safe. The Constraint Updater is a small extraction task and can sit on Haiku 4.5 from the start.
 
@@ -304,11 +385,22 @@ Directories for agent code, the data layer, and shared types are added as the tr
 - **At least two must have no perfect solution.**
 - **At least two must include a rejection reason** and the expected follow-up proposal — this is the mechanism the project is built around, so it must be measured, not just demonstrated.
 - **At least one must contain a hard-constraint trap:** the highest-scoring venue on every other axis violates one participant's hard constraint. The correct answer is never that venue (§4.1b).
+- **At least one closed-on-the-night trap:** the best venue is shut at the proposed time (§5.7).
+- **At least one mobility-window trap:** a participant has no car for part of the evening, so a far venue is wrong early and fine late — the correct answer is a *(venue, time)* pair, not a venue.
+- **At least one semantic-geography trap:** two neighbourhoods that are effectively one area, or two that are close in a straight line but separated by a barrier. This is what the Context Resolver is for, and it is the scenario that measures whether it earns its place.
 - Re-run on every change to the engine.
+
+**Run the suite with the Context Resolver on and off.** It has a full fallback to the deterministic baseline (§4.3), so both configurations are always runnable, and the delta between them is the evidence for the decision rather than an argument about it.
 
 **Metrics per run:** scenario pass rate · dollar cost per decision · wall-clock time · cycles used · hard-constraint violations (must be zero).
 
-**Unit tests** for the deterministic layer: distance fairness scoring, the hard-constraint filter, constraint parsing, availability computation, search-area derivation. No LLM required to test these.
+**Unit tests** for the deterministic layer: leximin scoring, the hard-constraint filter, the burden gate, availability and opening-hour intersection, search-area derivation, the conflict overlap rule. No LLM required to test these.
+
+**The LLM layers are unit-tested at their guard rails, not at the model.** The Context Resolver's clamp and validation are tested with **fabricated adversarial outputs** — a coordinate in the sea, a 500 km radius, a negative tolerance, a detour factor below 1 — plus the invariant (the widened union always contains the baseline) and the fallback (a failed call produces exactly the pre-Resolver behaviour). The model itself is measured by eval scenarios. Nothing in the deterministic column depends on a model, and nothing in the eval column depends on arithmetic — that separation is what makes a failing scenario attributable to a stage.
+
+Two further **validation** checks, in the same family as the per-participant justification rule:
+- An option that omits any confirmed participant fails (§4.2 risk).
+- **A re-weighing that re-proposes the option just rejected fails** — that is not a matching error, it is a signal that the Constraint Updater did not capture the objection.
 
 The eval set does not change with the §4.2 architecture — it describes correct answers, not how they are reached. That is exactly why it was written first, and it is what would make an eventual multi-agent comparison a fair one.
 
@@ -322,6 +414,9 @@ The eval set does not change with the §4.2 architecture — it describes correc
 - Filter hard constraints in code, and re-check the agent's answer against them.
 - Use structured outputs for every agent response.
 - Run the conflict check across **all** of a user's groups, never within one.
+- Let the model set parameters; never let it do arithmetic, sort a candidate set, or return a distance (§4.1f).
+- Keep model influence on retrieval **widening-only**; narrowing belongs in scoring (§4.1g).
+- Give any model-supplied number a clamp, a sanity check, and a fallback to the deterministic path.
 - Write a conflict cancellation as one transaction across both meetings.
 - Run the eval set before merging a change to the engine.
 
@@ -337,6 +432,8 @@ The eval set does not change with the §4.2 architecture — it describes correc
 - Run a rejection loop without the cycle cap.
 - Rely on the agent alone to respect a hard constraint.
 - Show more than one proposal at a time.
+- Tell a participant what a proposal costs them relative to an alternative they did not get (§5.6).
+- Charge a cycle for an amendment that corrects the input rather than rejecting the output (§3.2).
 - Cancel a meeting silently, or delete one instead of returning it to weighing.
 - Build an expansion domain before one slice runs end to end.
 
@@ -344,7 +441,7 @@ The eval set does not change with the §4.2 architecture — it describes correc
 
 ## 11. Explicitly Out of Scope for v1
 
-Apple Calendar and Outlook · restaurant reservations · day-before reminders · web push notifications · any activity type other than restaurants · vector DB · habit inference from calendar history · all expansion domains (B2B, travel, community, study) · native mobile app · **travel-time routing** (v1 uses straight-line distance — §5.4) · **the Easy integration** unless they grant API access in time (§13.1) · **personal agents per participant and multi-round negotiation** (superseded — §4.2; optional post-Milestone-2 comparison only) · **free-form conversation in the group** (§5.6 — the feed is a structured surface, not a chat) · **showing the user more than one proposal at a time** (§3.1) · **a separate participation-confirmation step** (§3.2 absorbs it).
+Apple Calendar and Outlook · restaurant reservations · day-before reminders · web push notifications · any activity type other than restaurants · vector DB · habit inference from calendar history · all expansion domains (B2B, travel, community, study) · native mobile app · **travel-time routing** (v1 uses straight-line distance — §5.4) · **the Easy integration** unless they grant API access in time (§13.1) · **personal agents per participant and multi-round negotiation** as the v1 architecture (superseded — §4.2; the comparison implementation remains in scope as post-Milestone-2 work, for the report) · **free-form conversation in the group** (§5.6 — the feed is a structured surface, not a chat) · **showing the user more than one proposal at a time** (§3.1) · **a separate participation-confirmation step** (§3.2 absorbs it) · **table availability and restaurant reservations** — not obtainable from the venue provider, and a reservations platform is a separate integration (§6.3) · **weather** — forecasts for a meeting proposed days ahead are unreliable and are never refreshed on the night, so the data would be wrong precisely when it mattered; an initiator who knows it will rain can say so in the occasion note, which the Context Resolver already reads · **a live push connection for the feed** (§5.6 — adaptive polling instead) · **the comparative cost line** in a proposal (§5.6).
 
 ---
 
@@ -352,11 +449,11 @@ Apple Calendar and Outlook · restaurant reservations · day-before reminders ·
 
 1. A friend receives an emailed link, signs in with Google, and completes a profile in under a minute.
 2. A group of 3+ can create a proposal with any subset of date, time, and venue specified.
-3. The system returns an **existing** restaurant that satisfies every participant's hard constraints, fits every confirmed participant's calendar, and is reachable for all of them — no participant is left with a travel burden far worse than the rest.
+3. The system returns an **existing** restaurant — open at the proposed time and not closed down — that satisfies every participant's hard constraints, fits every confirmed participant's calendar, and is reachable for all of them, with no participant left carrying a travel burden far worse than the rest.
 4. A free-text rejection produces a materially different next proposal that visibly addresses the stated reason.
 5. The eval set passes on ≥ 80% of scenarios, including the rejection-loop scenarios, with **zero hard-constraint violations** across all of them.
 6. A matching run completes in ≤ 20 seconds, with visible progress throughout.
-7. Every decision shows, per participant, why it works for them and what it costs them.
+7. Every decision shows each participant why it works **for them**, in wording written for them specifically. It does not tell them what it cost them relative to an option they did not get (§5.6).
 8. A user with meetings in two groups on the same evening is warned before approving either, and approving one repairs the other rather than dropping it.
 9. The whole flow runs on a phone, and a stranger completes it without help.
 
@@ -368,16 +465,13 @@ Apple Calendar and Outlook · restaurant reservations · day-before reminders ·
 
 | # | Question | Status |
 |---|---|---|
-| 1 | Can we get API access to Easy (easy.co.il)? | **Blocked on them.** Email them in Week 1 — it is a one-hour task with a potentially large payoff, and the answer arrives on their schedule, not ours. Build on Google Places regardless; treat Easy as enrichment that may never land |
-| 2 | How much of the fairness trade-off is deterministic scoring versus the agent's judgment? | Open — the core design question after §4.2. §5.4 commits to minimizing the worst travel burden, which is computable. Whether the agent receives those scores as advice or as a binding ranking decides how much room it has to be creative — and how much room it has to be unfair |
-| 3 | How does the feed refresh — polling, or a live connection? | Open. The feed is not a chat (§5.6), so seconds of staleness are acceptable and polling is probably enough. Decide before Track C builds the feed, because it is awkward to retrofit |
-| 4 | What is the real worst-case duration of a matching run, and does it fit the Vercel function timeout? | Open — measure it in Week 1 against the chosen plan's limit and write the number down. Much smaller than it was: streaming inside a request is now the expected answer (§4.1e) |
-| 5 | What radius counts as "the neighborhoods around" a participant? | Open — a number, not a design. Tune it against your own real addresses; too small starves the candidate list, too large defeats the point |
-| 6 | How many candidates enter the matching run? | Open — start at ~15 and tune against eval-set quality and cost (§5.4, candidate funnel) |
-| 7 | Does a rejection always trigger a new run, or first try the unused options from the current one? | Open — §4.1c keeps ranks 2 and 3. Answering from them is instant and free, but risks feeling dismissive if the objection was not really addressed |
-| 8 | How much time overlap counts as a conflict? | Open — a number, not a design. Two meetings four hours apart on the same evening are probably still a conflict once travel is counted. Start with "same day, within N hours" and tune (§5.7) |
+| 1 | Can we get API access to Easy (easy.co.il)? | **Blocked on them.** Email them in Week 1 — a one-hour task with a potentially large payoff, and the answer arrives on their schedule, not ours. Build on Google Places regardless; treat Easy as enrichment that may never land |
+| 2 | What is the real worst-case duration of a matching run, and does it fit the Vercel function timeout? | Open — measure it in Week 1 against the chosen plan's limit and write the number down. Streaming inside a request is the expected answer (§4.1e) |
+| 3 | What burden value should the gate `T` sit at? | Open — a number, not a design. Start around 2.0 (twice a person's stated comfortable distance) and tune against eval quality. Too tight starves the pool, which then triggers expansion (§5.4) |
+| 4 | What radius, and how many expansion steps? | Open — tune against your own real addresses. Note that expansion adds query centres rather than enlarging the radius (§5.4) |
+| 5 | Is 4 hours the right conflict window, and 90 seconds the right amendment batching window? | Open — both are numbers to tune. The conflict window errs tight on purpose, because a false positive destroys a meeting (§5.7) |
 
-**Resolved during specification:**
+**Resolved during specification:****Resolved during specification:**
 
 - ~~One personal agent per participant, negotiating?~~ → **No. One Group Matching Agent** holding every profile at once (§4.2). The superseded design cost decision quality, money, and latency without buying anything the context window did not already provide.
 - ~~Show the group one proposal or the ranked three?~~ → **One.** Three on screen is a poll, which is what the product replaces (§3.1).
@@ -389,4 +483,12 @@ Apple Calendar and Outlook · restaurant reservations · day-before reminders ·
 - ~~Google Places or Yelp Fusion?~~ → **Google Places.** Supplies both venue data and the coordinates the distance calculation needs; the free credit covers development and the demo.
 - ~~How is the search area derived?~~ → **The union of participants' neighborhoods and their surroundings** (§5.4). Not a centroid.
 - ~~Does travel origin default to home?~~ → **Yes, with a per-proposal override.**
-- ~~Distance or travel time?~~ → **Straight-line distance for v1.**
+- ~~Distance or travel time?~~ → **Straight-line distance for v1**, corrected by a Resolver-supplied detour factor (§5.4).
+- ~~How much of the fairness trade-off is deterministic scoring versus the agent's judgement?~~ → **The gate is deterministic and binding; above it, fairness is advice.** Every candidate that survives the burden gate is valid, and choosing among valid options is the agent's job (§5.4, §4.1f).
+- ~~How many candidates enter the matching run?~~ → **20–24**, filled from two parallel ranked lists (§5.4).
+- ~~How does the feed refresh — polling or a live connection?~~ → **Adaptive polling**, plus the streaming the initiator's own request already provides (§5.6).
+- ~~Does a rejection always trigger a new run, or first try the unused ranks 2–3?~~ → **Always a new run** — the visible response to the objection *is* the product (§12.4). The unused ranks stay as candidates in that run and as material for the timeline, but they are never served as the answer, and the option just rejected may not return (§9).
+- ~~How much time overlap counts as a conflict?~~ → **Same day, less than 4 hours apart** (§5.7).
+- ~~What does the agent do about fairness scores — advice or binding?~~ → **Advice.** See the gate above.
+- ~~Should the model compute the search area and the distances?~~ → **No — it supplies parameters and code runs the function** (§4.3).
+- ~~Weather?~~ → **Out of scope** (§11).
