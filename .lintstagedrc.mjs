@@ -9,7 +9,7 @@ const eslintOnStagedFiles = (filenames) =>
 
 const config = {
   "*.{js,jsx,mjs,cjs,ts,tsx,mts}": [eslintOnStagedFiles, "prettier --write"],
-  "*.{json,css,yml,yaml}": ["prettier --write"],
+  "*.{json,css,md,yml,yaml}": ["prettier --write"],
 };
 
 export default config;
