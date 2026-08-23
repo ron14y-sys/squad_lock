@@ -93,7 +93,44 @@ A user is not required to belong to a group to complete onboarding — group mem
 
 ---
 
-## 7. Acceptance checklist
+## 7. Failure and unavailability states
+
+Everything above is the happy path. This section is what each part of the flow does when something is broken, unreachable, or declined — so none of it has to be improvised while building.
+
+### Before Screen 1 — the invite link itself
+
+| Situation | What happens |
+|---|---|
+| Token expired | A plain error screen: *"This invite has expired — ask [inviter] to send a new one."* Not a broken page, not a silent redirect to the homepage. |
+| Token already used, by someone already onboarded | Sign in and go straight to the group feed. This is the normal case of re-clicking an old email, not a failure — it should not error. |
+| Token malformed or unknown | A generic *"this link isn't valid"* screen. No detail about which part failed — a bad token is data from outside the app, not something worth debugging for the visitor. |
+
+### Screen 1 — Google sign-in
+
+| Situation | What happens |
+|---|---|
+| User declines the consent screen | Back to Screen 1 with the explanation restated. Nothing was created — declining is a valid choice, not an error state. |
+| Google's OAuth service is unreachable (network drop, Google outage) | A retry state, not a generic crash screen. This is the one external dependency the flow has no fallback for — there is no local substitute for "can't reach Google." |
+| App still in Testing mode, and this Google account isn't on the added-testers list | **Google's own consent screen blocks this before it ever reaches us** — with Google's "app hasn't completed verification" message, which we cannot intercept or restyle. This is exactly why the `calendar.freebusy` / production-publishing question (§9) is load-bearing: every day the app stays in Testing is a day a friend outside the pre-added tester list is silently locked out, at the exact point furthest from anyone on the team noticing. |
+| The Google account belongs to a Workspace (school/work) domain whose admin blocks third-party apps | Indistinguishable from a decline on our side — Google refuses before the redirect back to us. No workaround exists; documented as a known limitation, since the target users (spec §1.2 — friend groups) are expected to sign in with personal Gmail accounts, not managed work accounts. |
+
+### Screens 2–4 — the profile steps
+
+| Situation | What happens |
+|---|---|
+| App closed or connection lost mid-flow | Each screen's answers save as that screen is completed, not only at the very end. Reopening the invite link, or the app directly once signed in, resumes at the next incomplete screen — never back at Screen 1. |
+| A save request fails (dropped connection, server error) | The screen stays exactly as filled in, with a retry — never a silent loss of answers the user already gave. |
+| Screen 4's location step | **Deliberately has no device-location permission dialog.** The user searches for and picks a neighbourhood by name rather than the app requesting GPS access. This removes an entire class of failure (denied or unavailable location permission, GPS drift, low-accuracy readings) at no product cost, since neighbourhood-level input was already the target granularity — there was never a reason to ask for anything more precise. |
+
+### After the flow — an incomplete profile
+
+| Situation | What happens |
+|---|---|
+| User signs in but stops before Screen 4 | The account and whatever was completed so far persist as-is. They can still be added to a group and see the feed, but stay **excluded from a matching run's participant set** until the profile is complete — a half-finished profile must never silently feed bad input into the matching agent. |
+
+---
+
+## 8. Acceptance checklist
 
 - [ ] The whole flow (screens 1–4) completes in under a minute for someone who has never seen the app, per success criterion §12.1
 - [ ] The Google consent screen lists **only** `calendar.freebusy` — nothing broader
@@ -103,9 +140,12 @@ A user is not required to belong to a group to complete onboarding — group mem
 - [ ] The stored home location is never a precise street address
 - [ ] The stored travel tolerance is a number in kilometres, not the slider's label
 - [ ] A user can complete onboarding before belonging to any group
+- [ ] An expired, used, or malformed invite token each show their own correct state — not a generic crash
+- [ ] Closing the app mid-onboarding and reopening the link resumes at the next incomplete screen, not from scratch
+- [ ] A user who abandons onboarding early is excluded from matching runs until their profile is complete
 
 ---
 
-## 8. Open item
+## 9. Open item
 
 **Before Week 2, a two-minute check (design-review-prep.md §4.6):** confirm in the Google Cloud Console that `calendar.freebusy` is actually classified non-sensitive. The whole "publish In production, skip verification, no 7-day expiry" plan above depends on this. If it turns out to be sensitive after all, this screen still works exactly as designed — only the backend publishing status changes (Testing mode, with a weekly re-consent to plan around).
