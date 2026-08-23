@@ -18,12 +18,12 @@ Produced by an interview on 2026-08-06 and confirmed explicitly. **Revised and r
 
 ## Architectural decisions
 
-1. **One agent decides, not one agent per person.** *(Revised 2026-08-12.)* A single Group Matching Agent receives every member's hard constraints, soft preferences, location, and availability **together**, and returns a ranked set of options. The earlier design — a personal agent per participant negotiating over capped rounds — is superseded. Everyone's profiles fit in one context, so splitting them only made each agent reason from a partial view, at higher cost and latency. Full reasoning in [spec §4.2](../spec.md).
+1. **One agent decides, not one agent per person.** _(Revised 2026-08-12.)_ A single Group Matching Agent receives every member's hard constraints, soft preferences, location, and availability **together**, and returns a ranked set of options. The earlier design — a personal agent per participant negotiating over capped rounds — is superseded. Everyone's profiles fit in one context, so splitting them only made each agent reason from a partial view, at higher cost and latency. Full reasoning in [spec §4.2](../spec.md).
 2. **The agent decides without humans.** Humans enter only to respond to the finished proposal.
 3. **Free-text rejection → updated constraint → new cycle.** The most novel part of the project and the center of the report. After decision 1 it is not merely the most novel part — it is the differentiator.
 4. **The decision must explain itself per person.** With no personal agent visibly arguing on your behalf, the per-participant justification — including an honest line on what the choice costs you — is what makes the result feel accountable instead of arbitrary. A product requirement, not a debug view.
 
-## Product decisions *(added 2026-08-12)*
+## Product decisions _(added 2026-08-12)_
 
 5. **The group is a structured feed, not a chat.** It looks like a conversation and reads like one, but only the agent posts and members respond through defined controls. An open chat would demand real-time messaging and an agent judging when to speak — neither is needed for the product to work.
 6. **One proposal at a time.** The agent ranks three internally and shows the best. Three on screen is a poll, and a poll is the thing being replaced.

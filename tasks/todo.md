@@ -38,7 +38,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Files: schema and migration files
 
 - [ ] **F5 — Eval set**
-  - Acceptance: 8–12 scenarios with profiles, calendars, the agreed-correct answer and its reasoning. At least 2 with no perfect solution · at least 2 with a rejection reason and expected follow-up · **1 hard-constraint trap** · **1 closed-on-the-night trap** · **1 mobility-window trap** where the answer is a *(venue, time)* pair · **1 semantic-geography trap** (spec §9).
+  - Acceptance: 8–12 scenarios with profiles, calendars, the agreed-correct answer and its reasoning. At least 2 with no perfect solution · at least 2 with a rejection reason and expected follow-up · **1 hard-constraint trap** · **1 closed-on-the-night trap** · **1 mobility-window trap** where the answer is a _(venue, time)_ pair · **1 semantic-geography trap** (spec §9).
   - Verify: all three agree each answer is right
   - Files: `evals/scenarios/*.json`, `evals/README.md`
 
@@ -81,11 +81,11 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 
 - [ ] **A7 — Constraint Updater: free-text rejection → structured constraint** — the project's central mechanism. Haiku 4.5. Shares prompt, schema and validation conventions with A12.
 - [ ] **A8 — Cycle loop with cap; new run from updated constraints** — cap 3, then `stuck`.
-- [ ] **A8b — Rejection re-run behaviour** *(decision resolved — implementation only)*
+- [ ] **A8b — Rejection re-run behaviour** _(decision resolved — implementation only)_
   - Acceptance: a rejection **always** triggers a new run. The previous run's ranks 2 and 3 **stay in the candidate pool** and compete again under the updated constraint, with justifications regenerated. **The option just rejected may not be re-proposed** — if it is, that is a validation failure signalling A7 did not capture the objection (spec §9).
   - Verify: unit test asserting carried-forward candidates are present in the next shortlist, and that re-proposing the rejected option raises
 - [ ] **A10 — Model and effort check against the eval set** — can Haiku 4.5 hold six profiles without dropping one? Reduced from a full sweep.
-- [ ] **A12 — Context Resolver** *(the designated slip item — ships dark)*
+- [ ] **A12 — Context Resolver** _(the designated slip item — ships dark)_
   - Acceptance: one Haiku call per meeting, before the search, returning a validated `ResolvedContext`: `tolerance_km` per participant **per time window**, `origin` + `originSource`, `extraRegions`, `detours` per region pair, `noViableRegion`. Never sees a venue, never returns a distance (spec §4.1f).
   - Verify: runs on the semantic-geography eval scenario and produces a merged region and a detour factor
 - [ ] **A13 — Resolver validation, clamp and fallback**
@@ -165,7 +165,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 ### Milestone 2 (weeks 4–6)
 
 - [ ] **C8 — All-groups screen and conflict warnings**
-  - Acceptance: every group with a count of what awaits the user, plus one timeline of all open meetings across groups. Conflicts surface in **three** places: a feed banner, a `conflicting` row label, and a warning strip **directly above the approve button**. The strip offers **two ways out** — *"these don't clash — keep both"* (persisted as a `ConflictDismissal`) and *"one of these needs to change"*. Exact shape of the two controls to be refined when built.
+  - Acceptance: every group with a count of what awaits the user, plus one timeline of all open meetings across groups. Conflicts surface in **three** places: a feed banner, a `conflicting` row label, and a warning strip **directly above the approve button**. The strip offers **two ways out** — _"these don't clash — keep both"_ (persisted as a `ConflictDismissal`) and _"one of these needs to change"_. Exact shape of the two controls to be refined when built.
   - Verify: a user with colliding meetings cannot reach approve without passing the warning; approving shows what happens to the other meeting **before** the press; a dismissal survives a reload and the next poll
 - [ ] **C8b — The `stuck` state has a screen** — best option found, why it stopped, and a way for the group to settle it. It does not silently vanish from the feed.
 
@@ -203,7 +203,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 - [ ] Approving one **returns the other to weighing rather than deleting it**
 - [ ] The eval set passes ≥ 80% including the rejection-loop scenarios, with zero hard-constraint violations
 - [ ] A run completes in ≤ 20 seconds with visible progress
-- [ ] *(if reached)* The eval set has been run with the Context Resolver on and off, and the delta is written down
+- [ ] _(if reached)_ The eval set has been run with the Context Resolver on and off, and the delta is written down
 
 ---
 

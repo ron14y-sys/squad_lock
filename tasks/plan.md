@@ -48,7 +48,7 @@ Twelve weeks became eight. Week 1 is contracts and weeks 7–8 are the report, s
 
 **The slack is the Context Resolver** ([#52](https://github.com/ron14y-sys/squad_lock/issues/52), [#53](https://github.com/ron14y-sys/squad_lock/issues/53)). It ships dark: the validation layer falls back to the deterministic path, so an unfinished Resolver costs nothing — the system runs, the eval set still produces a number, and no other track is blocked. It is the one substantial item that can absorb a slip without leaving a hole, which is why it is scheduled into weeks 4–5 rather than earlier.
 
-**Where the pressure actually sits.** Milestone 2 at Week 6 needs real venues, real calendars, the rejection loop *and* cross-group conflicts, in three weeks. That is the tightest stretch in the plan, and it is the one to re-examine once Milestone 1 lands and there is a real velocity to measure against instead of an estimate.
+**Where the pressure actually sits.** Milestone 2 at Week 6 needs real venues, real calendars, the rejection loop _and_ cross-group conflicts, in three weeks. That is the tightest stretch in the plan, and it is the one to re-examine once Milestone 1 lands and there is a real velocity to measure against instead of an estimate.
 
 **Two items are structurally riskier than their size suggests.** Per-meeting amendments ([#55](https://github.com/ron14y-sys/squad_lock/issues/55) and the fourth control in [#43](https://github.com/ron14y-sys/squad_lock/issues/43)) need a new entity, a new cap and UI, and — unlike the Resolver — do not degrade gracefully: a half-built control is a visibly broken control. The multi-agent comparison ([#20](https://github.com/ron14y-sys/squad_lock/issues/20)) is a second full implementation of a superseded architecture; it is the most valuable thing in the plan for the report and the least valuable for the product, so it belongs at the end, after Milestone 2, where slipping it costs the report a paragraph rather than costing the product a feature.
 
@@ -72,11 +72,11 @@ Twelve weeks became eight. Week 1 is contracts and weeks 7–8 are the report, s
 
 The project's novel contribution. **The rejection loop is the hard part and the part worth reporting** — plan the track around it, not around getting a first decision out.
 
-| Weeks | Work |
-|---|---|
-| 2–3 | Group Matching Agent with structured output · hard-constraint filter and post-check · **leximin fairness scoring** · cost and token logging · runs against the eval set |
-| 4–6 | **The rejection loop:** free-text reason → structured constraint update → new cycle · cycle cap · per-participant justification quality · **Context Resolver and its validation layer** |
-| 7–8 | Model and effort tuning · eval runs with the Resolver on and off · report |
+| Weeks | Work                                                                                                                                                                                    |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2–3   | Group Matching Agent with structured output · hard-constraint filter and post-check · **leximin fairness scoring** · cost and token logging · runs against the eval set                 |
+| 4–6   | **The rejection loop:** free-text reason → structured constraint update → new cycle · cycle cap · per-participant justification quality · **Context Resolver and its validation layer** |
+| 7–8   | Model and effort tuning · eval runs with the Resolver on and off · report                                                                                                               |
 
 **The one thing that must not slip:** an engine that reaches a decision, even a mediocre one, by the end of Week 3.
 
@@ -88,11 +88,11 @@ The project's novel contribution. **The rejection loop is the hard part and the 
 
 The least glamorous track and the one most likely to be underestimated. OAuth always takes longer than expected.
 
-| Weeks | Work |
-|---|---|
-| 2–3 | Postgres set up and migrated · Google sign-in · groups and membership · meetings and responses · **cross-group conflict query** |
-| 4–6 | Google Calendar read · availability · Places with **two-tier caching, opening hours and business status** · search area and funnel · **conflict cancellation as a transaction** |
-| 7–8 | Reliability on external calls · email · report |
+| Weeks | Work                                                                                                                                                                            |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2–3   | Postgres set up and migrated · Google sign-in · groups and membership · meetings and responses · **cross-group conflict query**                                                 |
+| 4–6   | Google Calendar read · availability · Places with **two-tier caching, opening hours and business status** · search area and funnel · **conflict cancellation as a transaction** |
+| 7–8   | Reliability on external calls · email · report                                                                                                                                  |
 
 **Start Google OAuth in Week 2.** It is the item most likely to surprise you, and at eight weeks there is no slack to absorb the surprise.
 
@@ -104,17 +104,17 @@ The least glamorous track and the one most likely to be underestimated. OAuth al
 
 The whole product surface, and where "user-friendly" is either achieved or not.
 
-| Weeks | Work |
-|---|---|
-| 2–3 | PWA shell, mobile-first · preference game · home location and tolerance · group creation and invite · **group feed with meeting cards, sorted by date** |
-| 4–6 | **Meeting screen: the three blocks** · the rejection controls · **all-groups screen and conflict warnings with both escape hatches** |
-| 7–8 | Empty, loading and error states · a stranger completes the flow unaided · report |
+| Weeks | Work                                                                                                                                                    |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2–3   | PWA shell, mobile-first · preference game · home location and tolerance · group creation and invite · **group feed with meeting cards, sorted by date** |
+| 4–6   | **Meeting screen: the three blocks** · the rejection controls · **all-groups screen and conflict warnings with both escape hatches**                    |
+| 7–8   | Empty, loading and error states · a stranger completes the flow unaided · report                                                                        |
 
 **Build the meeting screen early.** Its "why this suits you" and "what happened so far" blocks are how Track A debugs, they are the most demonstrable thing in the project, and they are what makes a single agent's decision feel accountable rather than arbitrary.
 
 **The status vocabulary is a shared contract, not styling.** It appears in the database, the API, and the UI. Agree it in Week 1 with the shared types.
 
-**Note the change in what a proposal shows.** Each person sees why a proposal suits *them*; nobody is told what it cost them relative to a fairer option they did not get ([spec §5.6](../docs/spec.md)). Naming a cost manufactures a grievance that did not exist.
+**Note the change in what a proposal shows.** Each person sees why a proposal suits _them_; nobody is told what it cost them relative to a fairer option they did not get ([spec §5.6](../docs/spec.md)). Naming a cost manufactures a grievance that did not exist.
 
 ---
 
@@ -138,17 +138,17 @@ Two weeks, and they are not spare capacity for slipped features. That is what th
 
 ## Principal Risks
 
-| Risk | Why it's dangerous | Mitigation |
-|---|---|---|
-| **Eight weeks is not twelve** | The plan lost a third of its build time, the design grew, and nothing was cut | One deliberate slip item that degrades gracefully because it ships dark; the report-only work sequenced last; and Milestone 2's scope re-examined once Milestone 1 gives a real velocity |
-| **Three tracks that never converge** | The classic failure of parallel student work | Hard milestones; Week 1 contracts; deploy on every merge |
-| **Google OAuth surprises** | Sensitive scope, fiddly consent flow | Start Week 2; Testing mode; read-only scope |
-| **"It's just a prompt"** | With one agent, a reviewer can reasonably ask what the engineering contribution is | Three answers, all in writing: the rejection loop; a **deterministic fairness layer** where code does the arithmetic and the model only sets parameters (§4.1f, §4.3); and two architecture decisions made with evidence rather than taste (§4.2, §4.3) |
-| **The agent quietly drops a participant** | Six profiles in one context, and the one whose constraint is inconvenient gets skipped | Hard constraints filtered in code and re-checked after; a dedicated eval trap; per-person justification makes an omission visible |
-| **A model-supplied parameter is wrong** | A bad radius or tolerance silently distorts every score | Every value clamped, sanity-checked, and reversible to the deterministic path; retrieval may only widen, so the worst case is one extra query (§4.1g) |
-| **A conflict cancels a meeting other people already approved** | Real people are told an evening is off because of someone in another group. The worst failure the product can have, because it is social, not technical | The cancelled meeting returns to weighing rather than being deleted; cancellation is one transaction across both; and the warning offers "these don't clash" so a false positive is not destructive (§5.7) |
-| **The rejection loop is harder than it looks** | Free text → constraint is the novel part, and novel means unproven | Two eval scenarios dedicated to it; if it fails, it is still a finding worth reporting |
-| **Scope creep** | The design grew three times during specification | Spec §11 is the answer to every "should we also…", and the cut list above is the answer to "can we still fit…" |
+| Risk                                                           | Why it's dangerous                                                                                                                                      | Mitigation                                                                                                                                                                                                                                              |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Eight weeks is not twelve**                                  | The plan lost a third of its build time, the design grew, and nothing was cut                                                                           | One deliberate slip item that degrades gracefully because it ships dark; the report-only work sequenced last; and Milestone 2's scope re-examined once Milestone 1 gives a real velocity                                                                |
+| **Three tracks that never converge**                           | The classic failure of parallel student work                                                                                                            | Hard milestones; Week 1 contracts; deploy on every merge                                                                                                                                                                                                |
+| **Google OAuth surprises**                                     | Sensitive scope, fiddly consent flow                                                                                                                    | Start Week 2; Testing mode; read-only scope                                                                                                                                                                                                             |
+| **"It's just a prompt"**                                       | With one agent, a reviewer can reasonably ask what the engineering contribution is                                                                      | Three answers, all in writing: the rejection loop; a **deterministic fairness layer** where code does the arithmetic and the model only sets parameters (§4.1f, §4.3); and two architecture decisions made with evidence rather than taste (§4.2, §4.3) |
+| **The agent quietly drops a participant**                      | Six profiles in one context, and the one whose constraint is inconvenient gets skipped                                                                  | Hard constraints filtered in code and re-checked after; a dedicated eval trap; per-person justification makes an omission visible                                                                                                                       |
+| **A model-supplied parameter is wrong**                        | A bad radius or tolerance silently distorts every score                                                                                                 | Every value clamped, sanity-checked, and reversible to the deterministic path; retrieval may only widen, so the worst case is one extra query (§4.1g)                                                                                                   |
+| **A conflict cancels a meeting other people already approved** | Real people are told an evening is off because of someone in another group. The worst failure the product can have, because it is social, not technical | The cancelled meeting returns to weighing rather than being deleted; cancellation is one transaction across both; and the warning offers "these don't clash" so a false positive is not destructive (§5.7)                                              |
+| **The rejection loop is harder than it looks**                 | Free text → constraint is the novel part, and novel means unproven                                                                                      | Two eval scenarios dedicated to it; if it fails, it is still a finding worth reporting                                                                                                                                                                  |
+| **Scope creep**                                                | The design grew three times during specification                                                                                                        | Spec §11 is the answer to every "should we also…", and the cut list above is the answer to "can we still fit…"                                                                                                                                          |
 
 ## Priority order
 
