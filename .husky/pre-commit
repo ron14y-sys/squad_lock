@@ -1,0 +1,5 @@
+. "$(dirname "$0")/common.sh"
+
+# Format and lint whatever is staged. Fast by design — it only touches the
+# files in this commit, and writes fixes back into the staged content.
+npx lint-staged

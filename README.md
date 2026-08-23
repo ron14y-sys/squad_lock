@@ -18,6 +18,19 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## Checks
+
+`npm install` also installs the git hooks. From then on, committing formats and lints your staged files, and pushing runs the type-checker and the test suite; CI re-runs all of it, plus a production build, on every pull request.
+
+```bash
+npm run verify   # everything at once: format:check · lint · typecheck · test
+npm run test:watch
+npm run format   # write formatting fixes
+npm run lint:fix
+```
+
+See the _Quality gates_ section of [AGENTS.md](AGENTS.md) for what runs where and why.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

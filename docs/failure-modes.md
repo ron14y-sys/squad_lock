@@ -8,18 +8,18 @@ Every point where SquadLock depends on something outside its own code — Google
 
 ## 1. Map of dependencies
 
-| Dependency | Used by | What can go wrong |
-|---|---|---|
-| Google OAuth (sign-in) | Onboarding, every session | User declines, Google unreachable, Testing-mode cap/expiry — see onboarding-flow.md §7 |
-| Google Calendar (`freebusy`) | Availability computation (B6), every matching run | Call fails or times out, access revoked after the fact, empty calendar |
-| Google Places | Candidate funnel (B7) | Call fails or times out, monthly quota exhausted, search area yields nothing |
-| Anthropic API — **Context Resolver** | Pre-search parameters (A12) | Timeout, malformed output, outage |
-| Anthropic API — **Group Matching Agent** | The decision itself (A4) | Timeout, malformed/invalid schema output, outage |
-| Anthropic API — **Constraint Updater** | Rejection parsing (A7) | Timeout, malformed output, outage |
-| PostgreSQL | Everything | Unreachable, write fails mid-transaction |
-| Resend | Invitations and notifications (B8) | Send fails, bounces, domain misconfigured |
-| Vercel function timeout | Any matching run | Exceeded despite the Week 1 measurement (F2) |
-| Client network | Feed polling, saving a form | Connection drops mid-request |
+| Dependency                               | Used by                                           | What can go wrong                                                                      |
+| ---------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Google OAuth (sign-in)                   | Onboarding, every session                         | User declines, Google unreachable, Testing-mode cap/expiry — see onboarding-flow.md §7 |
+| Google Calendar (`freebusy`)             | Availability computation (B6), every matching run | Call fails or times out, access revoked after the fact, empty calendar                 |
+| Google Places                            | Candidate funnel (B7)                             | Call fails or times out, monthly quota exhausted, search area yields nothing           |
+| Anthropic API — **Context Resolver**     | Pre-search parameters (A12)                       | Timeout, malformed output, outage                                                      |
+| Anthropic API — **Group Matching Agent** | The decision itself (A4)                          | Timeout, malformed/invalid schema output, outage                                       |
+| Anthropic API — **Constraint Updater**   | Rejection parsing (A7)                            | Timeout, malformed output, outage                                                      |
+| PostgreSQL                               | Everything                                        | Unreachable, write fails mid-transaction                                               |
+| Resend                                   | Invitations and notifications (B8)                | Send fails, bounces, domain misconfigured                                              |
+| Vercel function timeout                  | Any matching run                                  | Exceeded despite the Week 1 measurement (F2)                                           |
+| Client network                           | Feed polling, saving a form                       | Connection drops mid-request                                                           |
 
 ---
 
@@ -27,15 +27,15 @@ Every point where SquadLock depends on something outside its own code — Google
 
 Everything in this section is a real decision already recorded elsewhere. No product judgement is needed here, only implementation.
 
-| Situation | Decided behaviour | Where |
-|---|---|---|
-| Context Resolver call fails, times out, or returns something that doesn't pass validation | **Falls back to exactly the pre-Resolver deterministic path.** Every model-supplied number is clamped to a range and checked against a sanity bounding box first. The Resolver can only ever *widen* the search, never narrow it — so its worst failure is one extra Places query, never a starved candidate set | §4.1g, §4.3, A13 |
-| No `(venue, time)` pair survives the intersection of calendar availability, opening hours, and mobility windows | The meeting goes to **`stuck`** — the best option found is shown with an explanation, not a bad proposal forced through | Task B6 |
-| A meeting is cancelled by a conflict | **One transaction across both meetings.** The cancelled meeting **returns to weighing**, never deleted, with the approving user marked `cant_make_it`. A test explicitly requires that a mid-write failure leaves neither meeting half-updated | §5.7, B5c |
-| A meeting exhausts its 3 reject-and-rematch cycles | Enters `stuck`: best option shown, explanation given, group settles it manually. It gets its own notification email specifically so it doesn't go quiet | §3.1, §5.5 |
-| The agent's chosen option turns out to violate a hard constraint | Caught by the post-check (A2) before anything reaches a user — the agent never gets the last word on an allergy or a kosher requirement | §4.1b |
-| Google OAuth Testing-mode weekly token expiry | Structurally avoided, not handled at runtime: narrow the scope to `calendar.freebusy` so the app can likely publish **In production** instead of staying in Testing. If it can't, this becomes a real weekly-refresh problem to plan around, not a one-off bug | §6.3, onboarding-flow.md §7 |
-| Google Places cost blowing past the free tier | Prevented by design — two-tier caching keyed by neighbourhood, and Enterprise-tier fields (hours, rating) requested only for the ~20-item shortlist, never the wide search | §6.3, B7 |
+| Situation                                                                                                       | Decided behaviour                                                                                                                                                                                                                                                                                                | Where                       |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| Context Resolver call fails, times out, or returns something that doesn't pass validation                       | **Falls back to exactly the pre-Resolver deterministic path.** Every model-supplied number is clamped to a range and checked against a sanity bounding box first. The Resolver can only ever _widen_ the search, never narrow it — so its worst failure is one extra Places query, never a starved candidate set | §4.1g, §4.3, A13            |
+| No `(venue, time)` pair survives the intersection of calendar availability, opening hours, and mobility windows | The meeting goes to **`stuck`** — the best option found is shown with an explanation, not a bad proposal forced through                                                                                                                                                                                          | Task B6                     |
+| A meeting is cancelled by a conflict                                                                            | **One transaction across both meetings.** The cancelled meeting **returns to weighing**, never deleted, with the approving user marked `cant_make_it`. A test explicitly requires that a mid-write failure leaves neither meeting half-updated                                                                   | §5.7, B5c                   |
+| A meeting exhausts its 3 reject-and-rematch cycles                                                              | Enters `stuck`: best option shown, explanation given, group settles it manually. It gets its own notification email specifically so it doesn't go quiet                                                                                                                                                          | §3.1, §5.5                  |
+| The agent's chosen option turns out to violate a hard constraint                                                | Caught by the post-check (A2) before anything reaches a user — the agent never gets the last word on an allergy or a kosher requirement                                                                                                                                                                          | §4.1b                       |
+| Google OAuth Testing-mode weekly token expiry                                                                   | Structurally avoided, not handled at runtime: narrow the scope to `calendar.freebusy` so the app can likely publish **In production** instead of staying in Testing. If it can't, this becomes a real weekly-refresh problem to plan around, not a one-off bug                                                   | §6.3, onboarding-flow.md §7 |
+| Google Places cost blowing past the free tier                                                                   | Prevented by design — two-tier caching keyed by neighbourhood, and Enterprise-tier fields (hours, rating) requested only for the ~20-item shortlist, never the wide search                                                                                                                                       | §6.3, B7                    |
 
 ---
 
@@ -49,7 +49,7 @@ These were genuine gaps with no recorded decision. Below is a concrete recommend
 
 **G2 — The candidate funnel produces an empty shortlist** even after the burden gate and every expansion step.
 
-**Recommendation:** skip the agent call entirely — there is nothing to send it — and go straight to a state with the same UI treatment as `stuck` (an explanation, no proposal, the group decides manually) but **distinct wording and no cycle charge**. Calling it `stuck` would be misleading on a group's very first attempt, since `stuck` implies 3 tries were spent and none were. Something like *"we couldn't find anywhere that works for everyone — try widening a preference or your travel tolerance"* names the actual lever the group can pull, which `stuck`'s wording does not.
+**Recommendation:** skip the agent call entirely — there is nothing to send it — and go straight to a state with the same UI treatment as `stuck` (an explanation, no proposal, the group decides manually) but **distinct wording and no cycle charge**. Calling it `stuck` would be misleading on a group's very first attempt, since `stuck` implies 3 tries were spent and none were. Something like _"we couldn't find anywhere that works for everyone — try widening a preference or your travel tolerance"_ names the actual lever the group can pull, which `stuck`'s wording does not.
 
 **G3 — Google Places' free monthly quota is exhausted** despite the caching design.
 
@@ -57,7 +57,7 @@ These were genuine gaps with no recorded decision. Below is a concrete recommend
 
 **G4 — A real Resend notification fails to send** (bounce, API error), not the test sender.
 
-**Recommendation:** the invitation email is the one case that's load-bearing — per §12.1 it's the *only* way someone joins at all — so its failure should surface to the inviter in the UI (a plain *"delivery to X failed — you can share the link directly"* indicator) so a human can route around it. The other four triggers in §5.5's table (proposal waiting, confirmed, returned-to-weighing, stuck) are **not** the sole channel for anything — the in-app feed already shows all of it on next open, by design (§5.6). So for those: one automatic retry of the Resend API call, then log and move on. Building a delivery-status webhook queue for v1 is new infrastructure for a channel that was already explicitly designed to be non-critical everywhere except the invite.
+**Recommendation:** the invitation email is the one case that's load-bearing — per §12.1 it's the _only_ way someone joins at all — so its failure should surface to the inviter in the UI (a plain _"delivery to X failed — you can share the link directly"_ indicator) so a human can route around it. The other four triggers in §5.5's table (proposal waiting, confirmed, returned-to-weighing, stuck) are **not** the sole channel for anything — the in-app feed already shows all of it on next open, by design (§5.6). So for those: one automatic retry of the Resend API call, then log and move on. Building a delivery-status webhook queue for v1 is new infrastructure for a channel that was already explicitly designed to be non-critical everywhere except the invite.
 
 **G5 — The Vercel function timeout is exceeded** in production, despite the Week 1 measurement (spec §13 #2).
 
@@ -65,11 +65,11 @@ These were genuine gaps with no recorded decision. Below is a concrete recommend
 
 **G6 — PostgreSQL is unreachable.**
 
-**Recommendation:** the boring, generic case, and it should stay that way — resist building custom retry/circuit-breaker machinery for v1. Reads: the existing poll loop (§5.6) already retries on its own cadence; show a plain *"can't reach the server — retrying"* banner only after **2 consecutive** failed polls, so one blip doesn't flash an error. Writes: single-row writes get atomicity from Postgres itself for free; the one place with a real multi-row write (conflict cancellation) is already required to be transactional (B5c) — that requirement already generalizes to any future multi-row write, so it doesn't need a separate rule here.
+**Recommendation:** the boring, generic case, and it should stay that way — resist building custom retry/circuit-breaker machinery for v1. Reads: the existing poll loop (§5.6) already retries on its own cadence; show a plain _"can't reach the server — retrying"_ banner only after **2 consecutive** failed polls, so one blip doesn't flash an error. Writes: single-row writes get atomicity from Postgres itself for free; the one place with a real multi-row write (conflict cancellation) is already required to be transactional (B5c) — that requirement already generalizes to any future multi-row write, so it doesn't need a separate rule here.
 
 **G7 — The Constraint Updater fails** (timeout, invalid output, outage) while parsing a "something here doesn't work for me" rejection.
 
-**Recommendation:** the same 2-retry budget as G1 — it is the Context Resolver's declared twin (§6.4: same model, same shape, same validation conventions), so it should be its failure-handling twin too. If retries are exhausted, **the rejection still registers** — the option is marked rejected and a new cycle still begins per D9, because a real, human rejection happened and must not be lost or silently retried away. What's lost is only the *structured constraint* the free text would have produced: the next run proceeds knowing "not this option again" (already required by D9) without the specific new constraint layered on top. This degrades the quality of the next proposal; it does not block the group or lose their rejection, which is the worse failure of the two.
+**Recommendation:** the same 2-retry budget as G1 — it is the Context Resolver's declared twin (§6.4: same model, same shape, same validation conventions), so it should be its failure-handling twin too. If retries are exhausted, **the rejection still registers** — the option is marked rejected and a new cycle still begins per D9, because a real, human rejection happened and must not be lost or silently retried away. What's lost is only the _structured constraint_ the free text would have produced: the next run proceeds knowing "not this option again" (already required by D9) without the specific new constraint layered on top. This degrades the quality of the next proposal; it does not block the group or lose their rejection, which is the worse failure of the two.
 
 **G8 — A Google Calendar or Places call fails outright** (timeout, transient error) during a run — distinct from G2 (empty result) and G3 (quota gone), this is simply the call not completing.
 
@@ -77,7 +77,7 @@ These were genuine gaps with no recorded decision. Below is a concrete recommend
 
 **G9 — A participant's Google Calendar access is revoked or expires** between onboarding and a later matching run (they removed the app's access in their own Google account settings, or a token simply lapsed).
 
-**Recommendation:** this is the one case in this document where retrying is pointless — no number of retries fixes a permission that was actually withdrawn, so it needs to be told apart from G8 by checking the error type (an auth/permission error, not a timeout) rather than handled identically. Once detected: exclude that participant's availability from this run, and reuse the **existing** status vocabulary (§5.6) rather than inventing a new one — surface it as *"waiting on [name] to reconnect their calendar"* on the meeting card, the same slot `waiting on N others` already occupies. Other participants' unrelated meetings are unaffected; only this one person needs to act, and the fix is exactly the Screen 1 flow they already know from onboarding.
+**Recommendation:** this is the one case in this document where retrying is pointless — no number of retries fixes a permission that was actually withdrawn, so it needs to be told apart from G8 by checking the error type (an auth/permission error, not a timeout) rather than handled identically. Once detected: exclude that participant's availability from this run, and reuse the **existing** status vocabulary (§5.6) rather than inventing a new one — surface it as _"waiting on [name] to reconnect their calendar"_ on the meeting card, the same slot `waiting on N others` already occupies. Other participants' unrelated meetings are unaffected; only this one person needs to act, and the fix is exactly the Screen 1 flow they already know from onboarding.
 
 ---
 
