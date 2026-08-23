@@ -39,7 +39,7 @@ Groups of 3–6 friends coordinating a night out. Not organizations, not work te
 1. **Free-text rejection as a learning signal** — "this place isn't to my taste" is not a button. It is parsed into a structured constraint update that drives the next matching cycle. **This is the project's central novel mechanism**, and after the architecture change in §4.2 it is unambiguously the thing the project is about.
 2. **One agent that holds the whole group at once** — not a recommender run per person and not a poll. A single agent reasons over every participant's hard constraints, soft preferences, location, and calendar simultaneously, and must justify its choice per participant.
 3. **Multi-layered preferences** — hard constraints (kosher, allergies, fixed hours) crossed against soft preferences (budget, atmosphere, cuisine), plus habits learned from the calendar.
-4. **Grounding in real data** — proposals validated against live sources: **opening hours and business status** from Google Places, real calendar availability, and real coordinates for the distance calculation. Table availability and weather are **not** obtainable at v1 scope — see §11.
+4. **Grounding in real data** — proposals are built from live sources: real venues from Google Places, real calendar availability from Google Calendar, and real coordinates for the distance calculation. How much venue detail is validated (opening hours, rating) is an open decision with a direct cost consequence — see §5.4 and §6.3. Table availability and weather are **not** obtainable at v1 scope — see §11.
 
 ---
 
@@ -54,9 +54,11 @@ This flow is the specification. Everything else in this document serves it.
 5. **Proposal** — the top option appears as a **card in the group feed** (§5.6). Every member sees the same venue and time, and their **own** reason it suits them, plus what it costs them.
 6. **Response** — each member either approves or takes one of **two distinct rejections** (§3.2). Only one proposal is ever on screen; the lower-ranked options stay internal.
 7. **Re-weighing** — rejection reasons are parsed into structured constraint updates and a new matching cycle begins from step 4, up to the cap.
-8. **Confirmation** — once everyone still in has approved, the card closes and all participants are notified.
+8. **Confirmation** — once everyone still in has approved, the card closes and all participants are notified by email, sent from the application's own address through a transactional email provider (§5.5, §6.3).
 
-**Deferred to later versions:** automatic restaurant reservation (step 9) and a day-before reminder (step 10).
+**The flow ends at an approved proposal.** Nothing is written to anyone's calendar and no table is booked — those are outputs, and v1 has none. Google Calendar appears in step 1 as an availability _input_ only (§5.2).
+
+**Deferred to later versions:** automatic restaurant reservation (step 9), a day-before reminder (step 10), and **writing the confirmed meeting into participants' Google Calendars**, which needs the sensitive `calendar.events` scope (§5.2, §11).
 
 ### 3.1 Three Mandatory Caps
 
@@ -92,7 +94,7 @@ Without the split, the agent spends a scarce re-weighing trying to please someon
 | **Context Resolver**     | Turns messy human facts — free-text tolerance, "no car tonight", "coming from work", an occasion note, adjacent neighbourhoods, barriers like a motorway with no crossing — into **bounded numeric parameters** for the deterministic layer. Runs once per meeting, before the search. Never sees a venue | Nothing — its output is validated, clamped, and discardable | Yes                |
 | **Candidate Funnel**     | Search area → venues → drop hard-constraint violations → fairness/rating pre-rank → shortlist                                                                                                                                                                                                             | Candidate selection                                         | No — deterministic |
 | **Group Matching Agent** | Receives every confirmed participant's profile, location, and availability _together_ with the shortlist; returns a ranked set of options, each justified per participant                                                                                                                                 | The decision                                                | Yes                |
-| **World Interface**      | Queries Google Places and Google Calendar; caching                                                                                                                                                                                                                                                        | API connections                                             | No                 |
+| **World Interface**      | Queries Google Places (Text Search) and Google Calendar (free/busy); field masks and caching                                                                                                                                                                                                              | API connections                                             | No                 |
 | **Conflict Detector**    | Finds time collisions among **all of a user's open meetings across every group** (§5.7)                                                                                                                                                                                                                   | Nothing — derived on read                                   | No — deterministic |
 | **Constraint Updater**   | Parses free-text rejections into structured constraint updates                                                                                                                                                                                                                                            | Rejection history per participant                           | Yes                |
 
@@ -107,13 +109,13 @@ The agent's output is defined by a JSON Schema and enforced via structured outpu
 A kosher-only participant or a nut allergy is filtered out at the funnel, before the agent sees a single candidate, and the agent's chosen option is re-checked against every hard constraint after it answers. A model that "mostly" respects an allergy is not acceptable, and a single agent holding six profiles at once has more opportunity to drop one than a filter does.
 
 **c. The agent returns a ranked set, not a single answer.**
-It returns the top 3 options, each with an explicit statement of what it trades away and for whom. **Only rank 1 is ever shown to the user** (§3.1); the others stay internal. They cost almost nothing extra, they give the decision history something to say about what was passed over, and they may let a rejection be answered without a new run (§13.7).
+It returns the top 3 options, each with an explicit statement of what it trades away and for whom. **Only rank 1 is ever shown to the user** (§3.1); the others stay internal. They cost almost nothing extra, they give the decision history something to say about what was passed over, and they stay in the candidate set for the next run — but they are never served as the answer to a rejection, which always triggers a fresh run (§13, resolved).
 
 **d. Every matching run is persisted in full.**
 The shortlist that went in, the ranked options that came out, the per-participant justification, the chosen option, and the cycle number — recorded from the first day. This is impossible to reconstruct retroactively, it powers the viewer, and it is the raw material for the report.
 
 **e. A matching run may stream inside a request; it no longer needs a background job.**
-A single agent call over a shortlist of ~15 venues takes seconds, not the 30–90 that a multi-round negotiation took. The route streams the response and reports progress from the deterministic stages. The Vercel function timeout still has to be checked against a real worst case and written down (§13.4), but the background-job infrastructure this architecture used to require is no longer needed.
+A single agent call over a shortlist of ~15 venues takes seconds, not the 30–90 that a multi-round negotiation took. The route streams the response and reports progress from the deterministic stages. The Vercel function timeout still has to be checked against a real worst case and written down (§13.2), but the background-job infrastructure this architecture used to require is no longer needed.
 
 **f. The model sets parameters; code runs the function.**
 Where judgement is genuinely needed on something that is _not_ a fact — how far "a bit" is for this person tonight, whether two neighbourhoods are really one area — an LLM supplies a **bounded, typed parameter** and deterministic code then runs unchanged. The model never performs arithmetic, never sorts a candidate set, and never returns a distance. This is what keeps a global guarantee global: `argmin` still runs over every candidate.
@@ -143,6 +145,20 @@ Narrowing at retrieval is irreversible — a venue never fetched cannot be recov
 
 **Worth reporting.** The deterministic fairness layer is one of the three things that answer "isn't this just a prompt?" — alongside the rejection loop and the §4.2 decision. Keeping the arithmetic in code and giving the model the parameters is what preserves that answer while still getting the semantic geography.
 
+### 4.4 Recorded Decision — what each external service is allowed to decide
+
+The governing principle is unchanged: **code narrows only on what is true or false; the model decides among what is valid.** Every external-service decision in §6.3 was made to serve it, and the division of labour is worth stating in one place because it is what a design review will ask about.
+
+| Service                 | What it supplies                                     | What it is **not** allowed to decide                                                                      |
+| ----------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Google Calendar**     | Availability — free/busy intervals, nothing more     | Anything about the venue, and anything at all about the output. It is an input; nothing is written back   |
+| **Google Places**       | The candidate venues and their coordinates           | Which candidate wins. Its relevance ranking seeds the pool; it does not rank the decision                 |
+| **Deterministic code**  | Hard-constraint filtering, distance, burden, leximin | Which of the valid candidates is best — that is a judgement, not a fact                                   |
+| **The LLM**             | The choice among valid candidates, and the reasoning | Distances, sorts, and hard constraints. It never computes arithmetic and never overrides a filter (§4.1f) |
+| **Transactional email** | Notification that a decision was reached             | Anything about meeting state. A failed send is a notification failure, never a scheduling one (§5.5)      |
+
+Two services were **excluded on exactly this reasoning.** The Maps JavaScript API decides nothing — it draws — and v1 draws no map. The Routes API would supply a better distance, but distance is already in the deterministic column and the honest v1 answer is a geographic estimate we can name as one (§5.4). Neither is an MVP dependency, and adding either would widen the surface without moving a decision to where it belongs.
+
 ---
 
 ## 5. Functional Requirements
@@ -161,9 +177,13 @@ Initial setup runs as a **this-or-that game**: "Loud bar or quiet café?" · "Hi
 
 Google Calendar, v1 only. Availability is computed for confirmed participants only.
 
-**The scope is `calendar.freebusy`, not `calendar.readonly`.** v1 needs to know _when someone is busy_, never _what they are busy with_ — the availability computation in §5.4 consumes free/busy intervals and nothing else. Requesting the narrower scope is not only §10's minimum-scope rule; it appears to be what keeps the app out of Google's verification process entirely. See §6.3.
+**The scope is `calendar.freebusy`, and nothing else.** v1 needs to know _when someone is busy_, never _what they are busy with_ — the availability computation in §5.4 consumes free/busy intervals and nothing else. **Verified in our own Google Cloud Console: `calendar.freebusy` is classified non-sensitive**, so it does not pull the app into Google's verification process. `calendar.readonly` is not requested, and neither is `calendar.events`. See §6.3.
 
-Beyond raw availability, the agent may infer habits from past events (a 07:00 gym slot every weekday is effectively a hard constraint). **Habit inference is a stretch goal, not v1.**
+**Calendar is an availability input, not an output.** For MVP the integration is one-directional: we read free/busy intervals and we write nothing back. **Creating a Calendar event is not an MVP requirement** and is not a dependency of any MVP flow — the flow in §3 ends with an approved proposal and an email, not with an event in anyone's calendar.
+
+> **Event creation is deferred to a later phase.** Writing an event needs `calendar.events`, which we checked in the Cloud Console and which is classified **sensitive**. Adding it would put the app back into the verification queue that the freebusy-only choice exists to avoid, so it is a phase-2 feature with a known cost, not an oversight (§11, §13).
+
+Beyond raw availability, the agent may infer habits from past events (a 07:00 gym slot every weekday is effectively a hard constraint). That needs event content, therefore a sensitive scope. **Habit inference is a stretch goal, not v1.**
 
 ### 5.3 Groups and Proposals
 
@@ -193,13 +213,19 @@ Plain minimax — comparing only `max(burden)` — is what §5.4 originally desc
 
 **Why worst-case and not average.** Averaging lets a group repeatedly pick venues next door to three people and far from the fourth; that person stops showing up. Leximin is jumpy — a small change for the worst-off participant reorders everything — and that is a feature for the rejection loop, where §12.4 requires the next proposal to be _materially_ different.
 
-**Straight-line distance, corrected.** Travel time is the honest metric but requires a routing API — another integration and another cost, and out of scope for v1 (§11). v1 uses straight-line distance from coordinates, multiplied by a **detour factor** supplied per region-pair by the Context Resolver: `1.0` by default, higher where two areas are geographically close but practically far (a motorway or a river with no crossing between them). This is a cheap approximation of routing, sits honestly between the two, and can be measured against both.
+**Straight-line distance, corrected — and it is not travel time.** Travel time is the honest metric but requires a routing API — another integration and another cost, and out of scope for v1 (§11). v1 uses straight-line distance from coordinates, multiplied by a **detour factor** supplied per region-pair by the Context Resolver: `1.0` by default, higher where two areas are geographically close but practically far (a motorway or a river with no crossing between them). This is a cheap approximation of routing, sits honestly between the two, and can be measured against both.
+
+> ⚠️ **Say what this is.** The burden figure is a deterministic geographic estimate, not a routed journey. **The system does not calculate real driving or travel time, and no document, UI string, or report claim may say that it does.** Google Routes API is the upgrade path if real travel time later proves necessary (§11) — it is deliberately **not** an MVP dependency, and neither is the Maps JavaScript API: the matching logic needs coordinates, not an interactive map (§6.3).
 
 **Search area — the union of participants' neighbourhoods and their surroundings.** Candidates are drawn from every participant's own neighbourhood plus the area around each of them, not from a single computed midpoint. This sidesteps the failure mode of centroid approaches, where the geometric middle of four friends lands in a park, an industrial zone, or the sea. It also degrades gracefully for a dispersed group: instead of one meaningless central point you get several real clusters, and the fairness scoring picks between them.
 
 Implementation note: "the area around X" is modelled as a **radius around the neighbourhood's centre**, not a true adjacency graph. Adjacency would require a dataset we do not have and would have to maintain.
 
-⚠️ **A local search API returns a capped number of results per query, not everything in an area.** Earlier drafts of this section said the area "can easily yield hundreds of venues" and that the funnel starts from "all venues in the area". Neither is true: what you get is top-K per query, by the provider's own ordering. Two consequences follow, and both shape the design:
+⚠️ **The candidate universe is provider-ranked, not exhaustive.** Earlier drafts of this section said the area "can easily yield hundreds of venues" and that the funnel starts from "all venues in the area". Neither is true. Places Text Search (New) returns **up to 20 results per page and at most 60 across pages**, ordered by Google's own relevance ranking, and **Google does not guarantee that two identical requests return identical results in the same order** (§6.3).
+
+So the honest description of what the funnel operates on is: **we construct a candidate pool from Places API results across relevant neighbourhood queries.** Not "we search all venues in the area" — that sentence may not appear in the product, the report, or this spec. Any claim of optimality is optimality **over the retrieved pool**, and that qualifier is part of the claim, not a footnote to it.
+
+Two design consequences follow, and both are mitigations for exactly this bias:
 
 1. **One query per participant neighbourhood**, deduplicated — a single wide bounding query returns the same capped count spread over a larger area, which means worse coverage near each individual participant, and the dispersed group is exactly the case the union geometry exists to serve.
 2. **Adaptive expansion adds query centres, it does not enlarge the radius.** A larger radius under a result cap trades near venues for far ones rather than returning more. Adding a centre is also pure widening, which is what §4.1g requires; enlarging a radius is not.
@@ -216,6 +242,21 @@ per-neighbourhood queries → dedupe → drop hard-constraint violations
 
 The funnel is deterministic code, not an LLM. It is cheap, testable, and keeps the expensive reasoning focused on the choice that actually requires judgement. It is also the enforcement point for hard constraints (§4.1b).
 
+> ⚠️ **Open decision — which venue attributes are required for correctness, and which are merely preferences?** The funnel above uses opening hours as a filter and rating as half the pre-rank, and **neither of those is settled** (§13.6, §13.7). The question is not stylistic: under Places' SKU pricing, a field's tier decides what a request costs (§6.3), and `rating` and `regularOpeningHours` are both **Enterprise** fields against the smallest free allowance in the model.
+>
+> The distinction to resolve, per attribute:
+>
+> | Attribute                                     | Places tier             | Candidate role                                                                     |
+> | --------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
+> | `location`                                    | Pro                     | **Required** — the deterministic distance and fairness layer cannot run without it |
+> | `displayName`, `formattedAddress`             | Pro                     | **Required** — a proposal has to name a place a human can go to                    |
+> | `id`                                          | Essentials (IDs only)   | **Required** — the dedupe and cache key                                            |
+> | `rating`                                      | Enterprise              | **Undecided** — ranking signal, or droppable?                                      |
+> | `regularOpeningHours` / `currentOpeningHours` | Enterprise              | **Undecided** — hard constraint, or a preference the agent weighs?                 |
+> | `servesVegetarianFood`, `goodForGroups`, …    | Enterprise + Atmosphere | **Undecided** — useful, and the most expensive tier there is                       |
+>
+> Do not assume the funnel needs all of these. Resolve it before the field masks are frozen, because the answer determines both cost and architecture.
+
 **Why fairness gates rather than being weighted against rating.** A weighted sum of a fairness score and a star rating requires an exchange rate between kilometres and stars, which does not exist, and it lets an excellent rating buy its way past unfairness — the thing this section exists to prevent. So fairness acts as a **gate** (beyond `T`, a venue is simply unreachable for someone and is dropped) and then the shortlist is filled from **two parallel ranked lists**, one by leximin and one by rating. Where the two agree, a venue occupies one slot instead of two and frees room for the next. The agent then sees both ends of the trade-off and decides between them, which is exactly the division of labour in §4.1f.
 
 **The agent is advised by the fairness ranking, not bound by it.** Every candidate that survives the gate is _valid_, and choosing among valid options is the agent's job. It may prefer a better-rated venue over the leximin leader. The gate is where fairness is enforced; above it, fairness is an input.
@@ -226,7 +267,15 @@ The funnel is deterministic code, not an LLM. It is cheap, testable, and keeps t
 
 **v1: in-app + email.** Email carries the link; everything else happens in the app. Web push is deferred — on iOS it only works after the user adds the PWA to their home screen, which is friction we do not want in the critical path.
 
-**Mail is sent from a dedicated project address**, never from a participant's own mailbox — see §6.3 for why that rules out the Gmail API.
+**Mail is sent from a dedicated project address**, never from a participant's own mailbox, through a **transactional email provider** the backend calls with an API key (§6.3). No participant's mailbox is ever the sender, no Gmail OAuth scope is requested, and the system never reads anyone's mail. The flow is one-directional:
+
+```
+backend  →  transactional email provider  →  participants
+```
+
+**Notification is not part of the meeting's state.** This is a binding rule, not an implementation detail: **an approved proposal is valid whether or not its email was delivered.** A provider outage, a bounced address, or a rate limit must never cancel a meeting, reopen it for weighing, or block a confirmation — the failure is recorded against the notification, retried, and surfaced as a notification problem, not as a scheduling one.
+
+The inverse error is the one that bites: treating "email failed" as "the meeting did not happen" makes an external service a single point of failure for the product's core state, and does it silently. So the send is written as a separate, retryable side effect after the state transition has committed. _The exact retry and failure-recording mechanism is an open implementation task (§13.10)._
 
 **Email fires on state changes that need a person, not on internal steps.** A weighing cycle is not an event a user needs told about; a proposal waiting on them is. The v1 triggers:
 
@@ -306,7 +355,11 @@ Several meetings run in parallel, and a user belongs to several groups, so two p
 | Delivery  | PWA, mobile-first                  | Friends coordinating a night out do it on a phone          |
 | Hosting   | Vercel                             | Already connected; free at this scale                      |
 | LLM       | Anthropic API (TypeScript SDK)     | See §6.4                                                   |
-| Database  | PostgreSQL                         | See §6.3                                                   |
+| Venues    | Google Places API (New)            | Text Search (New), field-mask aware — see §6.3             |
+| Calendar  | Google Calendar API                | `calendar.freebusy` only, availability input — see §5.2    |
+| Email     | Transactional provider, TBD        | Application-owned sender, no Gmail — see §6.3, §13.8       |
+| Database  | PostgreSQL                         | Intent, not final — see §6.3, §13.11                       |
+| Secrets   | Vercel environment variables       | Never in the repository — §10                              |
 
 > Next.js 16 differs from earlier versions. Consult `node_modules/next/dist/docs/` before writing framework code — see [AGENTS.md](../AGENTS.md).
 
@@ -330,15 +383,47 @@ Core entities. Field lists are indicative, not final:
 
 ### 6.3 External Services
 
-| Service                 | Role                                      | Cost                                                              | Note                                                                                                                                                                                                                                                                                         |
-| ----------------------- | ----------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Google OAuth + Calendar | Sign-in and availability                  | Free at this scale                                                | Scope `calendar.freebusy` — free/busy intervals only. See the access model below                                                                                                                                                                                                             |
-| **Google Places**       | Real restaurant data — the v1 source      | Per-SKU free monthly thresholds — see below                       | Supplies coordinates (§5.4), **opening hours and business status**. **No table availability** — that is a reservations platform, out of scope (§11). Authenticates by **API key**, not by user OAuth                                                                                         |
-| Easy (easy.co.il)       | Candidate enrichment source — **blocked** | Unknown                                                           | Israeli local search with restaurant filters that map unusually well to our constraints: kosher type, vegetarian, vegan, child-friendly, atmosphere. **No public API documentation found** as of Aug 2026. Ask them directly; do not scrape. Only integrate if they grant access — see §13.1 |
-| PostgreSQL              | Persistence                               | Free tier sufficient                                              | Managed Postgres on Vercel or an equivalent provider                                                                                                                                                                                                                                         |
-| **Resend**              | Invitations and notifications             | 3,000/month and 100/day on the free tier — permanent, not a trial | Sends from a **dedicated project address**, never a participant's mailbox. Needs a verified sending domain — see below                                                                                                                                                                       |
+**Required for MVP.** Six, and no more:
 
-#### Why not the Gmail API
+| #   | Service                     | Role                                                         | What it authenticates with                | Cost                                                              |
+| --- | --------------------------- | ------------------------------------------------------------ | ----------------------------------------- | ----------------------------------------------------------------- |
+| 1   | **Google Calendar API**     | Availability only — free/busy intervals (§5.2)               | Per-user OAuth, scope `calendar.freebusy` | Free at this scale                                                |
+| 2   | **Google Places API (New)** | Venue discovery — Text Search (New) (§5.4)                   | Project API key                           | Per-SKU free monthly thresholds, driven by the field mask — below |
+| 3   | **Anthropic API**           | Matching agent; Haiku-class extraction models (§6.4)         | API key                                   | A few dollars total at this scale                                 |
+| 4   | **Transactional email**     | Invitations and notifications (§5.5)                         | API key, backend only                     | Free tier expected — verify at implementation time                |
+| 5   | **PostgreSQL**              | Persistent state: users, groups, meetings, runs, constraints | Connection string                         | Free tier sufficient                                              |
+| 6   | **Next.js on Vercel**       | Frontend and server-side API                                 | —                                         | Free at this scale                                                |
+
+All secrets — the Places key, the Anthropic key, the email provider key, the OAuth client secret, the database URL — live as **Vercel environment variables**, never in the repository (§10).
+
+**Not required for MVP**, and not to be added without the "ask first" step in §10:
+
+| Excluded                        | Why it is not needed                                                                                                                                  |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Maps JavaScript API**         | Nothing in the matching logic or the v1 UI displays an interactive Google map. We need place data, not a map widget                                   |
+| **Google Routes API**           | v1's burden model is straight-line distance × detour factor (§5.4). No routing, no travel time. A future upgrade if real travel time is ever required |
+| **Gmail API / any Gmail scope** | Notifications have no human sender and we never read anyone's mail — see below                                                                        |
+| **Calendar event creation**     | Not an MVP requirement, and `calendar.events` is a **sensitive** scope (§5.2). Deferred with a known cost, not forgotten                              |
+
+**One Google Cloud project for the whole application.** Calendar (OAuth) and Places (API key) are two APIs enabled on the _same_ project — not two projects, and certainly not one per user. Per-user Calendar access is granted by OAuth consent against that single project's client; adding Maps or Routes later would be enabling another API on the same project, not standing up new infrastructure.
+
+**Still open, and not to be presented as decided:** the email provider itself (§13.8), the sending domain and address (§13.9), the database technology and schema (§13.11), and the authentication implementation (§13.12).
+
+| Other candidate   | Status                                                                                                                                                                                                                                                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Easy (easy.co.il) | Candidate enrichment source — **blocked**. Israeli local search with restaurant filters that map unusually well to our constraints: kosher type, vegetarian, vegan, child-friendly, atmosphere. **No public API documentation found** as of Aug 2026. Ask them directly; do not scrape. Only integrate if they grant access — see §13.1 |
+
+#### The transactional email provider
+
+The requirement is narrow: after a proposal is approved, participants receive an email. It does **not** need to come from any participant's account, and we do **not** need to read anyone's mail — so what the system needs is an API key and a sender address it owns, nothing more.
+
+**Resend is the leading candidate** — a backend API key, an application-owned sender, and a free tier that at the time of writing is documented as 3,000 emails/month and 100/day. **The choice is not final** (§13.8), and the free tier is an implementation consideration rather than an architectural guarantee: confirm the current terms when the integration is built, because this document has already been wrong once by inheriting a provider's terms from memory.
+
+Any equivalent provider satisfies the architecture. What the architecture actually requires is only this: a backend-held API key, a sender the project owns, and no user OAuth.
+
+#### Rejected: the Gmail API
+
+**The Gmail API is not part of this architecture and `gmail.send` is not requested.** This subsection records why, so the question is not reopened by the next person who notices that the project already authenticates with Google.
 
 The obvious-looking move — the project already authenticates with Google, so send the mail with Google too — does not survive contact with what `gmail.send` actually is.
 
@@ -353,13 +438,9 @@ From:      "Dana via SquadLock" <notify@…>
 Reply-To:  dana@…
 ```
 
-> ⚠️ **A free tier needs a verified sending domain.** Development can use the provider's test sender, but a real demo cannot. A domain is roughly $10–15/year and is **the only item in this project that costs actual money** — buy it early, because DNS verification has a waiting period that does not care about your milestone dates.
+> ⚠️ **A free tier needs a verified sending domain.** Development can use the provider's test sender, but a real demo cannot. A domain is roughly $10–15/year and is **the only item in this project that costs actual money** — buy it early, because DNS verification has a waiting period that does not care about your milestone dates. **Which domain and which sender address is an open item (§13.9)**; that it is application-owned rather than personal is not.
 >
 > ⚠️ Also note that SendGrid, the other obvious candidate, **no longer has a free tier** — it is a 60-day trial. Verify any provider's current terms rather than inheriting them from memory; this document has already been wrong once that way about the Places credit.
-
-**Two-tier caching, keyed by neighbourhood.** The search query is a property of a _neighbourhood_, not of a meeting: "Dana's neighbourhood plus radius R" is the same query for every meeting, in every group she belongs to, forever. Keying the cache on rounded coordinates rather than on a meeting id therefore makes it shared across meetings and users — and the rounding is already there, because §5.4 stores homes at neighbourhood granularity for privacy. Cycles 2 and 3 of a meeting are pure cache hits.
-
-Opening hours are cached **separately and briefly**, and fetched only for the shortlist. Hours change for holidays and closures, and proposing a restaurant that is shut on the night is a real failure; detailed fields also sit in a higher price tier than basic ones, so fetching them for twenty candidates rather than three hundred is what makes the funnel pay for itself twice.
 
 #### Access model — two different mechanisms
 
@@ -374,38 +455,97 @@ The two Google integrations are often spoken of as one thing. They are not, and 
 
 #### Calendar: the scope choice decides whether verification applies
 
-Google classifies OAuth scopes as non-sensitive, sensitive, or restricted, and **only sensitive and restricted scopes pull an app into the verification process.** Reading the events stored in a calendar is Google's own example of a sensitive scope, so `calendar.readonly` and `calendar.events.readonly` are sensitive. `calendar.freebusy` — "view your availability in your calendars" — returns busy intervals with no event content, and appears to be **non-sensitive**.
+Google classifies OAuth scopes as non-sensitive, sensitive, or restricted, and **only sensitive and restricted scopes pull an app into the verification process.** Reading the events stored in a calendar is Google's own example of a sensitive scope, so `calendar.readonly` and `calendar.events.readonly` are sensitive.
 
-That distinction decides the whole OAuth plan, because of what Testing status costs:
+> ✅ **Verified, not assumed.** The classifications below were checked directly in **our own Google Cloud Console** by adding each scope to the consent screen, which displays its tier.
+>
+> | Scope                                               | Classification    | Status in this project                                                                 |
+> | --------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------- |
+> | `https://www.googleapis.com/auth/calendar.freebusy` | **Non-sensitive** | **Requested.** Availability/free-busy only — no event titles, descriptions, or content |
+> | `calendar.readonly`                                 | Sensitive         | Not requested. Exposes event content we have no use for                                |
+> | `calendar.events`                                   | **Sensitive**     | Not requested. This is the scope event _creation_ would need — deferred (§5.2)         |
+> | any `gmail.*`                                       | Sensitive         | Not requested. See "Rejected: the Gmail API" above                                     |
+
+Because `calendar.freebusy` is confirmed non-sensitive, **the app can be published In production with no verification** — which matters because of what Testing status costs:
 
 > ⚠️ **An app in "Testing" publishing status has its refresh tokens expired by Google after 7 days.** This is by design and it is not configurable. Over an 8-week project it means every team member re-consenting weekly, and it can break a demo on the day. Testing status also caps the app at 100 test users.
 
-Earlier drafts of this document treated Testing mode as a free pass for v1. It is not — it is a 7-day timer. If `calendar.freebusy` is confirmed non-sensitive, the app can be published **In production** with no verification, no test-user cap, and refresh tokens that do not expire on a schedule.
+Earlier drafts of this document treated Testing mode as a free pass for v1. It is not — it is a 7-day timer. **With the classification now confirmed, the branch is closed: publish In production.** The 7-day expiry, the test-user cap and the verification queue all disappear, and token refresh becomes ordinary housekeeping rather than a weekly outage.
 
-**Before Week 2, confirm the classification in the Cloud Console.** Adding a scope to the consent screen displays its classification directly; that check is definitive and takes minutes. The plan branches on the answer:
+**The privacy principle behind this is least privilege, and it is binding (§10).** The MVP requests only the minimum Google user-data scope required for matching — one scope, availability only. Broadening later is easy; narrowing after users have consented is not.
 
-- **Non-sensitive** → publish In production immediately. The 7-day expiry, the test-user cap and the verification queue all disappear, and token refresh becomes ordinary housekeeping rather than a weekly outage.
-- **Sensitive** → stay in Testing, accept weekly re-consent for the team, and make sure a fresh consent happens shortly before any demo.
+Two future features would each cost a sensitive scope, and both are deferred partly for that reason: **calendar event creation** needs `calendar.events` (§5.2), and **habit inference** (§5.2) needs event content. Neither is an MVP dependency, and adding either would mean re-entering the verification process — a real cost to weigh, not a checkbox.
 
-Either way, request the minimum scope now. Broadening later is easy; narrowing after users have consented is not. Note that the habit inference deferred in §5.2 would need event content and therefore a sensitive scope — a reason to keep it out of v1 beyond the effort it costs.
+#### Places API (New): Text Search is the venue source
 
-#### Places: the $200 credit no longer exists
+The venue-discovery service for MVP is **Google Places API (New)**, and the endpoint is **Text Search (New)** — [documentation](https://developers.google.com/maps/documentation/places/web-service/text-search).
 
-> ⚠️ **Correction against earlier drafts.** The flat $200 monthly credit was **replaced on 1 March 2025** with a free monthly usage threshold per SKU tier. Any plan resting on "the $200 covers development and the demo" is resting on something that was withdrawn.
+What the endpoint actually is, because each property below shapes the design:
 
-| Tier           | Free events per month | Fields relevant to us                                                |
-| -------------- | --------------------- | -------------------------------------------------------------------- |
-| Essentials     | 10,000                | `location`                                                           |
-| Pro            | 5,000                 | `businessStatus`                                                     |
-| **Enterprise** | **1,000**             | `regularOpeningHours`, `currentOpeningHours`, `rating`, `priceLevel` |
+| Property         | Detail                                                                                                      |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| Method and URL   | `POST https://places.googleapis.com/v1/places:searchText`                                                   |
+| Required input   | a `textQuery`                                                                                               |
+| Required header  | an explicit **response field mask** — there is no default set of fields                                     |
+| Location control | location bias or location restriction, plus type filtering                                                  |
+| Page size        | up to **20 results per page**                                                                               |
+| Hard ceiling     | **60 results across all pages**                                                                             |
+| Determinism      | **None guaranteed.** Google does not promise identical results or identical ordering for identical requests |
 
-**A request is billed at the highest tier any requested field belongs to.** This has a direct consequence for the funnel in §5.4: **opening hours and rating are both Enterprise fields**, and the funnel uses rating to fill half the shortlist and opening hours to gate `(venue, time)` pairs. Requesting either one anywhere makes that whole request an Enterprise request, against the smallest allowance of the three.
+The last two rows are why §5.4 describes the candidate pool as provider-ranked rather than exhaustive, and why the funnel issues **one query per participant neighbourhood** instead of a single wide one: with a 60-result ceiling per query, more query centres is the only way to widen coverage. Place Details may additionally be called for shortlisted candidates.
 
-This does not break the design, but it does change the caching from a nice-to-have into the thing that keeps the project inside the free tier:
+#### Places pricing: SKU-based, and driven by the fields you ask for
 
-- **Never put an Enterprise field in the wide search field mask.** Search on Essentials/Pro fields; fetch Enterprise fields only for the ~20 candidates that reach the shortlist.
-- The neighbourhood-keyed search cache and the short-lived hours cache are what turn a per-meeting cost into a near-zero marginal one.
-- ⚠️ **Confirm Nearby Search's tier as a function of its field mask before building**, and measure real call counts against the 1,000 Enterprise events during Week 2 rather than assuming.
+> ⚠️ **Two corrections against earlier drafts.** First, the flat **$200 monthly credit was replaced on 1 March 2025** with per-SKU free monthly usage; any plan resting on "the $200 covers development and the demo" rests on something withdrawn. Second, **Places is not simply "free."** It is free _within per-SKU thresholds_, and which SKU a request lands in is decided by **the fields it requests**.
+
+Free monthly usage per SKU, from Google's [billing and pricing page](https://developers.google.com/maps/billing-and-pricing/pricing):
+
+| SKU                                   | Free usage per month |
+| ------------------------------------- | -------------------- |
+| Text Search Essentials (IDs Only)     | **Unlimited**        |
+| Text Search Pro                       | 5,000                |
+| Text Search Enterprise                | 1,000                |
+| Text Search Enterprise + Atmosphere   | 1,000                |
+| Place Details Essentials (IDs Only)   | **Unlimited**        |
+| Place Details Essentials              | 10,000               |
+| Place Details Pro                     | 5,000                |
+| Place Details Enterprise              | 1,000                |
+| Place Details Enterprise + Atmosphere | 1,000                |
+| Place Details Photos                  | 1,000                |
+
+> ⚠️ These figures were read from Google's pricing page and Google changes them. **Re-check the page before quoting a number in the report**, and treat any allowance here as a planning estimate rather than a guarantee. This document has been wrong about Places pricing once already.
+
+**A request is billed at the highest SKU any requested field belongs to.** That is the whole cost model, and it has one direct consequence: **cost is determined by the fields requested, not by whether the endpoint was called.** Two calls to the same endpoint can differ by an order of magnitude in what they consume.
+
+#### The field mask is an architectural decision, not a parameter
+
+Text Search requires an explicit field mask, so there is no default to fall back on — every call states its own cost. Google groups fields roughly as follows:
+
+| SKU tier                    | Fields (indicative, not exhaustive)                                                                                   |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Essentials (IDs only)**   | `places.id`, `places.name` (the resource name / place ID), `nextPageToken`                                            |
+| **Pro**                     | `places.displayName`, `places.formattedAddress`, `places.location`, `places.types`, `places.primaryType`              |
+| **Enterprise**              | `places.rating`, `places.regularOpeningHours`, `places.currentOpeningHours`, `places.websiteUri`, `places.priceLevel` |
+| **Enterprise + Atmosphere** | `places.reviews`, `places.servesVegetarianFood`, `places.goodForGroups`, `places.outdoorSeating`                      |
+
+Four rules follow, and they are binding (§10):
+
+1. **The broad candidate search requests the minimum fields necessary** — enough to dedupe, to compute distance, and to name the venue. Nothing else.
+2. **No Enterprise or Enterprise + Atmosphere field appears in a broad discovery request**, unless it is proven to be required for correctness rather than for ranking (§5.4's open decision, §13.6, §13.7).
+3. **Detailed fields are fetched only for the shortlist** — the ~20 candidates that reach the agent, or the small set of finalists — never for the full retrieved pool.
+4. **Never `FieldMask: *` in production.** A wildcard bills every call at the most expensive tier that exists, silently.
+
+This makes §5.4's "search cheap, fetch expensive fields only for ~20 candidates" precise rather than aspirational: the saving does not come from calling fewer endpoints, it comes from the _shape of each call's field mask_.
+
+> **Open: the exact masks.** The final field mask for the broad search (§13.4) and the final field mask for shortlist details (§13.5) are **not yet decided** — they depend on resolving which venue attributes are required for correctness (§5.4). Both must be written down explicitly, in one place in the code, before the integration is considered done. **Measure real call counts against the 1,000-event Enterprise allowance during Week 2 rather than assuming.**
+
+#### Two-tier caching, keyed by neighbourhood
+
+The search query is a property of a _neighbourhood_, not of a meeting: "Dana's neighbourhood plus radius R" is the same query for every meeting, in every group she belongs to, forever. Keying the cache on rounded coordinates rather than on a meeting id therefore makes it shared across meetings and users — and the rounding is already there, because §5.4 stores homes at neighbourhood granularity for privacy. Cycles 2 and 3 of a meeting are pure cache hits.
+
+Detail fields are cached **separately and briefly**, and fetched only for the shortlist. Opening hours change for holidays and closures, and proposing a restaurant that is shut on the night is a real failure; those fields also sit in the most expensive SKU tiers, so fetching them for twenty candidates rather than the whole pool is what makes the funnel pay for itself twice.
+
+Caching is what turns a per-meeting cost into a near-zero marginal one, so under SKU pricing it is not a nice-to-have. _The exact cache keys, TTLs and invalidation rules are an open implementation task (§13.13)._
 
 ### 6.4 Language Models and Cost
 
@@ -499,21 +639,28 @@ The eval set does not change with the §4.2 architecture — it describes correc
 - Let the model set parameters; never let it do arithmetic, sort a candidate set, or return a distance (§4.1f).
 - Keep model influence on retrieval **widening-only**; narrowing belongs in scoring (§4.1g).
 - Give any model-supplied number a clamp, a sanity check, and a fallback to the deterministic path.
+- Send every Places request with an **explicit, minimal field mask**, and keep expensive fields to shortlist detail calls (§6.3).
+- Treat notification as a side effect: an approved proposal stays valid whether or not its email was delivered (§5.5).
 - Write a conflict cancellation as one transaction across both meetings.
 - Run the eval set before merging a change to the engine.
 
 **Ask first:**
 
 - Changing the database schema.
-- Adding a dependency or an external service.
-- Moving to a more expensive model.
+- Adding a dependency or an external service — including enabling any further Google API (Maps JavaScript, Routes) on the project.
+- Adding any OAuth scope beyond `calendar.freebusy`.
+- Moving to a more expensive model, or moving a field into a higher Places SKU tier.
 - Anything beyond the v1 scope in §11.
 
 **Never:**
 
-- Commit API keys, secrets, or OAuth tokens.
-- Request a broader calendar scope than `calendar.freebusy` while v1 needs only availability (§5.2, §6.3).
-- Put an Enterprise-tier Places field in a wide search request rather than a shortlist detail request (§6.3).
+- Commit API keys, secrets, or OAuth tokens — they live as Vercel environment variables (§6.3).
+- Request `calendar.readonly`, `calendar.events`, or any Gmail scope. v1 requests exactly one Google user-data scope, `calendar.freebusy` (§5.2, §6.3).
+- Put an Enterprise or Enterprise + Atmosphere Places field in a broad search request rather than a shortlist detail request (§6.3).
+- Ship `FieldMask: *`, or any Places request without an explicit field mask (§6.3).
+- Claim that the system computes real driving or travel time — v1's burden is a geographic estimate (§5.4).
+- Claim to search every venue in an area. The pool is what Places returned across the neighbourhood queries (§5.4).
+- Let a failed notification cancel, reopen, or block a meeting (§5.5).
 - Run a rejection loop without the cycle cap.
 - Rely on the agent alone to respect a hard constraint.
 - Show more than one proposal at a time.
@@ -526,7 +673,7 @@ The eval set does not change with the §4.2 architecture — it describes correc
 
 ## 11. Explicitly Out of Scope for v1
 
-Apple Calendar and Outlook · restaurant reservations · day-before reminders · web push notifications · any activity type other than restaurants · vector DB · habit inference from calendar history · all expansion domains (B2B, travel, community, study) · native mobile app · **travel-time routing** (v1 uses straight-line distance — §5.4) · **the Easy integration** unless they grant API access in time (§13.1) · **personal agents per participant and multi-round negotiation** as the v1 architecture (superseded — §4.2; the comparison implementation remains in scope as post-Milestone-2 work, for the report) · **free-form conversation in the group** (§5.6 — the feed is a structured surface, not a chat) · **showing the user more than one proposal at a time** (§3.1) · **a separate participation-confirmation step** (§3.2 absorbs it) · **table availability and restaurant reservations** — not obtainable from the venue provider, and a reservations platform is a separate integration (§6.3) · **weather** — forecasts for a meeting proposed days ahead are unreliable and are never refreshed on the night, so the data would be wrong precisely when it mattered; an initiator who knows it will rain can say so in the occasion note, which the Context Resolver already reads · **a live push connection for the feed** (§5.6 — adaptive polling instead) · **the comparative cost line** in a proposal (§5.6).
+Apple Calendar and Outlook · restaurant reservations · day-before reminders · web push notifications · any activity type other than restaurants · vector DB · habit inference from calendar history (needs event content, therefore a sensitive scope — §5.2) · **writing events to Google Calendar** — creating an event needs the sensitive `calendar.events` scope, and the v1 flow ends at an approved proposal, not at a calendar entry (§3, §5.2) · **the Gmail API and every Gmail scope** — notifications have no human sender and we never read user mail; a transactional provider does this better (§6.3) · **the Google Maps JavaScript API** — nothing in v1 displays an interactive map (§6.3) · **the Google Routes API** — the burden model is straight-line distance with a detour factor, and no claim of real travel time is made (§5.4, §6.3) · all expansion domains (B2B, travel, community, study) · native mobile app · **the Easy integration** unless they grant API access in time (§13.1) · **personal agents per participant and multi-round negotiation** as the v1 architecture (superseded — §4.2; the comparison implementation remains in scope as post-Milestone-2 work, for the report) · **free-form conversation in the group** (§5.6 — the feed is a structured surface, not a chat) · **showing the user more than one proposal at a time** (§3.1) · **a separate participation-confirmation step** (§3.2 absorbs it) · **table availability and restaurant reservations** — not obtainable from the venue provider, and a reservations platform is a separate integration (§6.3) · **weather** — forecasts for a meeting proposed days ahead are unreliable and are never refreshed on the night, so the data would be wrong precisely when it mattered; an initiator who knows it will rain can say so in the occasion note, which the Context Resolver already reads · **a live push connection for the feed** (§5.6 — adaptive polling instead) · **the comparative cost line** in a proposal (§5.6).
 
 ---
 
@@ -534,13 +681,14 @@ Apple Calendar and Outlook · restaurant reservations · day-before reminders ·
 
 1. A friend receives an emailed link, signs in with Google, and completes a profile in under a minute.
 2. A group of 3+ can create a proposal with any subset of date, time, and venue specified.
-3. The system returns an **existing** restaurant — open at the proposed time and not closed down — that satisfies every participant's hard constraints, fits every confirmed participant's calendar, and is reachable for all of them, with no participant left carrying a travel burden far worse than the rest.
+3. The system returns an **existing** restaurant that satisfies every participant's hard constraints, fits every confirmed participant's calendar, and is reachable for all of them, with no participant left carrying a travel burden far worse than the rest. Whether "open at the proposed time" is part of this bar or a preference the agent weighs depends on the open decision in §13.7.
 4. A free-text rejection produces a materially different next proposal that visibly addresses the stated reason.
 5. The eval set passes on ≥ 80% of scenarios, including the rejection-loop scenarios, with **zero hard-constraint violations** across all of them.
 6. A matching run completes in ≤ 20 seconds, with visible progress throughout.
 7. Every decision shows each participant why it works **for them**, in wording written for them specifically. It does not tell them what it cost them relative to an option they did not get (§5.6).
 8. A user with meetings in two groups on the same evening is warned before approving either, and approving one repairs the other rather than dropping it.
 9. The whole flow runs on a phone, and a stranger completes it without help.
+10. An approved proposal produces an email to every participant from the application's own address — and remains approved even if that email fails to send (§5.5).
 
 > Targets 5 and 6 are proposals to validate against the first working engine, not fixed requirements. The 20-second figure replaces the 90 seconds the superseded multi-agent design needed (§4.2) — if the real number lands far above it, that is a finding about the architecture, not just a slow run.
 
@@ -548,15 +696,30 @@ Apple Calendar and Outlook · restaurant reservations · day-before reminders ·
 
 ## 13. Open Questions
 
-| #   | Question                                                                                             | Status                                                                                                                                                                                                                           |
-| --- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Can we get API access to Easy (easy.co.il)?                                                          | **Blocked on them.** Email them in Week 1 — a one-hour task with a potentially large payoff, and the answer arrives on their schedule, not ours. Build on Google Places regardless; treat Easy as enrichment that may never land |
-| 2   | What is the real worst-case duration of a matching run, and does it fit the Vercel function timeout? | Open — measure it in Week 1 against the chosen plan's limit and write the number down. Streaming inside a request is the expected answer (§4.1e)                                                                                 |
-| 3   | What burden value should the gate `T` sit at?                                                        | Open — a number, not a design. Start around 2.0 (twice a person's stated comfortable distance) and tune against eval quality. Too tight starves the pool, which then triggers expansion (§5.4)                                   |
-| 4   | What radius, and how many expansion steps?                                                           | Open — tune against your own real addresses. Note that expansion adds query centres rather than enlarging the radius (§5.4)                                                                                                      |
-| 5   | Is 4 hours the right conflict window, and 90 seconds the right amendment batching window?            | Open — both are numbers to tune. The conflict window errs tight on purpose, because a false positive destroys a meeting (§5.7)                                                                                                   |
+**These are open. None of them has been decided, and none may be written up as though it had been.** Where an implementation must proceed before one is settled, it proceeds under a stated assumption, not a silent one.
 
-**Resolved during specification:****Resolved during specification:**
+| #   | Question                                                                                             | Status                                                                                                                                                                                                                                                                     |
+| --- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Can we get API access to Easy (easy.co.il)?                                                          | **Blocked on them.** Email them in Week 1 — a one-hour task with a potentially large payoff, and the answer arrives on their schedule, not ours. Build on Google Places regardless; treat Easy as enrichment that may never land                                           |
+| 2   | What is the real worst-case duration of a matching run, and does it fit the Vercel function timeout? | Open — measure it in Week 1 against the chosen plan's limit and write the number down. Streaming inside a request is the expected answer (§4.1e)                                                                                                                           |
+| 3   | What burden value should the gate `T` sit at?                                                        | Open — a number, not a design. Start around 2.0 (twice a person's stated comfortable distance) and tune against eval quality. Too tight starves the pool, which then triggers expansion (§5.4)                                                                             |
+| 4   | **What exactly goes in the field mask for the broad Places search?**                                 | Open — and it is the single decision that sets the project's Places bill (§6.3). Depends on #6 and #7. Must end up written down explicitly, in one place                                                                                                                   |
+| 5   | **What exactly goes in the field mask for shortlist Place Details calls?**                           | Open — same dependency, smaller blast radius because it runs over ~20 candidates rather than the whole pool (§6.3)                                                                                                                                                         |
+| 6   | **Is `rating` required for correctness, or only a ranking signal?**                                  | Open. Today the funnel fills half the shortlist by rating (§5.4), but rating is an **Enterprise** field. If it is only a preference, it can move to the shortlist detail call or be dropped entirely. Do not assume the current funnel settles this                        |
+| 7   | **Are opening hours a hard constraint or a preference?**                                             | Open. §5.4 currently gates `(venue, time)` pairs on them and §9 has a closed-on-the-night eval trap — but `regularOpeningHours` is **Enterprise**, and a hard constraint has to be checked for every candidate while a preference does not. Decide before the masks freeze |
+| 8   | **Which transactional email provider?**                                                              | Open. Resend is the leading candidate, not a decision (§6.3). Any provider offering a backend API key and an application-owned sender satisfies the architecture. Verify the free tier at implementation time rather than inheriting it from this document                 |
+| 9   | **Which sending domain and address?**                                                                | Open. It must be application-owned rather than anyone's personal mailbox — that part is decided. The domain itself, the DNS verification and the exact `From`/`Reply-To` shape are not (§6.3)                                                                              |
+| 10  | **How are failed notification emails retried and recorded?**                                         | Open. The rule that a failed send never invalidates an approved proposal is binding (§5.5); the mechanism that implements it — retry policy, backoff, dead-letter, how a failure surfaces — is not designed                                                                |
+| 11  | **Which database technology, and what is the schema?**                                               | Open. §6.1 names PostgreSQL as the intent and §6.2 lists indicative entities. The concrete technology choice, hosting, migration tooling and final schema are implementation work, not settled design                                                                      |
+| 12  | **How is authentication implemented?**                                                               | Open. Sign-in with Google and the `calendar.freebusy` consent are the requirement (§5.2); the library, session model, and token storage and refresh strategy are not chosen                                                                                                |
+| 13  | **What is the exact Places caching strategy?**                                                       | Open. Two tiers keyed by neighbourhood is the shape (§6.3); the cache keys, TTLs, invalidation and store are not specified                                                                                                                                                 |
+| 14  | **What is the rate-limit and retry strategy for external APIs?**                                     | Open, and it covers all three of Places, Calendar and the email provider. Nothing is decided about backoff, quota handling, or what the funnel does when a Places query fails mid-run                                                                                      |
+| 15  | What radius, and how many expansion steps?                                                           | Open — tune against your own real addresses. Note that expansion adds query centres rather than enlarging the radius (§5.4)                                                                                                                                                |
+| 16  | Is 4 hours the right conflict window, and 90 seconds the right amendment batching window?            | Open — both are numbers to tune. The conflict window errs tight on purpose, because a false positive destroys a meeting (§5.7)                                                                                                                                             |
+
+Items 4–7 form one cluster: **which venue attributes are required for correctness** decides the field masks, and the field masks decide the cost. Resolve them together, before the Places integration is written, not after (§5.4, §6.3).
+
+**Resolved during specification:**
 
 - ~~One personal agent per participant, negotiating?~~ → **No. One Group Matching Agent** holding every profile at once (§4.2). The superseded design cost decision quality, money, and latency without buying anything the context window did not already provide.
 - ~~Show the group one proposal or the ranked three?~~ → **One.** Three on screen is a poll, which is what the product replaces (§3.1).
@@ -565,7 +728,7 @@ Apple Calendar and Outlook · restaurant reservations · day-before reminders ·
 - ~~One active meeting per group, or several?~~ → **Several, capped at 3.** Sorted by date, nearest first.
 - ~~Is conflict detection within a group or across groups?~~ → **Across every group the user belongs to** (§5.7). This is what created the "all groups" screen.
 - ~~What happens to a meeting cancelled by a conflict?~~ → **It returns to weighing**, it is not deleted.
-- ~~Google Places or Yelp Fusion?~~ → **Google Places.** Supplies both venue data and the coordinates the distance calculation needs; the free credit covers development and the demo.
+- ~~Google Places or Yelp Fusion?~~ → **Google Places API (New), via Text Search.** Supplies both venue data and the coordinates the distance calculation needs (§6.3). Note that the old justification — "the free credit covers development and the demo" — is **withdrawn**: the $200 credit no longer exists, and Places is free only within per-SKU thresholds set by the fields requested.
 - ~~How is the search area derived?~~ → **The union of participants' neighborhoods and their surroundings** (§5.4). Not a centroid.
 - ~~Does travel origin default to home?~~ → **Yes, with a per-proposal override.**
 - ~~Distance or travel time?~~ → **Straight-line distance for v1**, corrected by a Resolver-supplied detour factor (§5.4).
@@ -577,4 +740,10 @@ Apple Calendar and Outlook · restaurant reservations · day-before reminders ·
 - ~~What does the agent do about fairness scores — advice or binding?~~ → **Advice.** See the gate above.
 - ~~Should the model compute the search area and the distances?~~ → **No — it supplies parameters and code runs the function** (§4.3).
 - ~~Weather?~~ → **Out of scope** (§11).
-- ~~Which email provider, and could Gmail send the mail?~~ → **Resend, and no.** `gmail.send` sends on behalf of a _user_, but these notifications have no human sender; and it is a sensitive scope, which would undo the OAuth position §6.3 was narrowed to protect.
+- ~~Could Gmail send the mail?~~ → **No.** `gmail.send` sends on behalf of a _user_, but these notifications have no human sender; and it is a sensitive scope, which would undo the OAuth position §6.3 was narrowed to protect. **A transactional provider with an application-owned sender is the mechanism** — but _which_ provider is still open (§13.8).
+- ~~Which Calendar scope, and is it sensitive?~~ → **`calendar.freebusy`, and no** — verified non-sensitive in our own Cloud Console, so the app publishes In production with no verification (§6.3).
+- ~~Does the MVP create a calendar event when a meeting is confirmed?~~ → **No.** Event creation needs the sensitive `calendar.events` scope and is deferred to a later phase. The flow ends at an approved proposal plus an email (§3, §5.2).
+- ~~Do we need Google Maps or the Routes API?~~ → **Neither, for MVP.** Nothing displays an interactive map, and the burden model is straight-line distance with a detour factor rather than real routing (§5.4, §6.3).
+- ~~One Google Cloud project or several?~~ → **One**, with Calendar and Places enabled on it. Per-user Calendar access comes from OAuth, not from separate projects (§6.3).
+- ~~Is Places free?~~ → **No — it is free within per-SKU thresholds, and the SKU is decided by the fields you request** (§6.3). This is what makes the field mask an architectural decision rather than a parameter.
+- ~~Can a failed notification email cancel a meeting?~~ → **No.** An approved proposal is valid whether or not its email was delivered; the failure is retried and recorded (§5.5).
