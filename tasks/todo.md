@@ -125,7 +125,16 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 - [ ] **B7c — Candidate funnel: gate and dual-list fill**
   - Acceptance: dedupe → drop hard-constraint and closed-at-time violations → **gate on `burden > T`** → **top N/2 by leximin + top N/2 by rating, overlap freeing slots** → shortlist of **20–24**, each entry carrying its per-participant distances and its viable time slots. Pre-rank uses each participant's **most permissive** window so time-dependence never narrows retrieval. Deterministic.
   - Verify: a hard-constraint violator never reaches the shortlist however good its rating; both lists are represented; the shortlist is ≤ N and every entry has one distance per participant
-- [ ] **B8 — Transactional email: invitations and notifications**
+- [ ] **B8 — Transactional email via Resend: invitations and notifications**
+  - Acceptance: mail sent from a **dedicated project address**, never a participant's mailbox (spec §6.3). Fires only on the five state changes in §5.5 — invitation · a proposal waiting on you · meeting confirmed · your meeting returned to weighing after a conflict · `stuck`. **Never on a re-weighing or an individual response**
+  - Verify: three cycles across a meeting produce **one** email per person, not three; the From address is the project's, not the initiator's
+  - Depends on: B12 (verified sending domain)
+  - Free tier: 3,000/month, 100/day — roughly a hundred times what a group of six needs
+
+- [ ] **B12 — Buy a domain and verify it for sending**
+  - Acceptance: a domain is registered and its DNS records are verified with Resend, so mail sends from the project's own address.
+  - **Do this in Week 1, not Week 5.** It is ~$10–15/year — the only item in the project that costs real money — and DNS verification has a waiting period that does not care about milestone dates. It blocks B8, and B8 blocks the "friend receives an emailed link" success criterion (§12.1)
+  - Verify: a test message arrives from the project address and does not land in spam
 - [ ] **B9 — Retry and error handling on external calls**
 - [ ] **B11 — Per-meeting context: persistence and batching** — write `ParticipantMeetingContext`; open a **~90-second batching window** that further amendments reset; the window is closed by the next feed poll, so **no cron and no background job** (spec §3.2). Verify two amendments 30 seconds apart produce exactly one run.
 
