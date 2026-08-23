@@ -1,0 +1,4 @@
+# The slower gates run once per push instead of once per commit: a type error
+# or a failing test should never reach a pull request.
+npm run typecheck
+npm run test
