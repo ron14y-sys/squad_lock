@@ -132,8 +132,15 @@ This is the question most likely to land, and the one to answer with a plan rath
 *The answer:* the compression is absorbed by sequencing and by one deliberate piece of slack — the Context Resolver ships dark behind a fallback, so a slip there costs nothing and blocks no one. Report-only work (#20) is sequenced last, where slipping it costs a paragraph rather than a feature. Milestone 2's scope is scheduled to be re-examined once Milestone 1 gives a real velocity to plan against instead of an estimate.
 *What to concede:* Milestone 2 at Week 6 — real venues, real calendars, the rejection loop **and** cross-group conflicts in three weeks — is the tightest stretch in the plan.
 
-**6. Testing-mode OAuth tokens may expire weekly.**
-Refresh tokens issued while an OAuth app is in Testing status are understood to expire after roughly seven days. Over an eight-week project that is not an edge case, and it could break the demo. **Verify this against the current Google documentation before the review** — if it holds, #34 moves earlier rather than later.
+**6. Two Google assumptions in the original spec were wrong. Both are now corrected — say so first.**
+
+*Confirmed:* an OAuth app in **Testing** status has its refresh tokens **expired by Google after 7 days**, by design and not configurable, with a 100 test-user cap. The original plan treated Testing mode as a free pass for v1; it is a weekly outage, and it can break a demo on the day.
+
+*Confirmed:* the **$200 monthly Places credit was withdrawn on 1 March 2025**, replaced by per-SKU free thresholds — 10,000 Essentials, 5,000 Pro, **1,000 Enterprise**. Opening hours and rating are Enterprise fields, and a request is billed at the highest tier it touches.
+
+*The answer:* both were caught by checking rather than by assuming, and both have a fix in the design already. The scope is being narrowed to `calendar.freebusy` — availability without event content — which appears to be **non-sensitive**, and a non-sensitive scope needs no verification, which means the app can publish In production and the 7-day timer disappears entirely. On Places, the two-tier cache was already in the design; the tier finding turns it from an optimisation into the thing that keeps the project inside the free allowance, and it adds one rule: **never put an Enterprise field in a wide search request** — search cheap, fetch expensive fields only for the ~20 on the shortlist.
+
+*Still to confirm, and it is a two-minute check:* the Cloud Console displays a scope's classification when you add it to the consent screen. Do this **before Week 2**, because the whole OAuth plan branches on it. *(§5.2, §6.3)*
 
 ---
 

@@ -100,7 +100,9 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 ### Milestone 1 (weeks 2–3)
 
 - [ ] **B1 — Postgres provisioned and connected** — real database in dev and on Vercel; F4 migrations applied; health endpoint.
-- [ ] **B2 — Google sign-in** — a `User` row is created; **read-only calendar scope from the start**; Testing mode. Verify the consent screen lists only the read-only scope. **Start Week 2.**
+- [ ] **B2 — Google sign-in** — a `User` row is created. **Scope `calendar.freebusy` only** — availability without event content (spec §5.2). **Start Week 2.**
+  - ⚠️ **First, in the Cloud Console: check whether `calendar.freebusy` is classified non-sensitive.** If it is, publish the app **In production** — no verification, no 100-user cap, and no 7-day refresh-token expiry. If it is sensitive, stay in Testing and plan for weekly re-consent, including immediately before any demo.
+  - Verify: the consent screen lists only the free/busy scope; a token still works 8 days after it was issued
 - [ ] **B3 — Preference profile persistence** — hard constraints, soft preferences, **`tolerance_km`** and the **recurring mobility rules** (spec §5.1) save and load per user.
 - [ ] **B4 — Groups and membership** — create, invite by email, accept, list.
 - [ ] **B5 — Meetings and responses**
@@ -117,12 +119,22 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 - [ ] **B7 — Google Places with two-tier caching**
   - Acceptance: **one query per participant neighbourhood, deduplicated** — not one wide bounding query, because a result cap makes a wider area mean worse coverage per participant (spec §5.4). Returns coordinates, **opening hours and `businessStatus`** for every result. **Search results cached long and keyed by rounded neighbourhood coordinates**, so the cache is shared across meetings and users; **hours cached briefly and fetched only for the shortlist.**
   - Verify: the same neighbourhood queried from two different meetings makes one outbound call; a permanently-closed venue never reaches a proposal; hours are not served from a week-old cache
-  - Note: verify current field masks and price tiers against the provider docs before building
+  - ⚠️ **The $200 monthly credit was withdrawn on 1 Mar 2025.** The allowance is now per SKU tier: 10,000 Essentials / 5,000 Pro / **1,000 Enterprise** per month, and a request is billed at the **highest tier any requested field belongs to**. `location` is Essentials, `businessStatus` is Pro, but **`regularOpeningHours` and `rating` are Enterprise** — so **never put them in the wide search field mask**. Search on cheap fields; fetch Enterprise fields only for the ~20 on the shortlist (spec §6.3)
+  - Verify: measure real Enterprise-tier call counts against the 1,000/month allowance in Week 2, rather than assuming
 - [ ] **B7b — Search area: union of neighbourhoods, expanded by centres** — union of each participant's neighbourhood plus a radius; **not a centroid**. Adaptive expansion **adds query centres rather than enlarging the radius** (spec §5.4), and accepts `extraRegions` from A12 subject to the widening-only invariant. Verify on your own three addresses: real restaurants, no park, no sea.
 - [ ] **B7c — Candidate funnel: gate and dual-list fill**
   - Acceptance: dedupe → drop hard-constraint and closed-at-time violations → **gate on `burden > T`** → **top N/2 by leximin + top N/2 by rating, overlap freeing slots** → shortlist of **20–24**, each entry carrying its per-participant distances and its viable time slots. Pre-rank uses each participant's **most permissive** window so time-dependence never narrows retrieval. Deterministic.
   - Verify: a hard-constraint violator never reaches the shortlist however good its rating; both lists are represented; the shortlist is ≤ N and every entry has one distance per participant
-- [ ] **B8 — Transactional email: invitations and notifications**
+- [ ] **B8 — Transactional email via Resend: invitations and notifications**
+  - Acceptance: mail sent from a **dedicated project address**, never a participant's mailbox (spec §6.3). Fires only on the five state changes in §5.5 — invitation · a proposal waiting on you · meeting confirmed · your meeting returned to weighing after a conflict · `stuck`. **Never on a re-weighing or an individual response**
+  - Verify: three cycles across a meeting produce **one** email per person, not three; the From address is the project's, not the initiator's
+  - Depends on: B12 (verified sending domain)
+  - Free tier: 3,000/month, 100/day — roughly a hundred times what a group of six needs
+
+- [ ] **B12 — Buy a domain and verify it for sending**
+  - Acceptance: a domain is registered and its DNS records are verified with Resend, so mail sends from the project's own address.
+  - **Do this in Week 1, not Week 5.** It is ~$10–15/year — the only item in the project that costs real money — and DNS verification has a waiting period that does not care about milestone dates. It blocks B8, and B8 blocks the "friend receives an emailed link" success criterion (§12.1)
+  - Verify: a test message arrives from the project address and does not land in spam
 - [ ] **B9 — Retry and error handling on external calls**
 - [ ] **B11 — Per-meeting context: persistence and batching** — write `ParticipantMeetingContext`; open a **~90-second batching window** that further amendments reset; the window is closed by the next feed poll, so **no cron and no background job** (spec §3.2). Verify two amendments 30 seconds apart produce exactly one run.
 

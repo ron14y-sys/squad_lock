@@ -159,7 +159,9 @@ Initial setup runs as a **this-or-that game**: "Loud bar or quiet café?" · "Hi
 
 ### 5.2 Calendar
 
-Google Calendar, **read-only scope**, v1 only. Availability is computed for confirmed participants only.
+Google Calendar, v1 only. Availability is computed for confirmed participants only.
+
+**The scope is `calendar.freebusy`, not `calendar.readonly`.** v1 needs to know *when someone is busy*, never *what they are busy with* — the availability computation in §5.4 consumes free/busy intervals and nothing else. Requesting the narrower scope is not only §10's minimum-scope rule; it appears to be what keeps the app out of Google's verification process entirely. See §6.3.
 
 Beyond raw availability, the agent may infer habits from past events (a 07:00 gym slot every weekday is effectively a hard constraint). **Habit inference is a stretch goal, not v1.**
 
@@ -223,6 +225,20 @@ The funnel is deterministic code, not an LLM. It is cheap, testable, and keeps t
 ### 5.5 Notifications
 
 **v1: in-app + email.** Email carries the link; everything else happens in the app. Web push is deferred — on iOS it only works after the user adds the PWA to their home screen, which is friction we do not want in the critical path.
+
+**Mail is sent from a dedicated project address**, never from a participant's own mailbox — see §6.3 for why that rules out the Gmail API.
+
+**Email fires on state changes that need a person, not on internal steps.** A weighing cycle is not an event a user needs told about; a proposal waiting on them is. The v1 triggers:
+
+| Trigger | Why it earns an email |
+|---|---|
+| Group invitation | It is how somebody joins at all (§12.1) |
+| A proposal is waiting on you | Without it nobody knows to open the app |
+| The meeting is confirmed | The point of the whole flow — a date, time and place are now real |
+| Your meeting returned to weighing after a conflict cancelled it | §5.7 calls this the worst failure the product can have; the repair has to be visible, not silent |
+| The meeting is `stuck` | Otherwise it goes quiet and the group never settles it |
+
+Deliberately **not** emailed: each re-weighing, each individual response, and anything the feed already shows on next open. Three cycles across three open meetings is nine possible emails per person per group — enough to teach people to filter the sender.
 
 ### 5.6 The Interface — a feed of meeting cards
 
@@ -315,17 +331,80 @@ Core entities. Field lists are indicative, not final:
 
 | Service | Role | Cost | Note |
 |---|---|---|---|
-| Google OAuth + Calendar | Sign-in and availability | Free at this scale | Read-only scope. See OAuth warning below |
-| **Google Places** | Real restaurant data — the v1 source | $200 free credit/month, sufficient for development and the demo | Also supplies the coordinates the distance calculation needs (§5.4), plus **opening hours and business status**. **No table availability** — that is a reservations platform, and out of scope (§11). Check the terms on caching and attribution, and the current field masks and price tiers, before building |
+| Google OAuth + Calendar | Sign-in and availability | Free at this scale | Scope `calendar.freebusy` — free/busy intervals only. See the access model below |
+| **Google Places** | Real restaurant data — the v1 source | Per-SKU free monthly thresholds — see below | Supplies coordinates (§5.4), **opening hours and business status**. **No table availability** — that is a reservations platform, out of scope (§11). Authenticates by **API key**, not by user OAuth |
 | Easy (easy.co.il) | Candidate enrichment source — **blocked** | Unknown | Israeli local search with restaurant filters that map unusually well to our constraints: kosher type, vegetarian, vegan, child-friendly, atmosphere. **No public API documentation found** as of Aug 2026. Ask them directly; do not scrape. Only integrate if they grant access — see §13.1 |
 | PostgreSQL | Persistence | Free tier sufficient | Managed Postgres on Vercel or an equivalent provider |
-| Email delivery | Invitations and notifications | Free tier sufficient | Transactional email provider |
+| **Resend** | Invitations and notifications | 3,000/month and 100/day on the free tier — permanent, not a trial | Sends from a **dedicated project address**, never a participant's mailbox. Needs a verified sending domain — see below |
+
+#### Why not the Gmail API
+
+The obvious-looking move — the project already authenticates with Google, so send the mail with Google too — does not survive contact with what `gmail.send` actually is.
+
+**It sends *on behalf of a user*.** Mail would leave from a participant's own Gmail address, land in their Sent folder and count against their personal quota. But the notifications in §5.5 have **no human sender**: the agent produced the proposal, and there is no participant whose account should be mailing the others every time it does. Picking one arbitrarily would mean the initiator's private address sending system mail to her friends.
+
+**And `gmail.send` is a sensitive scope.** Not restricted — it needs no paid security assessment — but sensitive is precisely the tier this project just left. The calendar scope was narrowed to `calendar.freebusy` so the app could stay non-sensitive, publish In production, and escape the 7-day refresh-token expiry. Adding one sensitive scope for email would put it back in the verification queue, or back in Testing with weekly re-consent for the whole team. The entire OAuth position would be traded away for something a transactional provider does better and for free.
+
+A provider also gives the personal touch that Gmail appears to offer, without any of it:
+
+```
+From:      "Dana via SquadLock" <notify@…>
+Reply-To:  dana@…
+```
+
+> ⚠️ **A free tier needs a verified sending domain.** Development can use the provider's test sender, but a real demo cannot. A domain is roughly $10–15/year and is **the only item in this project that costs actual money** — buy it early, because DNS verification has a waiting period that does not care about your milestone dates.
+>
+> ⚠️ Also note that SendGrid, the other obvious candidate, **no longer has a free tier** — it is a 60-day trial. Verify any provider's current terms rather than inheriting them from memory; this document has already been wrong once that way about the Places credit.
 
 **Two-tier caching, keyed by neighbourhood.** The search query is a property of a *neighbourhood*, not of a meeting: "Dana's neighbourhood plus radius R" is the same query for every meeting, in every group she belongs to, forever. Keying the cache on rounded coordinates rather than on a meeting id therefore makes it shared across meetings and users — and the rounding is already there, because §5.4 stores homes at neighbourhood granularity for privacy. Cycles 2 and 3 of a meeting are pure cache hits.
 
 Opening hours are cached **separately and briefly**, and fetched only for the shortlist. Hours change for holidays and closures, and proposing a restaurant that is shut on the night is a real failure; detailed fields also sit in a higher price tier than basic ones, so fetching them for twenty candidates rather than three hundred is what makes the funnel pay for itself twice.
 
-> ⚠️ **OAuth warning.** Calendar access is a sensitive scope requiring Google verification — a process that takes weeks. **v1 does not need it:** set the app to "Testing" mode and add users as test users (up to 100). Verification is only required before a wider release. Request the minimum scope now: broadening it later is easy, narrowing it after users have consented is not.
+#### Access model — two different mechanisms
+
+The two Google integrations are often spoken of as one thing. They are not, and conflating them is what produces the wrong plan.
+
+| | Google Calendar | Google Places |
+|---|---|---|
+| Authenticates as | **the user**, via OAuth consent | **the project**, via an API key |
+| Needs user permission | Yes — a consent screen per participant | No |
+| Subject to app verification | Depends entirely on the scope | Not applicable |
+| Free allowance | API quota, free at this scale | Per-SKU monthly thresholds |
+
+#### Calendar: the scope choice decides whether verification applies
+
+Google classifies OAuth scopes as non-sensitive, sensitive, or restricted, and **only sensitive and restricted scopes pull an app into the verification process.** Reading the events stored in a calendar is Google's own example of a sensitive scope, so `calendar.readonly` and `calendar.events.readonly` are sensitive. `calendar.freebusy` — "view your availability in your calendars" — returns busy intervals with no event content, and appears to be **non-sensitive**.
+
+That distinction decides the whole OAuth plan, because of what Testing status costs:
+
+> ⚠️ **An app in "Testing" publishing status has its refresh tokens expired by Google after 7 days.** This is by design and it is not configurable. Over an 8-week project it means every team member re-consenting weekly, and it can break a demo on the day. Testing status also caps the app at 100 test users.
+
+Earlier drafts of this document treated Testing mode as a free pass for v1. It is not — it is a 7-day timer. If `calendar.freebusy` is confirmed non-sensitive, the app can be published **In production** with no verification, no test-user cap, and refresh tokens that do not expire on a schedule.
+
+**Before Week 2, confirm the classification in the Cloud Console.** Adding a scope to the consent screen displays its classification directly; that check is definitive and takes minutes. The plan branches on the answer:
+
+- **Non-sensitive** → publish In production immediately. The 7-day expiry, the test-user cap and the verification queue all disappear, and token refresh becomes ordinary housekeeping rather than a weekly outage.
+- **Sensitive** → stay in Testing, accept weekly re-consent for the team, and make sure a fresh consent happens shortly before any demo.
+
+Either way, request the minimum scope now. Broadening later is easy; narrowing after users have consented is not. Note that the habit inference deferred in §5.2 would need event content and therefore a sensitive scope — a reason to keep it out of v1 beyond the effort it costs.
+
+#### Places: the $200 credit no longer exists
+
+> ⚠️ **Correction against earlier drafts.** The flat $200 monthly credit was **replaced on 1 March 2025** with a free monthly usage threshold per SKU tier. Any plan resting on "the $200 covers development and the demo" is resting on something that was withdrawn.
+
+| Tier | Free events per month | Fields relevant to us |
+|---|---|---|
+| Essentials | 10,000 | `location` |
+| Pro | 5,000 | `businessStatus` |
+| **Enterprise** | **1,000** | `regularOpeningHours`, `currentOpeningHours`, `rating`, `priceLevel` |
+
+**A request is billed at the highest tier any requested field belongs to.** This has a direct consequence for the funnel in §5.4: **opening hours and rating are both Enterprise fields**, and the funnel uses rating to fill half the shortlist and opening hours to gate `(venue, time)` pairs. Requesting either one anywhere makes that whole request an Enterprise request, against the smallest allowance of the three.
+
+This does not break the design, but it does change the caching from a nice-to-have into the thing that keeps the project inside the free tier:
+
+- **Never put an Enterprise field in the wide search field mask.** Search on Essentials/Pro fields; fetch Enterprise fields only for the ~20 candidates that reach the shortlist.
+- The neighbourhood-keyed search cache and the short-lived hours cache are what turn a per-meeting cost into a near-zero marginal one.
+- ⚠️ **Confirm Nearby Search's tier as a function of its field mask before building**, and measure real call counts against the 1,000 Enterprise events during Week 2 rather than assuming.
 
 ### 6.4 Language Models and Cost
 
@@ -428,7 +507,8 @@ The eval set does not change with the §4.2 architecture — it describes correc
 
 **Never:**
 - Commit API keys, secrets, or OAuth tokens.
-- Request a broader calendar scope than read-only.
+- Request a broader calendar scope than `calendar.freebusy` while v1 needs only availability (§5.2, §6.3).
+- Put an Enterprise-tier Places field in a wide search request rather than a shortlist detail request (§6.3).
 - Run a rejection loop without the cycle cap.
 - Rely on the agent alone to respect a hard constraint.
 - Show more than one proposal at a time.
@@ -492,3 +572,4 @@ Apple Calendar and Outlook · restaurant reservations · day-before reminders ·
 - ~~What does the agent do about fairness scores — advice or binding?~~ → **Advice.** See the gate above.
 - ~~Should the model compute the search area and the distances?~~ → **No — it supplies parameters and code runs the function** (§4.3).
 - ~~Weather?~~ → **Out of scope** (§11).
+- ~~Which email provider, and could Gmail send the mail?~~ → **Resend, and no.** `gmail.send` sends on behalf of a *user*, but these notifications have no human sender; and it is a sensitive scope, which would undo the OAuth position §6.3 was narrowed to protect.
