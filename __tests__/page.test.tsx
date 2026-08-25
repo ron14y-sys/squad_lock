@@ -8,7 +8,7 @@ test("home page renders its heading", () => {
   expect(
     screen.getByRole("heading", {
       level: 1,
-      name: /to get started, edit the page.tsx file/i,
+      name: /squadlock/i,
     })
   ).toBeInTheDocument();
 });

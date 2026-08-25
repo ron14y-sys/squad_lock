@@ -1,0 +1,326 @@
+// SquadLock — database schema (spec §6.2)
+//
+// Source of truth: docs/spec.md §6.2. This file exists before any other
+// track's code, per tasks/plan.md Week 1 — everything else builds on it.
+//
+// Prisma ORM 7: Rust-free client, driver adapter required (@prisma/adapter-pg),
+// connection info lives in prisma.config.ts, not here.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+/// A person. Identity and Google tokens only — preferences live in
+/// PreferenceProfile (spec §6.2).
+model User {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  name               String
+  googleId           String   @unique
+  googleRefreshToken String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  preferenceProfile     PreferenceProfile?
+  groupMemberships      GroupMember[]
+  initiatedMeetings     Meeting[]                 @relation("MeetingInitiator")
+  responses              Response[]
+  participantContexts    ParticipantMeetingContext[]
+  conflictDismissals     ConflictDismissal[]
+
+  @@map("users")
+}
+
+/// Hard constraints + soft preferences per user (spec §5.1). One row per
+/// user. Constraint/preference *shapes* are still being iterated on by the
+/// preference-game and hard-constraints screens, so they are stored as JSON
+/// rather than fixed columns — narrowing them to real columns is a later,
+/// cheap migration; guessing the shape wrong now is not.
+model PreferenceProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  /// Kosher, allergies, fixed unavailable hours — enforced in code, never
+  /// left to the model (spec §4.1b).
+  hardConstraints Json @default("{}")
+
+  /// Cuisine, budget, atmosphere, noise level — soft signal only.
+  softPreferences Json @default("{}")
+
+  /// Home location at neighbourhood granularity, never a street address
+  /// (spec §5.4) — this is also what keeps the venue cache shareable.
+  homeLat            Float?
+  homeLng            Float?
+  homeNeighbourhood  String?
+
+  /// Travel tolerance in kilometres — stored as km, presented as a labelled
+  /// slider (spec §5.1). Per-time-slot tolerance is layered on top of this
+  /// baseline by the Context Resolver at match time; this is the default.
+  toleranceKm Float @default(5)
+
+  /// "No car on Fridays", "Tuesdays I come from work" — recurring, distinct
+  /// from fixed unavailable hours: these affect distance, not availability
+  /// (spec §5.1).
+  recurringMobilityRules Json @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("preference_profiles")
+}
+
+// ---------------------------------------------------------------------------
+// Groups
+// ---------------------------------------------------------------------------
+
+/// A group of 3–6 friends (spec §1.2, §5.3).
+model Group {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  GroupMember[]
+  meetings Meeting[]
+
+  @@map("groups")
+}
+
+/// Resolves the many-to-many between User and Group — a user belongs to
+/// several groups at once, and a group has several members (spec §1.2).
+model GroupMember {
+  id       String   @id @default(cuid())
+  groupId  String
+  userId   String
+  joinedAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@map("group_members")
+}
+
+// ---------------------------------------------------------------------------
+// Meetings
+// ---------------------------------------------------------------------------
+
+enum MeetingStatus {
+  weighing
+  awaiting
+  closed
+  stuck
+  cancelled
+}
+
+/// One get-together from initiation to close (spec §6.2). `conflicting` is
+/// deliberately not a stored status — it is derived at read time from
+/// ConflictDismissal + the cross-group query (spec §5.6).
+model Meeting {
+  id          String        @id @default(cuid())
+  groupId     String
+  initiatorId String
+  status      MeetingStatus @default(weighing)
+  cycleCount  Int           @default(0)
+
+  /// Optionally pinned at initiation — the all-blank case is the default
+  /// path, not a degraded one (spec §3, §5.3).
+  pinnedDate  DateTime? @db.Date
+  pinnedTime  String?
+  pinnedVenue String?
+
+  /// Free text set at initiation; an input to the Context Resolver (spec §6.2).
+  occasion String?
+
+  /// Denormalized from the current MatchRun's rank-1 MatchOption (or the
+  /// pinned date/time, if given). Not in spec §6.2 verbatim — added so the
+  /// feed can sort by date and the conflict query can scan "open meetings
+  /// at time T" without joining through MatchRun/MatchOption on every read.
+  /// Kept in sync by the application whenever a new top option is chosen.
+  currentDatetime DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group     Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  initiator User   @relation("MeetingInitiator", fields: [initiatorId], references: [id])
+
+  matchRuns            MatchRun[]
+  responses            Response[]
+  participantContexts  ParticipantMeetingContext[]
+  dismissalsAsA        ConflictDismissal[]         @relation("MeetingA")
+  dismissalsAsB        ConflictDismissal[]         @relation("MeetingB")
+
+  @@index([groupId])
+  @@index([status, currentDatetime])
+  @@map("meetings")
+}
+
+/// One weighing cycle of a meeting (spec §6.2, §4.1d — every run persisted
+/// in full).
+model MatchRun {
+  id          String   @id @default(cuid())
+  meetingId   String
+  cycleNumber Int
+
+  /// The shortlist that went in — candidate venues with their per-participant
+  /// distances and viable time slots (spec §5.4).
+  shortlist Json
+
+  createdAt DateTime @default(now())
+
+  meeting Meeting        @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  options MatchOption[]
+
+  /// Which ParticipantMeetingContext rows this run saw — so the timeline can
+  /// say *why* a re-weighing happened (spec §6.2, §3.2).
+  seenContexts MatchRunSeenContext[]
+
+  @@unique([meetingId, cycleNumber])
+  @@index([meetingId])
+  @@map("match_runs")
+}
+
+/// One of the ranked options a run produced (spec §6.2, §4.1c). Only rank 1
+/// is ever shown to the user; 2 and 3 are persisted for the timeline, the
+/// eval set, and the report.
+model MatchOption {
+  id         String @id @default(cuid())
+  matchRunId String
+  rank       Int
+
+  /// Venue snapshot at decision time (Places data can change later).
+  venuePlaceId String?
+  venueName    String
+  venueAddress String?
+  venueLat     Float?
+  venueLng     Float?
+
+  proposedDatetime DateTime
+
+  /// userId -> justification text, written for that viewer specifically
+  /// (spec §5.6).
+  participantJustifications Json
+
+  /// What this option trades away, and for whom — persisted for the
+  /// timeline and the report, but never rendered as a comparative cost line
+  /// to the person who bore it (spec §5.6, §4.1c).
+  tradeoffs Json
+
+  createdAt DateTime @default(now())
+
+  matchRun MatchRun @relation(fields: [matchRunId], references: [id], onDelete: Cascade)
+
+  @@unique([matchRunId, rank])
+  @@map("match_options")
+}
+
+/// Per-user, per-meeting response (spec §6.2, §3.2). A row exists for every
+/// group member from the moment the meeting is created — defaulting to
+/// `pending` — not created lazily when someone responds. This is what keeps
+/// a dropped-out member listed instead of disappearing (spec §5.6), and it
+/// is the join that makes "every open meeting for user X" an indexed lookup
+/// instead of a scan (spec §5.7): index on (userId), join to Meeting by its
+/// primary key.
+model Response {
+  id     String @id @default(cuid())
+  meetingId String
+  userId    String
+
+  status     ResponseStatus @default(pending)
+  reasonText String?
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+  @@index([userId])
+  @@map("responses")
+}
+
+enum ResponseStatus {
+  pending
+  approved
+  cant_make_it
+  doesnt_suit
+}
+
+/// Sparse per-meeting correction — "no car tonight", "coming from work"
+/// (spec §6.2, §3.2, §5.7). A row exists only when someone amends, and each
+/// amendment appends a new row rather than overwriting the last one, so the
+/// timeline can show which amendment triggered which re-weighing (spec §5.6).
+model ParticipantMeetingContext {
+  id        String @id @default(cuid())
+  meetingId String
+  userId    String
+
+  /// Origin override for this one meeting, if the person isn't starting
+  /// from home tonight.
+  originLat   Float?
+  originLng   Float?
+  originLabel String?
+
+  /// Mode-tagged windows, e.g. "no car between 18:00 and 21:00"
+  /// (spec §6.2: mode is car / transit / walk).
+  mobilityWindows Json @default("[]")
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  meeting  Meeting                @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seenByRuns MatchRunSeenContext[]
+
+  @@index([meetingId, userId, createdAt])
+  @@map("participant_meeting_contexts")
+}
+
+/// Join table recording which ParticipantMeetingContext rows a given
+/// MatchRun saw (spec §6.2: "Each MatchRun records which rows it saw").
+model MatchRunSeenContext {
+  matchRunId String
+  contextId  String
+
+  matchRun MatchRun                  @relation(fields: [matchRunId], references: [id], onDelete: Cascade)
+  context  ParticipantMeetingContext @relation(fields: [contextId], references: [id], onDelete: Cascade)
+
+  @@id([matchRunId, contextId])
+  @@map("match_run_seen_contexts")
+}
+
+/// Per user and unordered meeting pair: this user has said the two do not
+/// clash (spec §6.2, §5.7). Postgres unique constraints are ordered, so the
+/// canonical order — meetingAId < meetingBId, compared as strings — is
+/// enforced by the application before every insert and lookup; see
+/// lib/db/conflict-dismissal.ts.
+model ConflictDismissal {
+  id         String @id @default(cuid())
+  userId     String
+  meetingAId String
+  meetingBId String
+  createdAt  DateTime @default(now())
+
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meetingA Meeting @relation("MeetingA", fields: [meetingAId], references: [id], onDelete: Cascade)
+  meetingB Meeting @relation("MeetingB", fields: [meetingBId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, meetingAId, meetingBId])
+  @@map("conflict_dismissals")
+}
