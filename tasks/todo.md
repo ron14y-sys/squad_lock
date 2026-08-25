@@ -42,7 +42,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Verify: all three agree each answer is right
   - Files: `evals/scenarios/*.json`, `evals/README.md`
 
-- [ ] **F6 — Deployed skeleton** — live on Vercel, mobile-first shell, installable. Verify on a real phone.
+- [x] **F6 — Deployed skeleton** — live on Vercel, mobile-first shell, installable. Verify on a real phone.
 - [ ] **F7 — Secrets and environment** — `.env.example` committed, nothing secret ever committed. Verify: `git log -p | grep -iE 'sk-ant|AIza|client_secret'` is empty.
 
 ---
