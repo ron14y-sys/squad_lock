@@ -14,12 +14,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test",
-    "prepare": "husky"
+    "prepare": "husky",
+    "spike:runtime": "node scripts/spike-runtime.mjs"
   },
   "dependencies": {
+    "@google/genai": "^2.18.0",
     "next": "16.2.4",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
