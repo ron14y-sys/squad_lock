@@ -1,0 +1,58 @@
+{
+  "id": "mobility-window-trap",
+  "trap": "mobility-window",
+  "description": "One participant has no car for part of the evening, so the group's best venue is wrong early and right later. The correct answer is a (venue, time) pair, not a venue alone.",
+  "participants": [
+    {
+      "name": "Shira",
+      "neighborhood": "Ramat Aviv",
+      "coordinates": { "lat": 32.1133, "lng": 34.7975 },
+      "hardConstraints": [],
+      "toleranceKm": 3,
+      "mobilityWindows": [
+        { "start": "18:00", "end": "20:00", "mode": "no-car" },
+        { "start": "20:00", "end": "23:00", "mode": "car" }
+      ]
+    },
+    {
+      "name": "Ben",
+      "neighborhood": "Ramat Aviv",
+      "coordinates": { "lat": 32.1133, "lng": 34.7975 },
+      "hardConstraints": [],
+      "toleranceKm": 8
+    },
+    {
+      "name": "Liat",
+      "neighborhood": "Ramat Aviv",
+      "coordinates": { "lat": 32.1133, "lng": 34.7975 },
+      "hardConstraints": [],
+      "toleranceKm": 8
+    }
+  ],
+  "availability": [{ "day": "Wednesday", "start": "18:00", "end": "22:00" }],
+  "candidateVenues": [
+    {
+      "name": "Herzl 16",
+      "neighborhood": "Ramat Aviv",
+      "coordinates": { "lat": 32.1128, "lng": 34.7969 },
+      "kosher": false,
+      "openingHours": { "Wednesday": ["12:00-23:00"] },
+      "rating": 3.9,
+      "reachableWithoutCar": true
+    },
+    {
+      "name": "Container Park",
+      "neighborhood": "Jaffa Port",
+      "coordinates": { "lat": 32.0517, "lng": 34.7503 },
+      "kosher": false,
+      "openingHours": { "Wednesday": ["12:00-01:00"] },
+      "rating": 4.6,
+      "reachableWithoutCar": false
+    }
+  ],
+  "expected": {
+    "venue": "Container Park",
+    "time": "20:30",
+    "reasoning": "Container Park is the fairer, better-rated choice for the group, but it needs a car and Shira has none before 20:00 — so any slot between 18:00 and 20:00 is invalid for her there. After 20:00 she has a car and it becomes fully valid. The correct answer is Container Park at 20:30, not Herzl 16 (settling for the worse venue) and not Container Park at 18:30 (ignoring the mobility window)."
+  }
+}

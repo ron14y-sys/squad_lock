@@ -1,0 +1,64 @@
+{
+  "id": "rejection-loop-noise",
+  "trap": "rejection-loop",
+  "description": "A free-text rejection about noise must become a structured constraint that produces a materially different, visibly responsive next proposal — not a random re-roll.",
+  "participants": [
+    {
+      "name": "Yael",
+      "neighborhood": "Florentin",
+      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Guy",
+      "neighborhood": "Florentin",
+      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Shani",
+      "neighborhood": "Florentin",
+      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    }
+  ],
+  "availability": [{ "day": "Saturday", "start": "21:00", "end": "01:00" }],
+  "candidateVenues": [
+    {
+      "name": "Beer Bazaar",
+      "neighborhood": "Florentin",
+      "kosher": false,
+      "atmosphere": "loud-bar",
+      "openingHours": { "Saturday": ["19:00-02:00"] },
+      "rating": 4.4
+    },
+    {
+      "name": "Quiet Corner",
+      "neighborhood": "Florentin",
+      "kosher": false,
+      "atmosphere": "quiet-cafe",
+      "openingHours": { "Saturday": ["18:00-00:00"] },
+      "rating": 4.1
+    }
+  ],
+  "initialProposal": {
+    "venue": "Beer Bazaar",
+    "reasoning": "Best-rated candidate; nothing in any profile ruled out a loud venue before this cycle."
+  },
+  "rejection": {
+    "by": "Shani",
+    "text": "It's too loud for me, I want somewhere quieter."
+  },
+  "expectedConstraint": {
+    "type": "venue_preference",
+    "category": "restaurant",
+    "avoid": ["loud", "bar-like"]
+  },
+  "expected": {
+    "venue": "Quiet Corner",
+    "reasoning": "The rejection is not a blanket 'no' — it names atmosphere specifically. The next proposal must visibly respond to that: Quiet Corner is the only remaining candidate not tagged loud/bar-like, so it is the only materially different, on-topic follow-up, even though it's rated slightly lower than the rejected option."
+  }
+}
