@@ -16,6 +16,8 @@ Steps 1–3 are mechanical — two people applying them by hand to the same scen
 
 **The two `no-perfect-solution` scenarios are the exception.** There, steps 1–2 still apply mechanically, but step 3 doesn't produce a single forced answer — multiple venues survive and none dominates the others on every axis. `"consensusRequired": true` marks this in the file. The three of us have to actually agree on one before it's usable as ground truth; it isn't something to compute alone.
 
+Both of those two files also carry a `claudeRecommendation` field — a proposed starting point for the discussion, with its own reasoning, not a fourth vote. It doesn't satisfy the sign-off; it exists so the conversation starts from a reasoned position instead of a blank page. Once the three of you agree, replace `expected` with the agreed answer and clear `consensusRequired`.
+
 ## Scenario format
 
 ```json
