@@ -16,12 +16,12 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 
 - [x] ~~**F1 — Decide venue provider**~~ — **Resolved: Google Places.**
 
-- [ ] **F1b — Email Easy (easy.co.il) about API access**
+- [x] **F1b — Email Easy (easy.co.il) about API access**
   - Acceptance: an email asking for API access for an academic project, describing the use case. One hour of work with a potentially large payoff.
   - Verify: email sent, date recorded. **Do not wait for a reply and do not scrape** — build on Google Places regardless
   - Files: `docs/decisions/venue-provider.md`
 
-- [ ] **F2 — Measure a matching run against the Vercel function timeout**
+- [x] **F2 — Measure a matching run against the Vercel function timeout**
   - Acceptance: a streamed route makes one real LLM call over a ~20-candidate payload and reports wall-clock time; the plan's function timeout is written down next to it. Blocks A4.
   - Verify: the spike completes without being killed, with margin against the limit
   - Files: `docs/decisions/runtime-budget.md`, one spike route
@@ -32,7 +32,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Files: `lib/types/*.ts`
   - Note: the time-aware signature is the single most expensive thing to retrofit. Put it in now even while every value is a constant.
 
-- [ ] **F4 — Database schema and migrations**
+- [x] **F4 — Database schema and migrations**
   - Acceptance: all entities from spec §6.2, including the sparse **`ParticipantMeetingContext`** and **`ConflictDismissal`**, plus `PreferenceProfile.tolerance_km` and the recurring mobility rules, and `Meeting.occasion`. **`Meeting` indexed by participant and scheduled time.**
   - Verify: migration runs clean on an empty database; rollback works; `EXPLAIN` on "all open meetings for user X" uses the index
   - Files: schema and migration files
@@ -43,7 +43,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Files: `evals/scenarios/*.json`, `evals/README.md`
 
 - [x] **F6 — Deployed skeleton** — live on Vercel, mobile-first shell, installable. Verify on a real phone.
-- [ ] **F7 — Secrets and environment** — `.env.example` committed, nothing secret ever committed. Verify: `git log -p | grep -iE 'sk-ant|AIza|client_secret'` is empty.
+- [x] **F7 — Secrets and environment** — `.env.example` committed, nothing secret ever committed. Verify: `git log -p | grep -iE 'sk-ant|AIza|client_secret'` is empty.
 
 ---
 
@@ -51,8 +51,9 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 
 ### Milestone 1 (weeks 2–3)
 
-- [ ] **A1 — Anthropic client and cost logging**
-  - Acceptance: thin wrapper over the TS SDK logging tokens and dollar cost per call. Model by env var — `claude-sonnet-5` for matching, `claude-haiku-4-5` for the two extraction components.
+- [ ] **A1 — Gemini client and cost logging**
+  - Acceptance: thin wrapper over `@google/genai` logging input, output and **thought** tokens plus dollar cost per call. Model by env var — `gemini-3.6-flash` for matching, `gemini-3.5-flash-lite` for the two extraction components (spec §6.4).
+  - Note: thought tokens are spent from `max_output_tokens` and dwarf the answer — size the cap for both, and treat a stream that ends without a completion event as truncated, not malformed. Measured in [F2](../docs/decisions/runtime-budget.md).
   - Files: `lib/llm/client.ts`, `lib/llm/cost.ts`
 
 - [ ] **A2 — Hard-constraint filter and post-check**

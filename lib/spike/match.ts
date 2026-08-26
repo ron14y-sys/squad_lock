@@ -152,7 +152,11 @@ export async function runSpike(
       // The SDK retries a 429 by default, for minutes, silently — which looks
       // exactly like a hang and quietly turns a quota error into a fake latency
       // number. Surface it instead and let the runner decide.
-      { maxRetries: 0, timeout: 180_000 }
+      // 290s, just under the 300s function limit, so the thing that stops a run
+      // is the limit we are measuring against — not a client timeout of our own.
+      // At 180s this aborted a `gemini-3.6-flash` / `high` run that was still
+      // going, which would have recorded a fake worst case.
+      { maxRetries: 0, timeout: 290_000 }
     );
 
     // The completed event carries the token usage; the text arrives as deltas.

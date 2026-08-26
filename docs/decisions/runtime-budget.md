@@ -1,7 +1,7 @@
 # Runtime budget — does a matching run fit inside a Vercel function?
 
 **Task:** F2 ([tasks/todo.md](../../tasks/todo.md)) · **Blocks:** A4 (Group Matching Agent)
-**Status:** measured limits recorded; **the run itself is not yet measured** — see [Results](#results).
+**Status:** complete. Measured locally across four configurations and on the deployment. **Verdict: it fits — see [Verdict](#verdict).** A4 is unblocked.
 
 ---
 
@@ -13,15 +13,15 @@ If the real worst case does not fit, the consequence is not a shorter prompt —
 
 ## The three numbers
 
-| Number                    | Value                                                 | Kind                                                       |
-| ------------------------- | ----------------------------------------------------- | ---------------------------------------------------------- |
-| **Vercel function limit** | **300s** — Hobby default _and_ maximum, fluid compute | Hard wall. Past it, a 504 `FUNCTION_INVOCATION_TIMEOUT`    |
-| **Product target**        | **20s**, success criterion 6                          | A target, not a wall. Missing it is a finding, not a crash |
-| **Worst-case run**        | _not yet measured_                                    | What we actually spend                                     |
+| Number                    | Value                                                                                       | Kind                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Vercel function limit** | **300s** — Hobby default _and_ maximum, fluid compute                                       | Hard wall. Past it, a 504 `FUNCTION_INVOCATION_TIMEOUT`    |
+| **Product target**        | **20s**, success criterion 6                                                                | A target, not a wall. Missing it is a finding, not a crash |
+| **Worst-case run**        | **207.8s** measured locally — `gemini-3.6-flash` / `high`; 42.5s on the lite model at `low` | What we actually spend                                     |
 
 **Source for the limit:** [Vercel Functions Limits](https://vercel.com/docs/functions/limitations), read 2026-08-25. Hobby is 300s default and 300s maximum with fluid compute (on by default for new projects); Pro reaches 800s. Re-check before quoting this in the report — Vercel changes it, and this project has already been wrong once by inheriting a provider's numbers from memory ([spec §6.3](../spec.md) on the withdrawn Places credit).
 
-The margin is large. A 20-second target against a 300-second wall means the architecture has room; the measurement is to confirm that, not to squeeze into it.
+The wall is far away, but how far depends entirely on the configuration: the worst run on the lite model used 14% of the budget, and the worst on `gemini-3.6-flash` at `high` used 69%. The 20-second product target, not the 300-second wall, is what the measurement actually strains against.
 
 ## What is being measured
 
@@ -69,31 +69,39 @@ Five runs per combination, not one: LLM latency varies enough that a single numb
 
 ## Results
 
-_Not yet run._
-
-Paste the table from `npm run spike:runtime` here, both local and deployed.
+Both passes are done. Local characterises the range across models and thinking levels; the deployed pass answers whether the platform itself adds cost.
 
 ### Local
 
-Measured 2026-08-25 against `http://localhost:3000`, 5 runs per row.
+Measured 2026-08-25 and 2026-08-26 against `http://localhost:3000`, 5 runs per row.
 
-| Model                   | Thinking | Runs | Median    | Worst     | First text | In / out / thought tokens | Covers all 6 |
-| ----------------------- | -------- | ---- | --------- | --------- | ---------- | ------------------------- | ------------ |
-| `gemini-3.5-flash-lite` | low      | 5    | **5.6s**  | **42.5s** | 1.2s       | 8045 / 910 / 0            | yes          |
-| `gemini-3.5-flash-lite` | high     | 5    | **60.8s** | **64.7s** | 54.7s      | 8045 / 1169 / 19912       | yes          |
-| `gemini-3.6-flash`      | low      | 5    | **63.5s** | **74.5s** | 23.0s      | 8045 / 1212 / 5011        | yes          |
-| `gemini-3.6-flash`      | high     | —    | _blocked_ | _blocked_ | _blocked_  | _blocked_                 | _blocked_    |
+| Model                   | Thinking | Runs | Median     | Worst      | First text | In / out / thought tokens | Covers all 6 | Worst as % of the 300s limit |
+| ----------------------- | -------- | ---- | ---------- | ---------- | ---------- | ------------------------- | ------------ | ---------------------------- |
+| `gemini-3.5-flash-lite` | low      | 5    | **5.6s**   | **42.5s**  | 1.2s       | 8045 / 910 / 0            | yes          | 14%                          |
+| `gemini-3.5-flash-lite` | high     | 5    | **60.8s**  | **64.7s**  | 54.7s      | 8045 / 1169 / 19912       | yes          | 22%                          |
+| `gemini-3.6-flash`      | low      | 5    | **63.5s**  | **74.5s**  | 23.0s      | 8045 / 1212 / 5011        | yes          | 25%                          |
+| `gemini-3.6-flash`      | high     | 5    | **165.1s** | **207.8s** | 152.4s     | 8045 / 1566 / 24299       | yes          | **69%**                      |
 
-The last row is blocked on the free tier's **daily** quota, not on anything about the run — see [The free tier does not fit this project](#the-free-tier-does-not-fit-this-project).
+**All four configurations produced 3 ranked options and justified all six participants, every time.** Twenty runs, no dropped participant. That is the first real evidence against the §9 risk that a single agent holding six profiles quietly skips one — encouraging, and not a substitute for [A6](../../tasks/todo.md)'s dedicated check.
 
-**Four things these numbers say.**
+**The headline holds: a run fits inside the function.** Spec §4.1e stands, and the background job the superseded architecture needed is genuinely unnecessary.
 
-1. **The function limit is not the constraint.** The worst run was 74.5s against a 300s wall. Spec §4.1e holds: a matching run streams inside a request, and the background job the superseded architecture needed is genuinely not needed. **This is the question F2 existed to answer, and it is answered.**
-2. **The 20-second product target is the constraint.** Exactly one configuration fits it — `gemini-3.5-flash-lite` at `low`, and only at the median. Everything else runs 60–75s. Per spec §12 that is "a finding about the architecture, not just a slow run".
-3. **Thinking costs about a minute, flat.** Both models land near 60s once thinking is on, and the thought tokens are 17–20× the answer itself (19,912 thought tokens against 1,169 of output). Whether that minute buys anything is [A10](../../tasks/todo.md)'s question — F2 only establishes what it costs.
-4. **The tail is far worse than the median, and that is the most dangerous number here.** `gemini-3.5-flash-lite` at `low` ran 5.6s at the median and **42.5s at its worst** — an eight-fold spread on byte-identical input. A budget written against the median would be wrong precisely when it mattered. **Whatever A4 promises, it has to survive the worst run.**
+**But the margin is not one number — it ranges from comfortable to thin.**
 
-**First text is its own problem.** 23 seconds of silence on `gemini-3.6-flash`, and **55 seconds** on the lite model at `high`, before a single character appears — thinking happens before any output. The run succeeds; the person watching the screen cannot tell. Deterministic progress from the funnel stages (§4.1e) is not a nicety here, it is the only thing between a working run and a frozen-looking screen.
+1. **`gemini-3.5-flash-lite` at `low` has real headroom.** 42.5s worst, 14% of the budget. Nothing about the function limit constrains it.
+2. **`gemini-3.6-flash` at `high` does not.** 207.8s worst is **69% of the 300s limit**, from a laptop, on a fixed payload, with no cold start and no network variance. A slower day pushes it over. This configuration should not be treated as available without more evidence.
+3. **The 20-second product target is missed almost everywhere.** Exactly one configuration meets it — lite at `low`, and only at the median. Per [§12](../spec.md) that is "a finding about the architecture, not just a slow run", and it belongs in the Milestone 1 conversation.
+4. **The tail is far worse than the median, on every row.** Lite at `low` is the extreme: 5.6s median, 42.5s worst — an eight-fold spread on byte-identical input. **Whatever [A4](../../tasks/todo.md) promises, it has to survive the worst run, not the typical one.**
+
+**First text is its own problem, and it scales with thinking.** 1.2s on the lite model at `low`; **152 seconds** on `gemini-3.6-flash` at `high`. Two and a half minutes before a single character appears, because thinking precedes output. The run succeeds; the person watching the screen has no way to know that. Deterministic progress from the funnel stages (§4.1e) is not a nicety — it is the only thing between a working run and a screen that looks frozen.
+
+### A measurement that was almost wrong
+
+The first pass at the `gemini-3.6-flash` / `high` row reported a worst case of 175.7s. **That number was an artefact of the measuring instrument**: the spike set a 180-second client timeout, and one run was aborted at exactly 180.0s while still working. The recorded "worst" was the cap, not the run.
+
+Raised to 290s — just under the function limit, so what stops a run is the limit being measured against rather than a number the spike picked. The honest worst is **207.8s**, and two of the five runs exceeded the old cap.
+
+The lesson generalises past this file: **an instrument that silently truncates reports the instrument, not the system.** F2 exists to find the worst case, and it had quietly capped it.
 
 ### The free tier does not fit this project
 
@@ -117,17 +125,45 @@ Two fixes, both in [lib/spike/match.ts](../../lib/spike/match.ts): the budget is
 
 ### Deployed (Vercel Hobby)
 
-| Model | Thinking | Runs | Median | Worst | First text | In / out / thought tokens | Covers all 6 |
-| ----- | -------- | ---- | ------ | ----- | ---------- | ------------------------- | ------------ |
-|       |          |      |        |       |            |                           |              |
+Measured 2026-08-26 against `https://squadlock.vercel.app`. **3 runs, one configuration** — deliberately small: the free tier's daily quota is the scarce resource, and the question the deployed pass has to answer is narrow.
+
+| Model                   | Thinking | Runs | Median   | Worst    | First text | In / out / thought tokens | Covers all 6 |
+| ----------------------- | -------- | ---- | -------- | -------- | ---------- | ------------------------- | ------------ |
+| `gemini-3.5-flash-lite` | low      | 3    | **4.6s** | **4.7s** | 0.9s       | 8045 / 1007 / 0           | yes          |
+
+**The serverless function is not slower than the laptop. It is faster, and far steadier.**
+
+|                     | Local (5 runs) | Deployed (3 runs) |
+| ------------------- | -------------- | ----------------- |
+| Median              | 5.6s           | **4.6s**          |
+| Worst               | 42.5s          | **4.7s**          |
+| Spread worst/median | 7.6×           | **1.02×**         |
+
+That answers the question this pass existed to ask — _does the platform add cost the laptop hid?_ — with a clear no. Cold start, function overhead and the network between Vercel and Google add nothing measurable here.
+
+**It also reframes the local tail.** The 42.5s outlier on the same configuration is very unlikely to be the model: three deployed runs landed inside 200ms of each other on identical input. The likelier cause is the laptop's own network. **That does not make the tail disappear — it moves the suspicion from the provider to the local environment**, and the [A4](../../tasks/todo.md) rule stands unchanged, because production still has to survive whatever the worst run turns out to be.
+
+**What these three runs do not establish.** Three runs cannot characterise a tail — that is the whole reason the local rows took five. A worst case of 4.7s out of three attempts is a statement about three attempts. If the deployed tail ever matters to a decision, it needs a real sample, on a day when quota is not the binding constraint.
 
 ### Verdict
 
-_To be written once the numbers exist. One line: does streaming inside a request hold, yes or no. If no, say what replaces it._
+**Yes. A matching run streams inside a Vercel function, and no background job is needed.** Spec §4.1e holds as written, [A4](../../tasks/todo.md) is unblocked, and the background-job infrastructure the superseded architecture required stays off the table.
+
+Measured, not assumed: worst observed run **207.8s against a 300s limit** in the slowest configuration, **4.7s** in the one the product would actually ship. Deploying costs nothing — the function is faster and steadier than the development machine.
+
+Three qualifications travel with that answer:
+
+- **The margin depends on the configuration**, from 14% of the budget to 69%. `gemini-3.6-flash` at `high` is not comfortably inside the limit and should not be treated as available without more evidence.
+- **The 20-second product target (§12, criterion 6) is a different question, and mostly the answer is no.** One configuration meets it. That belongs in the Milestone 1 conversation, not in A4's way.
+- **The provider and the free tier are unresolved** — see below. Neither blocks A4; both have deadlines.
+
+**F2's acceptance is met.** What remains open in this file is recorded as open.
 
 ## The provider
 
 **The matching call runs on the Gemini API, not on Claude.** The reason is money: the Gemini API has a free tier that needs no billing account and no credit card, and Anthropic's API has no free tier — a Claude Pro or Max subscription buys the apps, not API credits.
+
+**This started as a spike-scoped choice and became the project's.** On 2026-08-26 the documents were brought in line with the code: [spec §6.4](../spec.md) rewritten for Gemini with prices read from Google's pricing page that day, A1 renamed from "Anthropic client" to "Gemini client", `ANTHROPIC_API_KEY` replaced by `GEMINI_API_KEY` in `.env.example`, and the free-tier-versus-paid choice recorded as a new open question — [§13, item 17](../spec.md). Nothing in the repository names Claude as this project's provider any more.
 
 **Choosing the models was not a preference — the free tier decided it.** Four candidates were tried against this project's key on 2026-08-25:
 
@@ -144,26 +180,6 @@ _To be written once the numbers exist. One line: does streaming inside a request
 So the two measured models are **`gemini-3.5-flash-lite`** (does not think — fast) and **`gemini-3.6-flash`** (thinks — slower), chosen to span the range rather than sit next to each other.
 
 **Two thinking levels** — `low` and `high`, Gemini's version of an effort dial. It is the cheapest latency knob available, and what `low` costs in quality is [A10](../../tasks/todo.md)'s question later; here it is only being timed.
-
-### An early read, from single runs
-
-Not the measurement — one run each, taken while getting the spike working. Recorded because it is the first real evidence:
-
-| Model                   | Thinking | Total | First text | In / out / thought tokens | Covers all 6 |
-| ----------------------- | -------- | ----- | ---------- | ------------------------- | ------------ |
-| `gemini-3.5-flash-lite` | low      | 4.8s  | 1.0s       | 8045 / 898 / 0            | yes          |
-| `gemini-3.6-flash`      | low      | 30.6s | 22.8s      | 8045 / 1205 / 4663        | yes          |
-
-Both sit far inside the 300-second function limit. The lite model also sits inside the 20-second product target; the flash model does not. **Note the first-text column** — 23 seconds of silence before a single character appears is a real product problem even though the run completes, and it is exactly what the progress reporting in §5.6 exists for.
-
-### Three things the free tier costs that money does not
-
-1. **Rate limits, and they are tight.** The free tier allows **5 requests per minute, per model** (`GenerateRequestsPerMinutePerProjectPerModel-FreeTier`) — one call every 12 seconds. Measured against this key on 2026-08-25, not read from a doc. The runner leaves a 20-second gap for headroom (`--gap=<seconds>`) and re-takes any run that comes back a quota error, waiting out the window the API names. **A 429 is not a latency result**, and a runner that recorded one as a 0.4-second run would be lying about the very thing this file exists to measure.
-
-   The SDK compounds this: by default it retries a 429 silently for minutes, which looks exactly like a hang. The spike sets `maxRetries: 0` so the quota error surfaces and the runner, not the SDK, decides what to do about it.
-
-2. **Free-tier prompts are used to improve Google's products.** Google's [pricing page](https://ai.google.dev/gemini-api/docs/pricing) states this plainly: free tier "used to improve our products — yes", paid tier "no". Fabricated spike data is fine. **Real participants' preferences, home neighbourhoods and calendar availability are not** — [spec §10](../spec.md) commits this project to least privilege, and this contradicts it. **Before any real user data touches the API, the project has to move to the paid tier.** That is an open decision, not a settled one.
-3. **The spec still says Anthropic.** [A1](../../tasks/todo.md) names `claude-sonnet-5` and `claude-haiku-4-5`; [spec §6.3](../spec.md) lists an Anthropic API key as a dependency. Those documents have not been updated and now disagree with the code.
 
 ## Notes for whoever reads the numbers
 
