@@ -14,9 +14,7 @@ No engine exists yet to run these against. The expected answer in every file is 
 
 Steps 1–3 are mechanical — two people applying them by hand to the same scenario should reach the same answer. Where they don't, the scenario is underspecified and needs fixing, not the disagreement.
 
-**The two `no-perfect-solution` scenarios are the exception.** There, steps 1–2 still apply mechanically, but step 3 doesn't produce a single forced answer — multiple venues survive and none dominates the others on every axis. `"consensusRequired": true` marks this in the file. The three of us have to actually agree on one before it's usable as ground truth; it isn't something to compute alone.
-
-Both of those two files also carry a `claudeRecommendation` field — a proposed starting point for the discussion, with its own reasoning, not a fourth vote. It doesn't satisfy the sign-off; it exists so the conversation starts from a reasoned position instead of a blank page. Once the three of you agree, replace `expected` with the agreed answer and clear `consensusRequired`.
+**The two `no-perfect-solution` scenarios are the exception.** There, steps 1–2 still apply mechanically, but step 3 doesn't produce a single forced answer — multiple venues survive and none dominates the others on every axis. For these, `expected` records the team's actual agreed choice and reasoning, not a computed one. Both were resolved after starting from a proposed recommendation rather than a blank page — worth doing again the next time a scenario lands here without a mechanically forced answer.
 
 ## Scenario format
 
@@ -55,7 +53,7 @@ Both of those two files also carry a `claudeRecommendation` field — a proposed
 | 7   | `07-rejection-loop-noise.json`                | rejection-loop      | A rejection about atmosphere must produce a visibly quieter follow-up.                                                       |
 | 8   | `08-rejection-loop-budget.json`               | rejection-loop      | A rejection about cost must produce a visibly cheaper follow-up.                                                             |
 
-8 of 8–12 required. Scenarios 5 and 6 still need a three-way sign-off (see `consensusRequired`) before they're final — everything else is ready to sign off as-is or challenge.
+8 of 8–12 required, all agreed by the team.
 
 ## What happens to these later
 

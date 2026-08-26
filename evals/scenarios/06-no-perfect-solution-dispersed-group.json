@@ -48,11 +48,6 @@
   ],
   "expected": {
     "venue": "Herbert Samuel Grill",
-    "reasoning": "Every candidate leaves someone over tolerance, so there is no 'solution' in the strict sense. Averaging distance would favor the midpoint venue, but leximin looks at the single worst-off participant per candidate: at Herbert Samuel, Amit's burden is high; at the midpoint venue, Keren and Doron are both moderately over tolerance and the venue is worse-rated for everyone. Agreed: Herbert Samuel Grill is the better of two uncomfortable options because it doesn't multiply the burden across two people to spare a third, even though it does not satisfy Amit's own tolerance.",
-    "consensusRequired": true
-  },
-  "claudeRecommendation": {
-    "venue": "Herbert Samuel Grill",
-    "reasoning": "Not a team decision — a starting proposal for the discussion, backed by the actual burden formula (spec §5.4: distance / toleranceKm). At Herbert Samuel, Amit is worst-off at roughly 13km / 8km tolerance = burden 1.625. At the midpoint venue, Keren and Doron are worst-off at roughly 9km / 5km tolerance = burden 1.8 — a higher worst-case burden, even though it looks fairer on a map, and it is also the lower-rated venue for everyone. Leximin itself, not just intuition, favors Herbert Samuel Grill. Still needs an actual three-way sign-off before it counts as agreed ground truth."
+    "reasoning": "Every candidate leaves someone over tolerance, so there is no 'solution' in the strict sense. Averaging distance would favor the midpoint venue, but leximin (spec §5.4: burden = distance / toleranceKm) looks at the single worst-off participant per candidate: at Herbert Samuel, Amit is worst-off at roughly 13km / 8km tolerance = burden 1.625. At the midpoint venue, Keren and Doron are worst-off at roughly 9km / 5km tolerance = burden 1.8 — a higher worst-case burden, even though it looks fairer on a map, and it is also the lower-rated venue for everyone. Leximin itself, not just intuition, favors Herbert Samuel Grill. Agreed by the team on this basis."
   }
 }
