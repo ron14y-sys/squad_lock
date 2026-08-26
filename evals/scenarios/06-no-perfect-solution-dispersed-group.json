@@ -1,0 +1,54 @@
+{
+  "id": "no-perfect-solution-dispersed-group",
+  "trap": "no-perfect-solution",
+  "description": "The group is geographically dispersed enough that every real candidate leaves someone over their stated comfortable travel tolerance. Leximin still picks a defensible answer — it minimizes the worst burden, it does not promise everyone comfort.",
+  "participants": [
+    {
+      "name": "Keren",
+      "neighborhood": "Rothschild",
+      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Doron",
+      "neighborhood": "Rothschild",
+      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Amit",
+      "neighborhood": "Rishon LeZion",
+      "coordinates": { "lat": 31.9718, "lng": 34.7896 },
+      "hardConstraints": [],
+      "toleranceKm": 8
+    }
+  ],
+  "availability": [{ "day": "Sunday", "start": "19:00", "end": "22:00" }],
+  "candidateVenues": [
+    {
+      "name": "Herbert Samuel Grill",
+      "neighborhood": "Rothschild",
+      "coordinates": { "lat": 32.065, "lng": 34.7751 },
+      "kosher": false,
+      "openingHours": { "Sunday": ["12:00-23:00"] },
+      "rating": 4.3,
+      "note": "~13km / far above Amit's stated tolerance."
+    },
+    {
+      "name": "Kfar Bat Yam Midpoint Grill",
+      "neighborhood": "Bat Yam",
+      "coordinates": { "lat": 32.0171, "lng": 34.7508 },
+      "kosher": false,
+      "openingHours": { "Sunday": ["12:00-23:00"] },
+      "rating": 3.6,
+      "note": "Roughly equidistant from all three, but still ~9km for Keren and Doron — above their tolerance too, and it's the lowest-rated option."
+    }
+  ],
+  "expected": {
+    "venue": "Herbert Samuel Grill",
+    "reasoning": "Every candidate leaves someone over tolerance, so there is no 'solution' in the strict sense. Averaging distance would favor the midpoint venue, but leximin looks at the single worst-off participant per candidate: at Herbert Samuel, Amit's burden is high; at the midpoint venue, Keren and Doron are both moderately over tolerance and the venue is worse-rated for everyone. Agreed: Herbert Samuel Grill is the better of two uncomfortable options because it doesn't multiply the burden across two people to spare a third, even though it does not satisfy Amit's own tolerance.",
+    "consensusRequired": true
+  }
+}

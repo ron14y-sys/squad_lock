@@ -1,0 +1,53 @@
+{
+  "id": "semantic-geography-trap",
+  "trap": "semantic-geography",
+  "description": "Straight-line distance alone picks the wrong venue: one candidate looks closer on a map but is separated from a participant by a highway with limited crossings, while a nominally-farther candidate is actually easier to reach. This is the scenario that measures whether the Context Resolver's detour factor earns its place.",
+  "participants": [
+    {
+      "name": "Tal",
+      "neighborhood": "Florentin",
+      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "hardConstraints": [],
+      "toleranceKm": 6
+    },
+    {
+      "name": "Omer",
+      "neighborhood": "Neve Tzedek",
+      "coordinates": { "lat": 32.0608, "lng": 34.7654 },
+      "hardConstraints": [],
+      "toleranceKm": 6
+    },
+    {
+      "name": "Gili",
+      "neighborhood": "Ramat Gan",
+      "coordinates": { "lat": 32.084, "lng": 34.8142 },
+      "hardConstraints": [],
+      "toleranceKm": 6
+    }
+  ],
+  "availability": [{ "day": "Tuesday", "start": "19:00", "end": "23:00" }],
+  "candidateVenues": [
+    {
+      "name": "Left Bank",
+      "neighborhood": "Florentin",
+      "coordinates": { "lat": 32.057, "lng": 34.7688 },
+      "kosher": false,
+      "openingHours": { "Tuesday": ["18:00-00:00"] },
+      "rating": 4.5,
+      "note": "Straight-line closest to Gili, but Ayalon Highway separates Ramat Gan from Florentin with few crossing points — the real detour is much longer than the straight line suggests."
+    },
+    {
+      "name": "Rothschild 12",
+      "neighborhood": "Rothschild",
+      "coordinates": { "lat": 32.065, "lng": 34.7751 },
+      "kosher": false,
+      "openingHours": { "Tuesday": ["18:00-00:00"] },
+      "rating": 4.2,
+      "note": "Slightly farther from Gili in a straight line, but sits on a direct crossing route — genuinely faster to reach."
+    }
+  ],
+  "expected": {
+    "venue": "Rothschild 12",
+    "reasoning": "Naive straight-line distance would favor Left Bank for Gili. Once the highway barrier is accounted for (a higher detour factor between Ramat Gan and Florentin than between Ramat Gan and Rothschild), Rothschild 12 is the fairer choice despite the larger raw distance. A naive straight-line-only implementation is expected to get this one wrong — that gap is exactly what this scenario measures."
+  }
+}

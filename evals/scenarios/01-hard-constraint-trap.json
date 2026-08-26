@@ -1,0 +1,51 @@
+{
+  "id": "hard-constraint-trap",
+  "trap": "hard-constraint",
+  "description": "The best-rated, closest venue is not kosher. It must never be the answer, however good it looks on every other axis.",
+  "participants": [
+    {
+      "name": "Dana",
+      "neighborhood": "Rothschild",
+      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "hardConstraints": ["kosher"],
+      "toleranceKm": 4
+    },
+    {
+      "name": "Yoav",
+      "neighborhood": "Rothschild",
+      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "hardConstraints": [],
+      "toleranceKm": 4
+    },
+    {
+      "name": "Maya",
+      "neighborhood": "Rothschild",
+      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "hardConstraints": [],
+      "toleranceKm": 4
+    }
+  ],
+  "availability": [{ "day": "Thursday", "start": "20:00", "end": "23:00" }],
+  "candidateVenues": [
+    {
+      "name": "Toto",
+      "neighborhood": "Rothschild",
+      "coordinates": { "lat": 32.065, "lng": 34.7751 },
+      "kosher": false,
+      "openingHours": { "Thursday": ["18:00-01:00"] },
+      "rating": 4.8
+    },
+    {
+      "name": "Container",
+      "neighborhood": "Jaffa Port",
+      "coordinates": { "lat": 32.0517, "lng": 34.7503 },
+      "kosher": true,
+      "openingHours": { "Thursday": ["19:00-00:00"] },
+      "rating": 4.3
+    }
+  ],
+  "expected": {
+    "venue": "Container",
+    "reasoning": "Toto is closer and rated higher, but Dana requires kosher and Toto isn't. The hard-constraint filter drops Toto before rating or distance is ever compared — Container is the only valid candidate, not the better one."
+  }
+}

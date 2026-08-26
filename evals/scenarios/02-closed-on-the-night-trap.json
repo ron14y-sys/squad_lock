@@ -1,0 +1,51 @@
+{
+  "id": "closed-on-the-night-trap",
+  "trap": "closed-on-the-night",
+  "description": "The best-rated venue is shut at every time the group is actually free. It must never be the answer.",
+  "participants": [
+    {
+      "name": "Noa",
+      "neighborhood": "Florentin",
+      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Itai",
+      "neighborhood": "Florentin",
+      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Roni",
+      "neighborhood": "Florentin",
+      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    }
+  ],
+  "availability": [{ "day": "Thursday", "start": "21:00", "end": "23:00" }],
+  "candidateVenues": [
+    {
+      "name": "Anna Loulou",
+      "neighborhood": "Jaffa",
+      "coordinates": { "lat": 32.0498, "lng": 34.752 },
+      "kosher": false,
+      "openingHours": { "Thursday": ["18:00-20:00"] },
+      "rating": 4.9
+    },
+    {
+      "name": "Port Said",
+      "neighborhood": "Rothschild",
+      "coordinates": { "lat": 32.0644, "lng": 34.7735 },
+      "kosher": false,
+      "openingHours": { "Thursday": ["12:00-01:00"] },
+      "rating": 4.4
+    }
+  ],
+  "expected": {
+    "venue": "Port Said",
+    "reasoning": "Anna Loulou is rated highest but closes at 20:00, before the group's 21:00-23:00 window even opens. It fails the opening-hours check for every viable time slot, so Port Said — open until 1am — is the only candidate left."
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "id": "no-perfect-solution-diet-conflict",
+  "trap": "no-perfect-solution",
+  "description": "No venue satisfies every soft preference. The two hard constraints still fully determine the answer; the rest is an agreed, defensible compromise rather than a computed optimum.",
+  "participants": [
+    {
+      "name": "Adi",
+      "neighborhood": "Kerem HaTeimanim",
+      "coordinates": { "lat": 32.0637, "lng": 34.7677 },
+      "hardConstraints": ["kosher"],
+      "toleranceKm": 6
+    },
+    {
+      "name": "Noam",
+      "neighborhood": "Kerem HaTeimanim",
+      "coordinates": { "lat": 32.0637, "lng": 34.7677 },
+      "hardConstraints": ["vegan-option-required"],
+      "toleranceKm": 6
+    },
+    {
+      "name": "Hila",
+      "neighborhood": "Kerem HaTeimanim",
+      "coordinates": { "lat": 32.0637, "lng": 34.7677 },
+      "hardConstraints": [],
+      "softPreferences": { "budget": "low" },
+      "toleranceKm": 6
+    },
+    {
+      "name": "Eyal",
+      "neighborhood": "Kerem HaTeimanim",
+      "coordinates": { "lat": 32.0637, "lng": 34.7677 },
+      "hardConstraints": [],
+      "toleranceKm": 6
+    }
+  ],
+  "availability": [{ "day": "Monday", "start": "20:30", "end": "23:00" }],
+  "candidateVenues": [
+    {
+      "name": "Meshek Barzilay",
+      "neighborhood": "Kerem HaTeimanim",
+      "kosher": false,
+      "veganOptions": true,
+      "priceLevel": "mid-high",
+      "openingHours": { "Monday": ["09:00-23:00"] },
+      "rating": 4.5
+    },
+    {
+      "name": "HaKosem Kerem",
+      "neighborhood": "Kerem HaTeimanim",
+      "kosher": true,
+      "veganOptions": true,
+      "priceLevel": "low",
+      "openingHours": { "Monday": ["11:00-22:30"] },
+      "rating": 3.7
+    },
+    {
+      "name": "Nanuchka Kosher",
+      "neighborhood": "Kerem HaTeimanim",
+      "kosher": true,
+      "veganOptions": true,
+      "priceLevel": "mid-high",
+      "openingHours": { "Monday": ["18:00-01:00"] },
+      "rating": 4.4
+    }
+  ],
+  "expected": {
+    "venue": "either HaKosem Kerem or Nanuchka Kosher, agreed by the three of you in advance",
+    "reasoning": "Meshek Barzilay is not kosher, so Adi's hard constraint eliminates it regardless of rating — that part is mechanical, not a judgment call. What's left is genuinely ambiguous: HaKosem Kerem satisfies Hila's low-budget preference but is the lowest-rated option; Nanuchka Kosher is better-rated and still satisfies both hard constraints, but breaks Hila's budget preference. Neither is a strictly better answer — this is the actual no-perfect-solution case, and the point of the scenario is that the three of you have to agree on one before the engine exists, not compute one.",
+    "consensusRequired": true
+  }
+}
