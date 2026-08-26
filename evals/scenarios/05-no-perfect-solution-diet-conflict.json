@@ -64,12 +64,7 @@
     }
   ],
   "expected": {
-    "venue": "either HaKosem Kerem or Nanuchka Kosher, agreed by the three of you in advance",
-    "reasoning": "Meshek Barzilay is not kosher, so Adi's hard constraint eliminates it regardless of rating — that part is mechanical, not a judgment call. What's left is genuinely ambiguous: HaKosem Kerem satisfies Hila's low-budget preference but is the lowest-rated option; Nanuchka Kosher is better-rated and still satisfies both hard constraints, but breaks Hila's budget preference. Neither is a strictly better answer — this is the actual no-perfect-solution case, and the point of the scenario is that the three of you have to agree on one before the engine exists, not compute one.",
-    "consensusRequired": true
-  },
-  "claudeRecommendation": {
     "venue": "HaKosem Kerem",
-    "reasoning": "Not a team decision — a starting proposal for the discussion. Of the four participants, only Hila stated a preference relevant to this trade-off (low budget); nobody stated a preference for a higher-rated or pricier venue. With no participant preference pointing the other way, honoring the one real stated preference seems more defensible than optimizing an unrequested rating number. Still needs an actual three-way sign-off before it counts as agreed ground truth."
+    "reasoning": "Meshek Barzilay is not kosher, so Adi's hard constraint eliminates it regardless of rating — that part is mechanical. Between the two remaining kosher, vegan-friendly options, Nanuchka Kosher is better-rated but HaKosem Kerem is the only one where an actual stated participant preference (Hila's low budget) points toward it; nobody stated a preference for a higher-rated or pricier venue. Agreed by the team on this basis."
   }
 }
