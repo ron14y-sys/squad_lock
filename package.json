@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test",
+    "postinstall": "prisma generate",
     "prepare": "husky",
     "spike:runtime": "node scripts/spike-runtime.mjs",
     "db:generate": "prisma generate",
