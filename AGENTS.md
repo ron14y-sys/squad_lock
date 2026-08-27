@@ -77,7 +77,14 @@ Individual gates: `npm run format` (writes) · `format:check` (reads) · `lint` 
 
 **Async Server Components cannot be unit-tested** — Vitest does not support them yet. Test synchronous components directly and cover the async ones end-to-end.
 
-**Setup for a new participant** is `npm install` and nothing else: the `prepare` script points git at `.husky/`, so the hooks are live from the first clone.
+**Setup for a new participant** is `npm install` and nothing else. Two lifecycle scripts do the rest: `prepare` points git at `.husky/`, so the hooks are live from the first clone, and `postinstall` generates the Prisma client.
+
+**The Prisma client is generated, never committed.** `lib/generated/prisma` is a build artifact, kept out of git and rebuilt by `postinstall` on every `npm install` and `npm ci` — one line that covers a fresh clone, CI and the Vercel build together. Two traps here have already been sprung once (#71), and both were invisible until the first file imported the client:
+
+- **A comment is not a script.** `.gitignore` described the client as "wired into postinstall" while no `postinstall` existed. Nothing failed, because nothing imported the client yet — the bug sat latent, waiting to surface on somebody else's clone as a confusing missing-module error with no obvious connection to its cause. If you write down that something is automated, automate it in the same commit.
+- **`prisma generate` must not need a database.** `prisma.config.ts` reads `DATABASE_URL` through `process.env`, **not** prisma's `env()` helper. `env()` throws on a missing value and runs as the config module loads, so it fired for _every_ CLI command — including `generate`, which only reads a schema file and opens no connection. Before Postgres is provisioned that made the client impossible to build at all, and blocked the by-hand workaround too. `datasource` is optional by design, so migrate, studio and introspect still fail loudly, with prisma's own message, when the URL is genuinely required. **Do not put `env()` back**: `__tests__/toolchain.test.ts` fails if you do.
+
+The shared lesson is worth stating once, because it is the reason both went unnoticed: **a build step nothing exercises yet is not working, it is merely untested.** When a toolchain fix has no natural caller, give it an assertion rather than trusting the next person to trip over it.
 
 **Hooks find Node themselves.** A git hook does not load your shell profile, so the `PATH` inside one is not the `PATH` you see in a terminal — and on at least one machine here Node was on neither. `.husky/common.sh` looks in the usual places (Homebrew, `/usr/local`, Volta, nvm) before anything runs, and fails with a readable message instead of `npm: command not found` if it comes up empty. If your Node lives somewhere unusual, add it to `PATH` in `~/.config/husky/init.sh`, which husky sources for every hook.
 
