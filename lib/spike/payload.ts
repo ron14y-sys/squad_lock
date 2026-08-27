@@ -7,6 +7,11 @@
  * free/busy blocks, and a rejection history — because a cycle-3 run carries one
  * and is therefore the longest run the system can ask for.
  *
+ * These types are the *model payload* shape — flattened, snake_case, with
+ * distances precomputed — not the shared vocabulary. That lives in
+ * `lib/types/` (issue #4). This file is frozen as the input the F2 measurement
+ * in docs/decisions/runtime-budget.md actually ran on; A1 replaces it.
+ *
  * None of this is real data. Coordinates are approximate Tel Aviv
  * neighbourhoods; venue names are invented. Nothing here is a claim about a
  * real restaurant.
