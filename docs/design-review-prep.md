@@ -155,7 +155,7 @@ _Still to confirm, and it is a two-minute check:_ the Cloud Console displays a s
 | Conflict           | same day, under 4 hours apart                                                                                                 |
 | Feed refresh       | ~3s while re-weighing · ~30s otherwise · off in the background                                                                |
 | Amendment batching | ~90s, closed by the next poll — no cron, no background job                                                                    |
-| Models             | `claude-sonnet-5` matching · `claude-haiku-4-5` for both extraction components                                                |
+| Models             | `gemini-3.6-flash` matching · `gemini-3.5-flash-lite` for both extraction components (spec §6.4)                              |
 | Target run time    | ≤ 20s with visible progress                                                                                                   |
 | Eval bar           | ≥ 80% pass, **zero** hard-constraint violations                                                                               |
 

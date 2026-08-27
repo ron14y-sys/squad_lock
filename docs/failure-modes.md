@@ -8,18 +8,18 @@ Every point where SquadLock depends on something outside its own code — Google
 
 ## 1. Map of dependencies
 
-| Dependency                               | Used by                                           | What can go wrong                                                                      |
-| ---------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Google OAuth (sign-in)                   | Onboarding, every session                         | User declines, Google unreachable, Testing-mode cap/expiry — see onboarding-flow.md §7 |
-| Google Calendar (`freebusy`)             | Availability computation (B6), every matching run | Call fails or times out, access revoked after the fact, empty calendar                 |
-| Google Places                            | Candidate funnel (B7)                             | Call fails or times out, monthly quota exhausted, search area yields nothing           |
-| Anthropic API — **Context Resolver**     | Pre-search parameters (A12)                       | Timeout, malformed output, outage                                                      |
-| Anthropic API — **Group Matching Agent** | The decision itself (A4)                          | Timeout, malformed/invalid schema output, outage                                       |
-| Anthropic API — **Constraint Updater**   | Rejection parsing (A7)                            | Timeout, malformed output, outage                                                      |
-| PostgreSQL                               | Everything                                        | Unreachable, write fails mid-transaction                                               |
-| Resend                                   | Invitations and notifications (B8)                | Send fails, bounces, domain misconfigured                                              |
-| Vercel function timeout                  | Any matching run                                  | Exceeded despite the Week 1 measurement (F2)                                           |
-| Client network                           | Feed polling, saving a form                       | Connection drops mid-request                                                           |
+| Dependency                            | Used by                                           | What can go wrong                                                                      |
+| ------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Google OAuth (sign-in)                | Onboarding, every session                         | User declines, Google unreachable, Testing-mode cap/expiry — see onboarding-flow.md §7 |
+| Google Calendar (`freebusy`)          | Availability computation (B6), every matching run | Call fails or times out, access revoked after the fact, empty calendar                 |
+| Google Places                         | Candidate funnel (B7)                             | Call fails or times out, monthly quota exhausted, search area yields nothing           |
+| Gemini API — **Context Resolver**     | Pre-search parameters (A12)                       | Timeout, malformed output, outage                                                      |
+| Gemini API — **Group Matching Agent** | The decision itself (A4)                          | Timeout, malformed/invalid schema output, outage                                       |
+| Gemini API — **Constraint Updater**   | Rejection parsing (A7)                            | Timeout, malformed output, outage                                                      |
+| PostgreSQL                            | Everything                                        | Unreachable, write fails mid-transaction                                               |
+| Resend                                | Invitations and notifications (B8)                | Send fails, bounces, domain misconfigured                                              |
+| Vercel function timeout               | Any matching run                                  | Exceeded despite the Week 1 measurement (F2)                                           |
+| Client network                        | Feed polling, saving a form                       | Connection drops mid-request                                                           |
 
 ---
 
