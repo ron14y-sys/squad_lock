@@ -8,7 +8,8 @@
  * hard-constraint filter (§4.1b) and the burden denominator (§5.4). A shape
  * A-track invents privately is a shape B-track has to guess at.
  *
- * `softPreferences` is the exception, and stays `unknown` — see below.
+ * `softPreferences` was the exception while its shape was undecided — the
+ * preference game (C2) now decides it. See `SoftPreferences` below.
  */
 
 import type {
@@ -66,6 +67,19 @@ export type RecurringMobilityRule =
       origin?: LatLng;
     };
 
+/**
+ * The initial signal from the this-or-that preference game (spec §5.1, C2).
+ * Four forced choices, not a long form — each field is one binary lever,
+ * not a free-text description, so it can be handed to the matching agent
+ * without any parsing step.
+ */
+export type SoftPreferences = {
+  noiseLevel: "lively" | "quiet";
+  activityStyle: "outdoorsy" | "cultural";
+  budget: "modest" | "splurge";
+  cuisine: "familiar" | "adventurous";
+};
+
 export type PreferenceProfile = {
   id: string;
   userId: string;
@@ -74,13 +88,12 @@ export type PreferenceProfile = {
 
   /**
    * Cuisine, budget, atmosphere, noise level — soft signal only (spec §5.1).
-   *
-   * Deliberately untyped. Nothing deterministic ever branches on it; it is
-   * passed to the model as-is and shaped by A4's JSON Schema at that boundary,
-   * where validation belongs. Give it a shape here and we would be freezing a
-   * product decision the preference game has not made yet.
+   * Nothing deterministic branches on it; the model reads it as-is and A4's
+   * JSON Schema is the real validation boundary. Typed here anyway so the
+   * preference game (C2) and anything that renders a profile agree on a
+   * shape, rather than each guessing at an `unknown`.
    */
-  softPreferences: unknown;
+  softPreferences: SoftPreferences;
 
   /** Both database columns are nullable together; `null` means not set yet. */
   home: LatLng | null;
