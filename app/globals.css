@@ -22,5 +22,16 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Phones with a notch or a home indicator (iPhone, some Android) reserve
+   space via these env() variables. Without them, content sits under the
+   notch or gets covered by the home-indicator bar. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }
