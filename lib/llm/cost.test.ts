@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   assertReportableCost,
   describeCost,
+  describeTotal,
   isPricedModel,
   pendingPriceChanges,
   PRICED_MODELS,
   PRICING,
   priceCall,
+  totalCost,
   unpricedModels,
   ZERO_USAGE,
   type TokenUsage,
@@ -176,5 +178,73 @@ describe("pendingPriceChanges", () => {
 
   it("stays quiet the day before it", () => {
     expect(pendingPriceChanges(new Date("2026-12-31"))).toEqual([]);
+  });
+});
+
+describe("totalCost", () => {
+  /**
+   * The guard that does not rely on anyone remembering. Summing `usd` by hand is
+   * wrong in a way nothing complains about — `0 + null === 0` — so the natural
+   * way to total a run has to be the safe way.
+   */
+
+  const priced = (model: string, inputTokens: number) =>
+    priceCall(model, usage({ inputTokens }));
+
+  it("adds up calls that are all priced", () => {
+    const total = totalCost([
+      priced("gemini-3.6-flash", 1_000_000),
+      priced("gemini-3.6-flash", 1_000_000),
+    ]);
+    expect(total.basis).toBe("exact");
+    expect(total.usd).toBeCloseTo(1.5, 10);
+  });
+
+  it("refuses to produce a number when any part is unpriced", () => {
+    const total = totalCost([
+      priced("gemini-3.6-flash", 1_000_000),
+      priced("gemini-4.0-flash", 1_000_000),
+    ]);
+    // The hand-written sum would have said $0.75 and looked entirely credible.
+    expect(total.usd).toBeNull();
+    expect(total.basis).toBe("unknown");
+    expect(total.unpriced).toEqual(["gemini-4.0-flash"]);
+  });
+
+  it("names the unpriced model in words", () => {
+    const total = totalCost([priced("gemini-4.0-flash", 10)]);
+    expect(describeTotal(total)).toContain("gemini-4.0-flash");
+    expect(describeTotal(total)).not.toContain("$");
+  });
+
+  it("carries an approximation upward rather than dropping it", () => {
+    const total = totalCost([
+      priceCall("gemini-3.6-flash", usage({ inputTokens: 100 })),
+      priceCall(
+        "gemini-3.6-flash",
+        usage({ inputTokens: 100, cachedTokens: 80 })
+      ),
+    ]);
+    expect(total.basis).toBe("approximate");
+    expect(describeTotal(total)).toContain("cached input not discounted");
+  });
+
+  it("lists every model that contributed", () => {
+    const total = totalCost([
+      priced("gemini-3.6-flash", 10),
+      priced("gemini-3.5-flash-lite", 10),
+      priced("gemini-3.6-flash", 10),
+    ]);
+    expect(total.models).toEqual(["gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+  });
+
+  it("totals nothing to zero, not to unknown", () => {
+    // An eval run with no calls cost nothing. That is a fact, not a gap.
+    expect(totalCost([])).toEqual({
+      usd: 0,
+      basis: "exact",
+      models: [],
+      unpriced: [],
+    });
   });
 });

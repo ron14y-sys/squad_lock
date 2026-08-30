@@ -205,3 +205,64 @@ export function pendingPriceChanges(today: Date): string[] {
         `${row.risesOn!.inputPerM}/${row.risesOn!.outputPerM}`
     );
 }
+
+/**
+ * The cost of several calls together — one scenario, one cycle, one eval run.
+ *
+ * Spans models, so it names them rather than one.
+ */
+export type CostTotal = {
+  usd: number | null;
+  basis: CostBasis;
+  /** Every model that contributed, in the order first seen. */
+  models: string[];
+  /** The ones with no price. Empty unless `basis` is `unknown`. */
+  unpriced: string[];
+};
+
+/**
+ * Adds up costs **without letting an unknown become a zero.**
+ *
+ * This exists because the obvious way to total a run is wrong in a way nothing
+ * complains about:
+ *
+ * ```js
+ * calls.reduce((sum, c) => sum + c.cost.usd, 0)   // 0 + null === 0
+ * ```
+ *
+ * A `null` disappears into that sum. The run prints `$0.07 per decision` when
+ * the honest answer is "one of these was unpriced, so we do not know" — the
+ * exact failure `usd: null` was introduced to prevent, defeated by JavaScript's
+ * arithmetic on the way to the report.
+ *
+ * So the safe path is the easy one: totalling costs the natural way produces a
+ * `CostTotal` whose `usd` is `null` the moment any part is unknown.
+ * `assertReportableCost` stays as the loud version for
+ * [A5](../../tasks/todo.md), but it is no longer the only line of defence.
+ */
+export function totalCost(costs: Cost[]): CostTotal {
+  const models = [...new Set(costs.map((c) => c.model))];
+  const unpriced = unpricedModels(costs);
+
+  if (unpriced.length > 0) {
+    return { usd: null, basis: "unknown", models, unpriced };
+  }
+
+  const usd = costs.reduce((sum, c) => sum + (c.usd ?? 0), 0);
+  const basis = costs.some((c) => c.basis === "approximate")
+    ? "approximate"
+    : "exact";
+
+  return { usd, basis, models, unpriced: [] };
+}
+
+/** The same words `describeCost` uses, for a total rather than one call. */
+export function describeTotal(total: CostTotal): string {
+  if (total.basis === "unknown") {
+    return `unpriced(no price for ${total.unpriced.join(", ")} — add to PRICING in lib/llm/cost.ts)`;
+  }
+  const amount = `$${(total.usd ?? 0).toFixed(6)}`;
+  return total.basis === "approximate"
+    ? `~${amount} (cached input not discounted)`
+    : amount;
+}

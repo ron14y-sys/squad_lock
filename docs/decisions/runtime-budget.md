@@ -121,7 +121,7 @@ Per-model daily limits differ and are not published — they are visible per acc
 
 The first attempt at both `high` rows failed with a JSON parse error at ~2,500 characters. The cause was `max_output_tokens: 16000`: **thinking tokens are spent from the same budget as the answer**, and at `high` they dwarf it — one run spent 20,424 thought tokens against 1,183 of actual output. The response was cut off mid-object.
 
-Two fixes, both in [lib/spike/match.ts](../../lib/spike/match.ts): the budget is now 65,536 (the models' documented ceiling), and a stream that ends without a completion event now says it was truncated instead of blaming the JSON. **A4 inherits this**: any output cap has to hold the thinking as well as the answer, and a truncated response must fail loudly rather than look like a malformed one.
+Two fixes, both in [lib/spike/match.ts](../../lib/spike/match.ts): the budget is now 65,536 (the models' documented ceiling), and a stream that ends without a completion event now says it was truncated instead of blaming the JSON. **A4 inherits this**: any output cap has to hold the thinking as well as the answer, and a truncated response must fail loudly rather than look like a malformed one. Both are now fixed in place rather than left as advice — see [the LLM client](llm-client.md).
 
 ### Deployed (Vercel Hobby)
 
