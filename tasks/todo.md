@@ -26,7 +26,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Verify: the spike completes without being killed, with margin against the limit
   - Files: `docs/decisions/runtime-budget.md`, one spike route
 
-- [ ] **F3 — Shared types**
+- [x] **F3 — Shared types**
   - Acceptance: types for `PreferenceProfile`, `Meeting`, `MatchRun`, `MatchOption`, `Response`, `ParticipantMeetingContext`, `ResolvedContext`. Includes the **status vocabulary as a union** — `waiting_on_you` / `waiting_on_others` / `reweighing` / `conflicting` / `stuck` / `closed` — and **three** response kinds: `approved`, `cant_make_it`, `doesnt_suit`, plus the amendment which is not a response at all. **Distance and tolerance signatures are time-aware from day one** — tolerance is per time slot, not a scalar (spec §5.4).
   - Verify: `npm run build` passes; each track has imported at least one type
   - Files: `lib/types/*.ts`
@@ -51,7 +51,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 
 ### Milestone 1 (weeks 2–3)
 
-- [ ] **A1 — Gemini client and cost logging**
+- [x] **A1 — Gemini client and cost logging**
   - Acceptance: thin wrapper over `@google/genai` logging input, output and **thought** tokens plus dollar cost per call. Model by env var — `gemini-3.6-flash` for matching, `gemini-3.5-flash-lite` for the two extraction components (spec §6.4).
   - Note: thought tokens are spent from `max_output_tokens` and dwarf the answer — size the cap for both, and treat a stream that ends without a completion event as truncated, not malformed. Measured in [F2](../docs/decisions/runtime-budget.md).
   - Files: `lib/llm/client.ts`, `lib/llm/cost.ts`
