@@ -71,8 +71,9 @@ const yellow = paint("33");
 const blue = paint("34");
 const magenta = paint("35");
 
-/** Column padding that ignores colour codes, which are printed but not seen. */
+/** Colour codes are printed but not seen, so they must not count as width. */
 const ANSI = new RegExp(`${ESC}\\[[0-9;]*m`, "g");
+/** Pad to a visible width, measuring the text without its colour codes. */
 function pad(text: string, width: number): string {
   const visible = text.replace(ANSI, "").length;
   return text + " ".repeat(Math.max(0, width - visible));
@@ -96,6 +97,7 @@ const BASE_PROFILE: Omit<PreferenceProfile, "id" | "userId"> = {
   updatedAt: new Date("2026-08-01T00:00:00.000Z"),
 };
 
+/** One member of the cast: the base profile, with this person's quirks laid over it. */
 function person(
   userId: string,
   name: string,
@@ -317,10 +319,12 @@ const CLOCK = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 
+/** A slot in local time, short enough to sit in a table column. */
 function whenOf(slot: TimeSlot): string {
   return `${WHEN.format(slot.start)}-${CLOCK.format(slot.end)}`;
 }
 
+/** The rule and title that open each of the six stages. */
 function heading(step: string, title: string): void {
   console.log(`\n${bold(blue(`-- ${step} `))}${bold(title)}`);
   console.log(dim("-".repeat(74)));
@@ -332,6 +336,7 @@ const nameOf = (placeId: string) => venueById.get(placeId)?.name ?? placeId;
 const idOfSlot = (slot: TimeSlot) =>
   SLOTS.find((s) => s.slot === slot)?.id ?? "unknown-slot";
 
+/** The unverified facts as a phrase: `opening hours, "kosher"`. */
 function describeUnverified(facts: UnverifiedFact[]): string {
   return facts
     .map((f) => (f.kind === "opening_hours" ? "opening hours" : `"${f.tag}"`))
@@ -581,6 +586,10 @@ type AgentOption = {
   unverified_note: string;
 };
 
+/**
+ * The prompt A1 sends. Only pairs that survived A2 go in it — the agent is
+ * never shown an option it is not allowed to pick.
+ */
 function buildUserMessage(viable: ViablePair[]): string {
   const people = PARTICIPANTS.map((p) => ({
     id: p.userId,
@@ -615,6 +624,10 @@ function buildUserMessage(viable: ViablePair[]): string {
   ].join("\n");
 }
 
+/**
+ * Stage 4: stream the choice out of Gemini and print the cost. Returns `null`
+ * under `--offline`, which makes no call at all.
+ */
 async function runAgent(
   viable: ViablePair[],
   records: LlmCallRecord[]

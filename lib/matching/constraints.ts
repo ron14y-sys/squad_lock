@@ -124,6 +124,10 @@ export function minutesOfDay(time: string): number {
 /** A stretch on the weekly axis. `end` may run past `MINUTES_PER_WEEK`. */
 type WeekInterval = { start: number; end: number };
 
+/**
+ * A slot placed on the weekly axis. Both ends are converted from the instant
+ * separately, so a slot spanning a DST change keeps its true length.
+ */
 function slotInterval(slot: TimeSlot): WeekInterval {
   const spanMs = slot.end.getTime() - slot.start.getTime();
   if (!(spanMs > 0)) {
@@ -161,12 +165,14 @@ function windowIntervals(window: LocalWindow): WeekInterval[] {
 /** The three offsets are the axis wrapping: Saturday night meets Sunday morning. */
 const WRAPS = [0, MINUTES_PER_WEEK, -MINUTES_PER_WEEK];
 
+/** Do the two share any minute, counting the wrap across Saturday midnight? */
 function intervalsOverlap(a: WeekInterval, b: WeekInterval): boolean {
   return WRAPS.some(
     (shift) => a.start < b.end + shift && b.start + shift < a.end
   );
 }
 
+/** Does `outer` hold the whole of `inner`, again allowing for the wrap? */
 function intervalContains(outer: WeekInterval, inner: WeekInterval): boolean {
   return WRAPS.some(
     (shift) =>
@@ -196,6 +202,10 @@ export function windowsCoverSlot(
   );
 }
 
+/**
+ * Two instants-based spans against each other — a proposed slot and a calendar
+ * block. No weekly axis here: both sides are absolute, so it is plain arithmetic.
+ */
 function slotsOverlap(a: TimeSlot, b: TimeSlot): boolean {
   return (
     a.start.getTime() < b.end.getTime() && b.start.getTime() < a.end.getTime()
@@ -325,6 +335,10 @@ function availableModes(
   return modes;
 }
 
+/**
+ * What the venue itself rules out, which is opening hours and nothing else.
+ * Everything person-shaped lives in `participantViolations`.
+ */
 function venueViolations(
   candidate: Candidate,
   slot: TimeSlot
@@ -355,6 +369,13 @@ function venueViolations(
   };
 }
 
+/**
+ * One person against one pair: their unavailable hours, their calendar, whether
+ * they can travel at all, and their dietary and allergy tags.
+ *
+ * A tag the venue neither satisfies nor refuses comes back as `unverified`
+ * rather than as a violation — the A2 rule that unknown is not a violation.
+ */
 function participantViolations(
   candidate: Candidate,
   slot: TimeSlot,
@@ -447,6 +468,7 @@ const SLOT_END = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 
+/** "Mon 07 Sep, 19:00–21:00" — the two formatters above, joined. */
 function describeSlot(slot: TimeSlot): string {
   return `${SLOT_START.format(slot.start)}–${SLOT_END.format(slot.end)}`;
 }

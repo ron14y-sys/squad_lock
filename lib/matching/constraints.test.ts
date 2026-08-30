@@ -46,6 +46,7 @@ const FRI_EVENING = slot(
   "2026-09-11T19:00:00.000Z"
 );
 
+/** A profile with nothing objectionable in it. Override the one field under test. */
 function profile(
   overrides: Partial<PreferenceProfile> = {}
 ): PreferenceProfile {
@@ -69,6 +70,7 @@ function profile(
   };
 }
 
+/** A participant at home in Florentin, free all week, able to travel. */
 function participant(
   userId: string,
   name: string,
@@ -85,6 +87,7 @@ function participant(
   };
 }
 
+/** A venue with no opening hours and no rating — the plainest candidate there is. */
 function candidate(overrides: Partial<Candidate> = {}): Candidate {
   return {
     placeId: "v1",
