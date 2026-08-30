@@ -62,6 +62,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Verify: unit tests — the highest-rated venue violating a constraint is removed; a venue closed at the proposed hour is removed but survives at another hour; a fabricated agent answer violating either is caught
   - Note: build this **before A4**. It is the guardrail the single-agent design leans on.
   - Files: `lib/matching/constraints.ts`, tests
+  - Decisions, and what A4 and B7c inherit: [docs/decisions/hard-constraints.md](../docs/decisions/hard-constraints.md)
 
 - [ ] **A3 — Leximin fairness scoring**
   - Acceptance: `burden = straight_line × detour_factor / tolerance_km` per participant per candidate, then **leximin** — sort burdens worst-first and compare lexicographically. Detour factor and tolerance arrive **as parameters**, defaulting to 1.0 and the profile value. Pure function, no LLM.
@@ -71,6 +72,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 - [ ] **A4 — Group Matching Agent**
   - Acceptance: one call over all profiles, availability and the shortlist returns a **schema-validated ranked top 3** (spec §4.1c). Each option carries a `(venue, datetime)` pair, a per-participant justification, and — internally — what it trades away and for whom. No free-text parsing. Runs the A2 post-check before returning. The whole run is persisted.
   - Verify: a malformed response is rejected rather than accepted; runs end to end on one eval scenario
+  - **Unverified candidates** (decided at A2): a pair carries `unverified` when its opening hours or a dietary tag could not be checked. The agent **strongly prefers pairs with nothing unverified**, and when it falls back to one, the proposal carries an asterisk telling the person to ring ahead and confirm. Never phrase it as what the option cost them (§5.6). See [docs/decisions/hard-constraints.md](../docs/decisions/hard-constraints.md)
   - Files: `lib/matching/agent.ts`, `lib/matching/schemas.ts`
 
 - [ ] **A5 — Eval runner** — `npm run eval` prints pass rate, cost, duration, cycles and hard-constraint violations per scenario. Violations column must be zero.
