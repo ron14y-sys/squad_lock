@@ -1,7 +1,8 @@
-import { prisma } from "@/lib/db/client";
+import { getPrisma } from "@/lib/db/client";
 
 export async function GET(): Promise<Response> {
   try {
+    const prisma = getPrisma();
     await prisma.$queryRaw`SELECT 1`;
     return Response.json({ status: "ok", db: "connected" });
   } catch (error) {
