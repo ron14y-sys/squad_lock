@@ -5,8 +5,10 @@ import type {
   ResponseStatus as PrismaResponseStatus,
 } from "@/lib/generated/prisma/enums";
 import type { MeetingModel } from "@/lib/generated/prisma/models";
+import type { PreferenceProfileModel } from "@/lib/generated/prisma/models";
 import {
   meetingFromRow,
+  preferenceProfileFromRow,
   type MeetingStatus,
   type ResponseStatus,
 } from "@/lib/types";
@@ -130,5 +132,73 @@ describe("meetingFromRow", () => {
     expect(meeting.currentDatetime).toEqual(
       new Date("2026-09-03T16:30:00.000Z")
     );
+  });
+});
+
+/**
+ * ---------------------------------------------------------------------------
+ * preferenceProfileFromRow
+ * ---------------------------------------------------------------------------
+ */
+
+function preferenceProfileRow(
+  overrides: Partial<PreferenceProfileModel> = {}
+): PreferenceProfileModel {
+  return {
+    id: "pp1",
+    userId: "u1",
+    hardConstraints: { dietary: [], allergies: [], unavailable: [] },
+    softPreferences: {
+      noiseLevel: "quiet",
+      activityStyle: "cultural",
+      budget: "modest",
+      cuisine: "familiar",
+    },
+    homeLat: null,
+    homeLng: null,
+    homeNeighbourhood: null,
+    toleranceKm: 5,
+    recurringMobilityRules: [],
+    createdAt: new Date("2026-08-27T09:00:00.000Z"),
+    updatedAt: new Date("2026-08-27T09:00:00.000Z"),
+    ...overrides,
+  } satisfies PreferenceProfileModel;
+}
+
+describe("preferenceProfileFromRow", () => {
+  it("composes the two home columns into one LatLng", () => {
+    const profile = preferenceProfileFromRow(
+      preferenceProfileRow({ homeLat: 32.08, homeLng: 34.78 })
+    );
+
+    expect(profile.home).toEqual({ lat: 32.08, lng: 34.78 });
+  });
+
+  it("treats an unset home as null, not as (0, 0)", () => {
+    // The Prisma defaults for homeLat/homeLng are both null together (no
+    // home set during onboarding yet) — this must not read as the equator.
+    expect(preferenceProfileFromRow(preferenceProfileRow()).home).toBeNull();
+  });
+
+  it("carries the rest of the row through unchanged", () => {
+    const profile = preferenceProfileFromRow(
+      preferenceProfileRow({
+        homeNeighbourhood: "Florentin",
+        toleranceKm: 12,
+        hardConstraints: {
+          dietary: ["kosher"],
+          allergies: ["peanuts"],
+          unavailable: [],
+        },
+      })
+    );
+
+    expect(profile.homeNeighbourhood).toBe("Florentin");
+    expect(profile.toleranceKm).toBe(12);
+    expect(profile.hardConstraints).toEqual({
+      dietary: ["kosher"],
+      allergies: ["peanuts"],
+      unavailable: [],
+    });
   });
 });

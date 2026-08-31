@@ -1,4 +1,4 @@
-// Auth.js (NextAuth v5) configuration (spec §5.2, §6.3 #1, B2).
+// Auth.js (NextAuth v5) configuration (spec §5.2, §6.3 #1, B2/B3).
 //
 // No database adapter: the schema deliberately keeps OAuth identity as two
 // plain fields on User — googleId, googleRefreshToken (prisma/schema.prisma)
@@ -18,6 +18,15 @@
 // sign-in request itself (a background re-weighing, not just login), so we
 // ask for a fresh one on every sign-in rather than relying on catching the
 // one-time grant.
+//
+// jwt/session callbacks (B3): with no adapter, next-auth has no database
+// user id to put in the session on its own — it only knows the OAuth profile
+// fields. The jwt callback below looks the User row up by googleId (right
+// after signIn has upserted it) and stores its id on the token; the session
+// callback copies that id onto session.user.id. This is what lets server
+// code elsewhere (e.g. the preference-profile API route) identify "which
+// user" via `await auth()` instead of re-deriving it from googleId each
+// time. See types/next-auth.d.ts for the corresponding type augmentation.
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
@@ -70,6 +79,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       });
 
       return true;
+    },
+    async jwt({ token, profile }) {
+      // Only re-look-up the id right after a sign-in (profile is present
+      // then); on every later request Auth.js just decodes the existing
+      // token, so this stays a one-time cost per sign-in rather than a
+      // database hit on every request.
+      if (profile?.sub) {
+        const prisma = getPrisma();
+        const dbUser = await prisma.user.findUnique({
+          where: { googleId: profile.sub },
+          select: { id: true },
+        });
+
+        if (dbUser) {
+          token.id = dbUser.id;
+        }
+      }
+
+      return token;
+    },
+    async session({ session, token }) {
+      if (token.id) {
+        session.user.id = token.id;
+      }
+
+      return session;
     },
   },
 });
