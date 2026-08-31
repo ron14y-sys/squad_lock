@@ -5,7 +5,7 @@ export default function Home() {
         SquadLock
       </h1>
       <p className="max-w-xs text-base text-zinc-600 dark:text-zinc-400">
-        Coordinate get-togethers with your friends.
+        לתאם מפגשים עם החברים שלך.
       </p>
     </div>
   );

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "SquadLock",
-  description: "Coordinate get-togethers with your friends.",
+  description: "לתאם מפגשים עם החברים שלך.",
 };
 
 export const viewport: Viewport = {
@@ -29,7 +29,8 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="he"
+      dir="rtl"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col overflow-x-hidden">

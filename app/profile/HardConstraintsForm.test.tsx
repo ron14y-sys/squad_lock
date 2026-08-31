@@ -36,7 +36,7 @@ test("loads the existing profile and pre-selects saved constraints", async () =>
     jsonResponse({
       ...EMPTY_PROFILE,
       hardConstraints: {
-        dietary: ["Kosher"],
+        dietary: ["כשר"],
         allergies: [],
         unavailable: [],
       },
@@ -45,9 +45,9 @@ test("loads the existing profile and pre-selects saved constraints", async () =>
 
   render(<HardConstraintsForm />);
 
-  const kosher = await screen.findByRole("button", { name: "Kosher" });
+  const kosher = await screen.findByRole("button", { name: "כשר" });
   expect(kosher).toHaveAttribute("aria-pressed", "true");
-  expect(screen.getByRole("button", { name: "Vegetarian" })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: "צמחוני" })).toHaveAttribute(
     "aria-pressed",
     "false"
   );
@@ -58,18 +58,18 @@ test("toggling a constraint and saving PUTs the updated hard constraints", async
   fetchMock.mockResolvedValueOnce(jsonResponse(EMPTY_PROFILE));
   render(<HardConstraintsForm />);
 
-  await screen.findByRole("button", { name: "Kosher" });
-  await user.click(screen.getByRole("button", { name: "Nuts" }));
+  await screen.findByRole("button", { name: "כשר" });
+  await user.click(screen.getByRole("button", { name: "אגוזים" }));
 
   fetchMock.mockResolvedValueOnce(
     jsonResponse({
       ...EMPTY_PROFILE,
-      hardConstraints: { dietary: [], allergies: ["Nuts"], unavailable: [] },
+      hardConstraints: { dietary: [], allergies: ["אגוזים"], unavailable: [] },
     })
   );
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "שמור" }));
 
-  await waitFor(() => expect(screen.getByText("Saved.")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("נשמר.")).toBeInTheDocument());
 
   const putCall = fetchMock.mock.calls.find(
     ([, init]) => init?.method === "PUT"
@@ -78,7 +78,7 @@ test("toggling a constraint and saving PUTs the updated hard constraints", async
   const [url, init] = putCall!;
   expect(url).toBe("/api/preferences");
   expect(JSON.parse(init.body)).toEqual({
-    hardConstraints: { dietary: [], allergies: ["Nuts"], unavailable: [] },
+    hardConstraints: { dietary: [], allergies: ["אגוזים"], unavailable: [] },
   });
 });
 
@@ -87,20 +87,20 @@ test("adding a fixed unavailable window shows it in the list", async () => {
   fetchMock.mockResolvedValueOnce(jsonResponse(EMPTY_PROFILE));
   render(<HardConstraintsForm />);
 
-  await screen.findByRole("button", { name: "Kosher" });
+  await screen.findByRole("button", { name: "כשר" });
 
   const unavailableSection = screen
-    .getByText("Fixed unavailable hours")
+    .getByText("שעות קבועות שאינך זמין/ה")
     .closest("section")!;
   await user.click(
-    within(unavailableSection).getByRole("button", { name: "fri" })
+    within(unavailableSection).getByRole("button", { name: "ו׳" })
   );
   await user.click(
-    within(unavailableSection).getByRole("button", { name: "Add" })
+    within(unavailableSection).getByRole("button", { name: "הוסף" })
   );
 
   expect(
-    within(unavailableSection).getByText(/friday · 18:00–21:00/i)
+    within(unavailableSection).getByText(/ו׳ · 18:00–21:00/)
   ).toBeInTheDocument();
 });
 
@@ -111,9 +111,7 @@ test("shows a sign-in prompt instead of the form when the user is unauthenticate
   render(<HardConstraintsForm />);
 
   expect(
-    await screen.findByText("Sign in to set your constraints.")
+    await screen.findByText("התחבר כדי להגדיר את האילוצים שלך.")
   ).toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: "Kosher" })
-  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "כשר" })).not.toBeInTheDocument();
 });

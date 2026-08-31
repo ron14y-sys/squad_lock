@@ -7,6 +7,10 @@ import type {
   MobilityMode,
   RecurringMobilityRule,
 } from "@/lib/types";
+import {
+  MOBILITY_MODE_LABELS,
+  WEEKDAY_LABELS,
+} from "@/lib/format/hebrew-labels";
 
 /**
  * Labels the user sees; kilometres are what get stored and unit-tested
@@ -14,10 +18,10 @@ import type {
  * by week 6"). Illustrative steps, not a measured product decision.
  */
 const TOLERANCE_OPTIONS: { label: string; km: Kilometres }[] = [
-  { label: "On foot", km: 1.5 },
-  { label: "The neighbourhood", km: 3 },
-  { label: "Half the city", km: 8 },
-  { label: "Anywhere", km: 20 },
+  { label: "ברגל", km: 1.5 },
+  { label: "בשכונה", km: 3 },
+  { label: "חצי מהעיר", km: 8 },
+  { label: "בכל מקום", km: 20 },
 ];
 
 const WEEKDAYS: LocalWeekday[] = [
@@ -92,13 +96,13 @@ export function LocationForm() {
   }
 
   if (loadState === "loading") {
-    return <p className="p-6 text-sm text-zinc-500">Loading your profile…</p>;
+    return <p className="p-6 text-sm text-zinc-500">טוען את הפרופיל שלך…</p>;
   }
 
   if (loadState === "signed-out") {
     return (
       <p className="p-6 text-sm text-zinc-500">
-        Sign in to set your location and travel tolerance.
+        התחבר כדי להגדיר את המיקום שלך ומרחק הנסיעה.
       </p>
     );
   }
@@ -106,7 +110,7 @@ export function LocationForm() {
   if (loadState === "error") {
     return (
       <p className="p-6 text-sm text-red-600">
-        Couldn&apos;t load your profile. Try reloading the page.
+        לא הצלחנו לטעון את הפרופיל. נסה לרענן את הדף.
       </p>
     );
   }
@@ -115,24 +119,24 @@ export function LocationForm() {
     <div className="flex flex-col gap-8 p-6">
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          Home neighbourhood
+          שכונת מגורים
         </h2>
         <input
           type="text"
           value={homeNeighbourhood}
           onChange={(e) => setHomeNeighbourhood(e.target.value)}
-          placeholder="e.g. Rothschild, Tel Aviv"
+          placeholder="לדוגמה: רוטשילד, תל אביב"
           className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-black"
         />
         <p className="text-xs text-zinc-500">
-          We only store your area, never your exact address — this is visible to
-          everyone in your groups.
+          אנחנו שומרים רק את האזור שלך, אף פעם לא כתובת מדויקת — זה גלוי לכל מי
+          שנמצא איתך בקבוצות.
         </p>
       </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          How far you&apos;ll travel
+          עד כמה אתה מוכן לנסוע
         </h2>
         <div className="flex flex-wrap gap-2">
           {TOLERANCE_OPTIONS.map((option) => {
@@ -154,7 +158,7 @@ export function LocationForm() {
             );
           })}
         </div>
-        <p className="text-xs text-zinc-500">Stored as {toleranceKm} km.</p>
+        <p className="text-xs text-zinc-500">נשמר כ-{toleranceKm} ק״מ.</p>
       </section>
 
       <RecurringRulesSection rules={rules} onChange={setRules} />
@@ -166,14 +170,14 @@ export function LocationForm() {
           disabled={saveState === "saving"}
           className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
         >
-          {saveState === "saving" ? "Saving…" : "Save"}
+          {saveState === "saving" ? "שומר…" : "שמור"}
         </button>
         {saveState === "saved" && (
-          <span className="text-sm text-emerald-600">Saved.</span>
+          <span className="text-sm text-emerald-600">נשמר.</span>
         )}
         {saveState === "error" && (
           <span className="text-sm text-red-600">
-            Couldn&apos;t save. Try again.
+            לא הצלחנו לשמור. נסה שוב.
           </span>
         )}
       </div>
@@ -219,16 +223,16 @@ function RecurringRulesSection({
   }
 
   function describe(rule: RecurringMobilityRule): string {
-    const days = rule.weekdays.join(", ");
+    const days = rule.weekdays.map((d) => WEEKDAY_LABELS[d]).join(", ");
     return rule.kind === "mode_unavailable"
-      ? `${days} · no ${rule.mode}`
-      : `${days} · coming from ${rule.originLabel}`;
+      ? `${days} · בלי ${MOBILITY_MODE_LABELS[rule.mode]}`
+      : `${days} · מגיע/ה מ${rule.originLabel}`;
   }
 
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-        Recurring mobility rules
+        כללי ניידות קבועים
       </h2>
 
       {rules.map((rule, i) => (
@@ -242,7 +246,7 @@ function RecurringRulesSection({
             onClick={() => removeRule(i)}
             className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-50"
           >
-            Remove
+            הסר
           </button>
         </div>
       ))}
@@ -258,7 +262,7 @@ function RecurringRulesSection({
               : "rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
           }
         >
-          No [mode] on...
+          אין אמצעי תחבורה מסוים בימים...
         </button>
         <button
           type="button"
@@ -270,7 +274,7 @@ function RecurringRulesSection({
               : "rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
           }
         >
-          I come from elsewhere on...
+          אני מגיע/ה ממקום אחר בימים...
         </button>
       </div>
 
@@ -289,7 +293,7 @@ function RecurringRulesSection({
                   : "rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
               }
             >
-              {day.slice(0, 3)}
+              {WEEKDAY_LABELS[day]}
             </button>
           );
         })}
@@ -303,7 +307,7 @@ function RecurringRulesSection({
         >
           {MOBILITY_MODES.map((m) => (
             <option key={m} value={m}>
-              No {m}
+              בלי {MOBILITY_MODE_LABELS[m]}
             </option>
           ))}
         </select>
@@ -312,7 +316,7 @@ function RecurringRulesSection({
           type="text"
           value={originLabel}
           onChange={(e) => setOriginLabel(e.target.value)}
-          placeholder="e.g. work"
+          placeholder="לדוגמה: עבודה"
           className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-black"
         />
       )}
@@ -322,7 +326,7 @@ function RecurringRulesSection({
         onClick={addRule}
         className="w-fit rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
       >
-        Add
+        הוסף
       </button>
     </section>
   );

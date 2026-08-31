@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import type { HardConstraints, LocalWeekday, LocalWindow } from "@/lib/types";
+import { WEEKDAY_LABELS } from "@/lib/format/hebrew-labels";
 
-const DIETARY_PRESETS = ["Kosher", "Vegetarian", "Vegan", "Halal"];
-const ALLERGY_PRESETS = ["Nuts", "Shellfish", "Dairy", "Gluten"];
+const DIETARY_PRESETS = ["כשר", "צמחוני", "טבעוני", "חלאל"];
+const ALLERGY_PRESETS = ["אגוזים", "פירות ים", "מוצרי חלב", "גלוטן"];
 const WEEKDAYS: LocalWeekday[] = [
   "sunday",
   "monday",
@@ -67,13 +68,13 @@ export function HardConstraintsForm() {
   }
 
   if (loadState === "loading") {
-    return <p className="p-6 text-sm text-zinc-500">Loading your profile…</p>;
+    return <p className="p-6 text-sm text-zinc-500">טוען את הפרופיל שלך…</p>;
   }
 
   if (loadState === "signed-out") {
     return (
       <p className="p-6 text-sm text-zinc-500">
-        Sign in to set your constraints.
+        התחבר כדי להגדיר את האילוצים שלך.
       </p>
     );
   }
@@ -81,7 +82,7 @@ export function HardConstraintsForm() {
   if (loadState === "error") {
     return (
       <p className="p-6 text-sm text-red-600">
-        Couldn&apos;t load your profile. Try reloading the page.
+        לא הצלחנו לטעון את הפרופיל. נסה לרענן את הדף.
       </p>
     );
   }
@@ -89,14 +90,14 @@ export function HardConstraintsForm() {
   return (
     <div className="flex flex-col gap-8 p-6">
       <TagSection
-        title="Dietary requirements"
+        title="דרישות תזונה"
         presets={DIETARY_PRESETS}
         values={constraints.dietary}
         onChange={(dietary) => setConstraints((c) => ({ ...c, dietary }))}
       />
 
       <TagSection
-        title="Allergies"
+        title="אלרגיות"
         presets={ALLERGY_PRESETS}
         values={constraints.allergies}
         onChange={(allergies) => setConstraints((c) => ({ ...c, allergies }))}
@@ -116,14 +117,14 @@ export function HardConstraintsForm() {
           disabled={saveState === "saving"}
           className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
         >
-          {saveState === "saving" ? "Saving…" : "Save"}
+          {saveState === "saving" ? "שומר…" : "שמור"}
         </button>
         {saveState === "saved" && (
-          <span className="text-sm text-emerald-600">Saved.</span>
+          <span className="text-sm text-emerald-600">נשמר.</span>
         )}
         {saveState === "error" && (
           <span className="text-sm text-red-600">
-            Couldn&apos;t save. Try again.
+            לא הצלחנו לשמור. נסה שוב.
           </span>
         )}
       </div>
@@ -200,7 +201,7 @@ function TagSection({
               addCustom();
             }
           }}
-          placeholder="Add another"
+          placeholder="הוסף עוד"
           className="flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-black"
         />
         <button
@@ -208,7 +209,7 @@ function TagSection({
           onClick={addCustom}
           className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
         >
-          Add
+          הוסף
         </button>
       </div>
     </section>
@@ -241,10 +242,16 @@ function UnavailableSection({
     onChange(windows.filter((_, i) => i !== index));
   }
 
+  function describeDays(days: LocalWeekday[]): string {
+    return days.length
+      ? days.map((d) => WEEKDAY_LABELS[d]).join(", ")
+      : "כל יום";
+  }
+
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-        Fixed unavailable hours
+        שעות קבועות שאינך זמין/ה
       </h2>
 
       {windows.map((w, i) => (
@@ -253,15 +260,14 @@ function UnavailableSection({
           className="flex items-center justify-between rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
         >
           <span>
-            {w.weekdays.length ? w.weekdays.join(", ") : "Every day"} · {w.from}
-            –{w.to}
+            {describeDays(w.weekdays)} · {w.from}–{w.to}
           </span>
           <button
             type="button"
             onClick={() => removeWindow(i)}
             className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-50"
           >
-            Remove
+            הסר
           </button>
         </div>
       ))}
@@ -281,7 +287,7 @@ function UnavailableSection({
                   : "rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
               }
             >
-              {day.slice(0, 3)}
+              {WEEKDAY_LABELS[day]}
             </button>
           );
         })}
@@ -294,7 +300,7 @@ function UnavailableSection({
           onChange={(e) => setFrom(e.target.value)}
           className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-black"
         />
-        <span className="text-sm text-zinc-500">to</span>
+        <span className="text-sm text-zinc-500">עד</span>
         <input
           type="time"
           value={to}
@@ -306,7 +312,7 @@ function UnavailableSection({
           onClick={addWindow}
           className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
         >
-          Add
+          הוסף
         </button>
       </div>
     </section>
