@@ -4,7 +4,9 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "SquadLock",
     short_name: "SquadLock",
-    description: "Coordinate get-togethers with your friends.",
+    description: "לתאם מפגשים עם החברים שלך.",
+    lang: "he",
+    dir: "rtl",
     start_url: "/",
     display: "standalone",
     background_color: "#ffffff",

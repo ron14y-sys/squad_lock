@@ -8,25 +8,21 @@ test("walks through all four questions and reports the answers", async () => {
   const onComplete = vi.fn();
   render(<PreferenceGame onComplete={onComplete} />);
 
-  expect(screen.getByText("Loud bar or quiet café?")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Loud bar" }));
+  expect(screen.getByText("בר רועש או בית קפה שקט?")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "בר רועש" }));
+
+  expect(screen.getByText("טיול בטבע או סיור במוזיאון?")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "סיור במוזיאון" }));
 
   expect(
-    screen.getByText("Hike in nature or a museum tour?")
+    screen.getByText("תקציב סטודנטים או פינוק חד-פעמי?")
   ).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Museum tour" }));
+  await user.click(screen.getByRole("button", { name: "פינוק חד-פעמי" }));
 
   expect(
-    screen.getByText("Student budget or once-in-a-lifetime splurge?")
+    screen.getByText("אוכל מוכר ובטוח או משהו הרפתקני?")
   ).toBeInTheDocument();
-  await user.click(
-    screen.getByRole("button", { name: "Once-in-a-lifetime splurge" })
-  );
-
-  expect(
-    screen.getByText("Reliable comfort food or something adventurous?")
-  ).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Comfort food" }));
+  await user.click(screen.getByRole("button", { name: "אוכל מוכר" }));
 
   expect(onComplete).toHaveBeenCalledOnce();
   expect(onComplete).toHaveBeenCalledWith({
@@ -35,9 +31,7 @@ test("walks through all four questions and reports the answers", async () => {
     budget: "splurge",
     cuisine: "familiar",
   });
-  expect(
-    screen.getByRole("heading", { name: "That's you." })
-  ).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "זה אתה." })).toBeInTheDocument();
 });
 
 test("shows a progress indicator that advances with each answer", async () => {
@@ -45,6 +39,6 @@ test("shows a progress indicator that advances with each answer", async () => {
   render(<PreferenceGame />);
 
   expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
-  await user.click(screen.getByRole("button", { name: "Loud bar" }));
+  await user.click(screen.getByRole("button", { name: "בר רועש" }));
   expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
 });

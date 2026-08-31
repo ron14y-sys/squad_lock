@@ -35,7 +35,7 @@ test("loads the existing profile and pre-fills the saved values", async () => {
   fetchMock.mockResolvedValueOnce(
     jsonResponse({
       ...EMPTY_PROFILE,
-      homeNeighbourhood: "Florentin, Tel Aviv",
+      homeNeighbourhood: "פלורנטין, תל אביב",
       toleranceKm: 8,
     })
   );
@@ -43,9 +43,9 @@ test("loads the existing profile and pre-fills the saved values", async () => {
   render(<LocationForm />);
 
   expect(
-    await screen.findByDisplayValue("Florentin, Tel Aviv")
+    await screen.findByDisplayValue("פלורנטין, תל אביב")
   ).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Half the city" })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: "חצי מהעיר" })).toHaveAttribute(
     "aria-pressed",
     "true"
   );
@@ -56,24 +56,24 @@ test("saving sends the neighbourhood name and kilometres, not the label", async 
   fetchMock.mockResolvedValueOnce(jsonResponse(EMPTY_PROFILE));
   render(<LocationForm />);
 
-  await screen.findByRole("button", { name: "On foot" });
+  await screen.findByRole("button", { name: "ברגל" });
   await user.type(
-    screen.getByPlaceholderText("e.g. Rothschild, Tel Aviv"),
-    "Neve Tzedek"
+    screen.getByPlaceholderText("לדוגמה: רוטשילד, תל אביב"),
+    "נווה צדק"
   );
-  await user.click(screen.getByRole("button", { name: "Anywhere" }));
+  await user.click(screen.getByRole("button", { name: "בכל מקום" }));
 
   fetchMock.mockResolvedValueOnce(jsonResponse(EMPTY_PROFILE));
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "שמור" }));
 
-  await waitFor(() => expect(screen.getByText("Saved.")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("נשמר.")).toBeInTheDocument());
 
   const putCall = fetchMock.mock.calls.find(
     ([, init]) => init?.method === "PUT"
   );
   const [, init] = putCall!;
   expect(JSON.parse(init.body)).toEqual({
-    homeNeighbourhood: "Neve Tzedek",
+    homeNeighbourhood: "נווה צדק",
     toleranceKm: 20,
     recurringMobilityRules: [],
   });
@@ -84,17 +84,15 @@ test("adding a recurring mobility rule shows it in the list", async () => {
   fetchMock.mockResolvedValueOnce(jsonResponse(EMPTY_PROFILE));
   render(<LocationForm />);
 
-  await screen.findByRole("button", { name: "On foot" });
+  await screen.findByRole("button", { name: "ברגל" });
 
   const rulesSection = screen
-    .getByText("Recurring mobility rules")
+    .getByText("כללי ניידות קבועים")
     .closest("section")!;
-  await user.click(within(rulesSection).getByRole("button", { name: "fri" }));
-  await user.click(within(rulesSection).getByRole("button", { name: "Add" }));
+  await user.click(within(rulesSection).getByRole("button", { name: "ו׳" }));
+  await user.click(within(rulesSection).getByRole("button", { name: "הוסף" }));
 
-  expect(
-    within(rulesSection).getByText(/friday · no car/i)
-  ).toBeInTheDocument();
+  expect(within(rulesSection).getByText(/ו׳ · בלי רכב/)).toBeInTheDocument();
 });
 
 test("shows a sign-in prompt instead of the form when unauthenticated", async () => {
@@ -104,8 +102,6 @@ test("shows a sign-in prompt instead of the form when unauthenticated", async ()
   render(<LocationForm />);
 
   expect(
-    await screen.findByText(
-      "Sign in to set your location and travel tolerance."
-    )
+    await screen.findByText("התחבר כדי להגדיר את המיקום שלך ומרחק הנסיעה.")
   ).toBeInTheDocument();
 });

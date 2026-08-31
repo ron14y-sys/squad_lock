@@ -17,27 +17,27 @@ function question<K extends keyof SoftPreferences>(q: Question<K>): Question {
 const QUESTIONS: Question[] = [
   question({
     key: "noiseLevel",
-    prompt: "Loud bar or quiet café?",
-    left: { label: "Loud bar", value: "lively" },
-    right: { label: "Quiet café", value: "quiet" },
+    prompt: "בר רועש או בית קפה שקט?",
+    left: { label: "בר רועש", value: "lively" },
+    right: { label: "בית קפה שקט", value: "quiet" },
   }),
   question({
     key: "activityStyle",
-    prompt: "Hike in nature or a museum tour?",
-    left: { label: "Hike in nature", value: "outdoorsy" },
-    right: { label: "Museum tour", value: "cultural" },
+    prompt: "טיול בטבע או סיור במוזיאון?",
+    left: { label: "טיול בטבע", value: "outdoorsy" },
+    right: { label: "סיור במוזיאון", value: "cultural" },
   }),
   question({
     key: "budget",
-    prompt: "Student budget or once-in-a-lifetime splurge?",
-    left: { label: "Student budget", value: "modest" },
-    right: { label: "Once-in-a-lifetime splurge", value: "splurge" },
+    prompt: "תקציב סטודנטים או פינוק חד-פעמי?",
+    left: { label: "תקציב סטודנטים", value: "modest" },
+    right: { label: "פינוק חד-פעמי", value: "splurge" },
   }),
   question({
     key: "cuisine",
-    prompt: "Reliable comfort food or something adventurous?",
-    left: { label: "Comfort food", value: "familiar" },
-    right: { label: "Something adventurous", value: "adventurous" },
+    prompt: "אוכל מוכר ובטוח או משהו הרפתקני?",
+    left: { label: "אוכל מוכר", value: "familiar" },
+    right: { label: "משהו הרפתקני", value: "adventurous" },
   }),
 ];
 
@@ -73,14 +73,13 @@ export function PreferenceGame({
           style={{ fontFamily: CARD_FONT, color: "#14161C" }}
           className="text-3xl font-black tracking-tight"
         >
-          That&apos;s you.
+          זה אתה.
         </h1>
         <p
           style={{ fontFamily: BODY_FONT, color: "rgba(20,22,28,0.65)" }}
           className="max-w-xs text-base"
         >
-          We&apos;ll use this to find places your whole group actually wants to
-          go.
+          נשתמש בזה כדי למצוא מקומות שכל הקבוצה שלך באמת תרצה ללכת אליהם.
         </p>
       </div>
     );
@@ -114,7 +113,7 @@ export function PreferenceGame({
         style={{ fontFamily: BODY_FONT, color: "rgba(20,22,28,0.6)" }}
         className="text-center text-[13px] font-semibold tracking-wide"
       >
-        QUESTION {index + 1} OF {QUESTIONS.length}
+        שאלה {index + 1} מתוך {QUESTIONS.length}
       </p>
 
       <div className="flex flex-1 flex-col justify-center px-7">
@@ -132,7 +131,7 @@ export function PreferenceGame({
           <button
             type="button"
             onClick={() => choose(q, q.left.value)}
-            className="w-[150px] cursor-pointer rounded-[18px] border-[3px] p-6 text-left transition-transform duration-150 ease-out active:scale-95 motion-reduce:transition-none"
+            className="w-[150px] cursor-pointer rounded-[18px] border-[3px] p-6 text-right transition-transform duration-150 ease-out active:scale-95 motion-reduce:transition-none"
             style={{
               transform: "rotateY(14deg) rotateZ(-2deg)",
               transformStyle: "preserve-3d",
@@ -152,7 +151,7 @@ export function PreferenceGame({
           <button
             type="button"
             onClick={() => choose(q, q.right.value)}
-            className="mt-5 w-[150px] cursor-pointer rounded-[18px] border-[3px] p-6 text-left transition-transform duration-150 ease-out active:scale-95 motion-reduce:transition-none"
+            className="mt-5 w-[150px] cursor-pointer rounded-[18px] border-[3px] p-6 text-right transition-transform duration-150 ease-out active:scale-95 motion-reduce:transition-none"
             style={{
               transform: "rotateY(-14deg) rotateZ(2deg)",
               transformStyle: "preserve-3d",
@@ -175,7 +174,7 @@ export function PreferenceGame({
         style={{ fontFamily: BODY_FONT, color: "rgba(20,22,28,0.55)" }}
         className="px-7 pb-10 text-center text-[13px]"
       >
-        Tap a card — {QUESTIONS.length} questions, under a minute.
+        לחצו על כרטיס — {QUESTIONS.length} שאלות, פחות מדקה.
       </p>
     </div>
   );
