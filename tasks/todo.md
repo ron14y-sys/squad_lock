@@ -103,9 +103,11 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 
 ### Milestone 1 (weeks 2–3)
 
-- [ ] **B1 — Postgres provisioned and connected** — real database in dev and on Vercel; F4 migrations applied; health endpoint.
-- [ ] **B2 — Google sign-in** — a `User` row is created. **Scope `calendar.freebusy` only** — availability without event content (spec §5.2). **Start Week 2.**
-  - ⚠️ **First, in the Cloud Console: check whether `calendar.freebusy` is classified non-sensitive.** If it is, publish the app **In production** — no verification, no 100-user cap, and no 7-day refresh-token expiry. If it is sensitive, stay in Testing and plan for weekly re-consent, including immediately before any demo.
+- [ ] **B1 — Postgres provisioned and connected** — real database in dev and on Vercel; F4 migrations applied; health endpoint. Merged in #78 (Supabase Postgres, `lib/db/client.ts`, `/api/health`).
+  - ⚠️ Still open: `DATABASE_URL` was added to Vercel, but `https://squadlock.vercel.app/api/health` currently returns 503 (`db: unreachable`) — the Production deploy isn't picking up a working connection yet. Check the variable is scoped to Production and redeploy.
+- [x] **B2 — Google sign-in** — a `User` row is created. **Scope `calendar.freebusy` only** — availability without event content (spec §5.2). **Start Week 2.** Merged in #79 (`auth.ts`, Auth.js v5, no adapter — the `signIn` callback upserts `User` directly since the schema keeps googleId/googleRefreshToken as plain fields rather than Account/Session tables).
+  - `calendar.freebusy` confirmed non-sensitive in the Cloud Console (decision D13); scope verified end-to-end against both the temporary dev project and the shared `squad-lock` project — a `User` row is created correctly in both.
+  - ⚠️ Still open: the shared `squad-lock` project's OAuth consent screen is still in **Testing** status (test users only, 7-day refresh-token expiry) — publishing **In production** is the one step left to fully satisfy the "token still works 8 days after it was issued" verify line above.
   - Verify: the consent screen lists only the free/busy scope; a token still works 8 days after it was issued
 - [ ] **B3 — Preference profile persistence** — hard constraints, soft preferences, **`tolerance_km`** and the **recurring mobility rules** (spec §5.1) save and load per user.
 - [ ] **B4 — Groups and membership** — create, invite by email, accept, list.
