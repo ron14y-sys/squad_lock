@@ -79,6 +79,7 @@ import type {
   LatLng,
   Participant,
   SearchRegion,
+  ShortlistEntry,
   SlotTolerance,
   TimeSlot,
 } from "@/lib/types";
@@ -470,4 +471,216 @@ export function burdensFor(
   }
 
   return burdens;
+}
+
+/* -------------------------------------------------------------------------
+ * Leximin
+ *
+ * Everything above produces numbers. This is where they become an ordering.
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The number of decimal places the comparison key keeps.
+ *
+ * **This is floating-point hygiene, not a claim about geographic precision.**
+ * Home is stored at neighbourhood granularity (spec §5.4), so anything below
+ * about ten metres is noise either way — but that is not why the rounding is
+ * here. It is here because of what leximin does on a tie.
+ *
+ * Leximin only reaches the second-worst participant when the worst-off two
+ * are *exactly* equal. With burdens computed from real coordinates, exact
+ * equality essentially never happens: `1.1540000000000001` against `1.154`
+ * would settle an entire ranking on a difference of 10⁻¹⁶, and the
+ * tie-breaking behaviour this module exists for would never once fire in
+ * production.
+ *
+ * The tempting fix — an epsilon inside the comparator — is worse than the
+ * problem. `|a - b| < ε ⟹ equal` is **not transitive**, and a non-transitive
+ * comparator handed to `Array.prototype.sort` yields an order that depends on
+ * the order it was given. Under §5.4's warning that Places does not guarantee
+ * two identical requests come back the same way, that makes the shortlist
+ * irreproducible run to run.
+ *
+ * So: quantise the key, and compare it exactly. `Burden.value` keeps its full
+ * precision, because that is the number that gets persisted and shown.
+ */
+const KEY_DECIMALS = 6;
+
+const quantise = (value: number): number =>
+  Math.round(value * 10 ** KEY_DECIMALS) / 10 ** KEY_DECIMALS;
+
+/**
+ * One number per participant, sorted worst-first — the key leximin compares.
+ *
+ * Each person contributes their burden **at their most permissive slot**,
+ * which spec §5.4 requires so that time-dependence never narrows what gets
+ * retrieved (§4.1g). That needs no second pass over the tolerances: the
+ * distance and the detour factor do not vary with the hour, so
+ *
+ * ```
+ * min over slots of (d × f / tol_s)   ≡   d × f / max(tol_s)
+ * ```
+ *
+ * and "the most permissive slot" is simply the lowest burden already
+ * computed.
+ *
+ * The roster is a parameter rather than being inferred from the burdens,
+ * because the vector's **length is load-bearing**: a participant with no cell
+ * throws instead of shortening it. A short vector wins comparisons — see
+ * `originOf` for the same reasoning in the same place.
+ */
+export function leximinVector(
+  burdens: readonly Burden[],
+  participants: readonly Participant[]
+): number[] {
+  const vector = participants.map((participant) => {
+    let best = Number.POSITIVE_INFINITY;
+
+    for (const burden of burdens) {
+      if (burden.participantId !== participant.userId) continue;
+      if (burden.value < best) best = burden.value;
+    }
+
+    if (!Number.isFinite(best)) {
+      throw new BurdenError(
+        "no_viable_slot",
+        `distance: there is no slot at which this venue can be scored for ${participant.name}`,
+        participant.userId
+      );
+    }
+
+    return quantise(best);
+  });
+
+  // Worst first. That is the order leximin reads them in.
+  return vector.sort((a, b) => b - a);
+}
+
+/**
+ * A `ShortlistEntry` with the key that ranked it attached.
+ *
+ * An intersection rather than a new shape, so a `CandidateScore[]` *is* a
+ * `ShortlistEntry[]`: B7c persists it with no mapping step, and the ranking
+ * artefact never has to be added to the type that goes in the database.
+ */
+export type CandidateScore = ShortlistEntry & { leximin: number[] };
+
+/** One venue, scored against the whole group at every hour it is usable. */
+export function scoreCandidate(
+  candidate: Candidate,
+  participants: readonly Participant[],
+  slots: readonly TimeSlot[],
+  options: BurdenOptions = {}
+): CandidateScore {
+  if (slots.length === 0) {
+    throw new BurdenError(
+      "no_viable_slot",
+      `distance: ${candidate.name} reached the scorer with no viable slot — A2 should have dropped it`
+    );
+  }
+
+  const burdens = burdensFor(candidate, participants, slots, options);
+
+  return {
+    candidate,
+    burdens,
+    // A2 decided these; this file does not re-check availability.
+    viableSlots: [...slots],
+    leximin: leximinVector(burdens, participants),
+  };
+}
+
+export type BurdenInput = {
+  candidates: Candidate[];
+  participants: Participant[];
+  /** Which hours each venue is usable at — `viableSlotsByCandidate`'s output (A2). */
+  viableSlots: Map<string, TimeSlot[]>;
+};
+
+/**
+ * Every candidate, scored — **in the order they came in, not ranked**.
+ *
+ * Deliberately unranked. B7c needs the raw scores twice over: once for the
+ * gate on `T`, and once to build the rating list that runs in parallel with
+ * the fairness one (spec §5.4). Ranking is `rankByLeximin`, a separate call.
+ */
+export function scoreCandidates(
+  input: BurdenInput,
+  options: BurdenOptions = {}
+): CandidateScore[] {
+  return input.candidates.map((candidate) => {
+    const slots = input.viableSlots.get(candidate.placeId) ?? [];
+    return scoreCandidate(candidate, input.participants, slots, options);
+  });
+}
+
+/**
+ * Leximin, as a comparator: negative when `a` is the fairer of the two, so it
+ * drops straight into `Array.prototype.sort`.
+ *
+ * Worst against worst; only on an exact tie does it look at the second-worst,
+ * then the third, and so on down.
+ *
+ * ```
+ * [1.8, 1.2, 0.9]  beats  [1.8, 1.5, 0.4]
+ * ```
+ *
+ * Precondition: both vectors are sorted worst-first and are the same length.
+ * `leximinVector` guarantees both. A length mismatch throws rather than
+ * comparing what it can, because the shorter vector would win by virtue of
+ * having fewer people in it.
+ */
+export function compareLeximin(
+  a: readonly number[],
+  b: readonly number[]
+): number {
+  if (a.length !== b.length) {
+    throw new BurdenError(
+      "no_viable_slot",
+      `distance: cannot compare fairness across ${a.length} people and ${b.length} — the group is the same for both`
+    );
+  }
+
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+
+  return 0;
+}
+
+/**
+ * The same comparison between two scored candidates, with `placeId` as the
+ * final tiebreak.
+ *
+ * The tiebreak is not cosmetic. Spec §5.4 records that Google does not
+ * guarantee two identical Places requests return the same results in the same
+ * order, so leaning on `sort`'s stability would leave the shortlist depending
+ * on the order the provider happened to answer in. Breaking on the id makes
+ * the ranking a total function of the data.
+ *
+ * Nothing here reads `rating`. Fairness and rating are two parallel lists at
+ * B7c, never one weighted sum — there is no exchange rate between kilometres
+ * and stars, and a weighted sum would let a good rating buy its way past
+ * unfairness (spec §5.4).
+ */
+export function compareCandidatesByLeximin(
+  a: CandidateScore,
+  b: CandidateScore
+): number {
+  const byFairness = compareLeximin(a.leximin, b.leximin);
+  if (byFairness !== 0) return byFairness;
+
+  return a.candidate.placeId.localeCompare(b.candidate.placeId);
+}
+
+/**
+ * Fairest first.
+ *
+ * Returns a new array: `sort` mutates in place, and these scores are shared
+ * with B7c's other ranked list.
+ */
+export function rankByLeximin(
+  scores: readonly CandidateScore[]
+): CandidateScore[] {
+  return [...scores].sort(compareCandidatesByLeximin);
 }

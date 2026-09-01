@@ -8,6 +8,7 @@ import type {
   PreferenceProfile,
   ResolvedContext,
   SearchRegion,
+  ShortlistEntry,
   SlotTolerance,
   TimeSlot,
 } from "@/lib/types";
@@ -19,11 +20,22 @@ import {
   clampDetourFactor,
   detourFactorBetween,
   originOf,
+  compareLeximin,
+  leximinVector,
+  rankByLeximin,
   regionContaining,
+  scoreCandidates,
   straightLineKm,
   toleranceKmFor,
   type BurdenOptions,
 } from "./distance";
+
+/** The same 6-decimal quantisation `leximinVector` applies to its key. */
+const quantiseLike = (value: number): number => Math.round(value * 1e6) / 1e6;
+
+/** A leximin vector built straight from burden values, for comparator tests. */
+const leximinVectorOf = (values: number[]): number[] =>
+  values.map(quantiseLike).sort((a, b) => b - a);
 
 /**
  * Real places, because a distance test that invents its coordinates can only
@@ -484,6 +496,211 @@ describe("the burdens for one venue", () => {
     const dana = participant("u-dana", "Dana", null);
     expect(() => burdensFor(VENUE, [dana], [MON_EVENING])).toThrow(
       /no home location/
+    );
+  });
+});
+
+describe("the pre-rank vector", () => {
+  const VENUE = candidate("v1", { lat: 32.08, lng: 34.78 });
+
+  it("uses each participant's most permissive slot, which is their lowest burden", () => {
+    // Spec §5.4 and §4.1g: the pre-rank must use the most permissive window,
+    // so that time-dependence never narrows what gets retrieved. Distance
+    // does not vary by hour, so the widest tolerance is the lowest burden and
+    // no second pass over the tolerances is needed.
+    const noa = participant("u-noa", "Noa");
+    const tolerances: SlotTolerance[] = [
+      { participantId: "u-noa", slot: MON_AFTERNOON, toleranceKm: 2 },
+      { participantId: "u-noa", slot: MON_EVENING, toleranceKm: 16 },
+    ];
+
+    const burdens = burdensFor(VENUE, [noa], [MON_AFTERNOON, MON_EVENING], {
+      tolerances,
+    });
+    const [worst] = leximinVector(burdens, [noa]);
+    const evening = burdens.find((b) => b.slot === MON_EVENING)!;
+
+    expect(worst).toBeCloseTo(quantiseLike(evening.value), 6);
+  });
+
+  it("is sorted worst-first", () => {
+    // The comparator's precondition, and the order §5.4 reads them in.
+    const people = [
+      participant("u-near", "Near"),
+      participant("u-far", "Far", JERUSALEM),
+    ];
+
+    const vector = leximinVector(
+      burdensFor(VENUE, people, [MON_EVENING]),
+      people
+    );
+
+    expect(vector[0]).toBeGreaterThan(vector[1]);
+  });
+
+  it("has one entry per participant whatever the number of slots", () => {
+    const people = [
+      participant("u-noa", "Noa"),
+      participant("u-rami", "Rami", JERUSALEM),
+    ];
+
+    expect(
+      leximinVector(
+        burdensFor(VENUE, people, [MON_EVENING, MON_AFTERNOON]),
+        people
+      )
+    ).toHaveLength(2);
+  });
+
+  it("refuses to build a vector that is missing somebody", () => {
+    // An empty or short vector must never be allowed to win a comparison.
+    const noa = participant("u-noa", "Noa");
+    const absent = participant("u-ghost", "Ghost");
+
+    expect(() =>
+      leximinVector(burdensFor(VENUE, [noa], [MON_EVENING]), [noa, absent])
+    ).toThrow(/Ghost/);
+  });
+});
+
+describe("leximin", () => {
+  it("prefers a venue moderately inconvenient for everyone to one next door to three and an hour from the fourth", () => {
+    // Acceptance test 1, from tasks/todo.md. This is the failure §5.4 exists
+    // to prevent: averaging would pick the first venue, and the fourth person
+    // eventually stops showing up.
+    const nextDoorToThree = [1.9, 0.05, 0.05, 0.05];
+    const moderateForEveryone = [0.8, 0.7, 0.7, 0.6];
+
+    expect(compareLeximin(moderateForEveryone, nextDoorToThree)).toBeLessThan(
+      0
+    );
+  });
+
+  it("separates two candidates tying on the worst-off participant by the second-worst", () => {
+    // Acceptance test 2, and the spec's own example. This is exactly what
+    // plain minimax cannot do: it calls these two equivalent, the tie falls
+    // through to star rating, and the fairness silently disappears.
+    expect(compareLeximin([1.8, 1.2, 0.9], [1.8, 1.5, 0.4])).toBeLessThan(0);
+  });
+
+  it("goes on to the third-worst when the first two tie", () => {
+    // Pins that the comparison runs the whole vector, not two levels of it.
+    expect(compareLeximin([1.8, 1.2, 0.3], [1.8, 1.2, 0.9])).toBeLessThan(0);
+  });
+
+  it("calls two identical vectors a tie", () => {
+    expect(compareLeximin([1.8, 1.2, 0.9], [1.8, 1.2, 0.9])).toBe(0);
+  });
+
+  it("refuses to compare vectors of different lengths", () => {
+    // A missing participant must not win by absence.
+    expect(() => compareLeximin([1.8, 1.2], [1.8, 1.2, 0.9])).toThrow(
+      BurdenError
+    );
+  });
+
+  it("treats three vectors differing by a nanometre as one three-way tie", () => {
+    // The reason the key is quantised rather than the comparison fuzzed: an
+    // epsilon comparator is not transitive, and `Array.prototype.sort` on a
+    // non-transitive comparator gives an order that depends on input order.
+    const a = leximinVectorOf([1.154]);
+    const b = leximinVectorOf([1.154 + 1e-12]);
+    const c = leximinVectorOf([1.154 + 2e-12]);
+
+    expect(compareLeximin(a, b)).toBe(0);
+    expect(compareLeximin(b, c)).toBe(0);
+    expect(compareLeximin(a, c)).toBe(0);
+  });
+});
+
+describe("ranking the candidates", () => {
+  const NEAR_THREE = candidate("v-near-three", { lat: 32.0648, lng: 34.7749 });
+  const MODERATE = candidate("v-moderate", { lat: 32.03, lng: 34.79 });
+
+  /** Three people together in the centre, and one out in Jerusalem. */
+  const GROUP = [
+    participant("u-a", "Ayelet"),
+    participant("u-b", "Boaz"),
+    participant("u-c", "Carmel"),
+    participant("u-d", "Dror", { lat: 31.99, lng: 34.81 }),
+  ];
+
+  const INPUT = {
+    candidates: [NEAR_THREE, MODERATE],
+    participants: GROUP,
+    viableSlots: new Map([
+      ["v-near-three", [MON_EVENING]],
+      ["v-moderate", [MON_EVENING]],
+    ]),
+  };
+
+  it("ranks the venue that spreads the burden above the one that concentrates it", () => {
+    // The same acceptance case as above, but end to end over coordinates
+    // rather than hand-written vectors.
+    const ranked = rankByLeximin(scoreCandidates(INPUT));
+
+    expect(ranked[0].candidate.placeId).toBe("v-moderate");
+    expect(ranked[0].leximin[0]).toBeLessThan(ranked[1].leximin[0]);
+  });
+
+  it("hands B7c rows that are already ShortlistEntry shaped", () => {
+    // The intersection type, at runtime: no mapping step before persistence.
+    const [score] = scoreCandidates(INPUT);
+    const entry: ShortlistEntry = score;
+
+    expect(entry.candidate.placeId).toBe("v-near-three");
+    expect(entry.viableSlots).toEqual([MON_EVENING]);
+    expect(entry.burdens).toHaveLength(GROUP.length);
+  });
+
+  it("returns the scores in input order, leaving the ranking to a separate call", () => {
+    // B7c needs them unranked: once for the gate on T, once for the rating
+    // list that runs in parallel with this one (spec §5.4).
+    expect(scoreCandidates(INPUT).map((s) => s.candidate.placeId)).toEqual([
+      "v-near-three",
+      "v-moderate",
+    ]);
+  });
+
+  it("does not mutate the array it was given", () => {
+    const scores = scoreCandidates(INPUT);
+    const before = scores.map((s) => s.candidate.placeId);
+    rankByLeximin(scores);
+
+    expect(scores.map((s) => s.candidate.placeId)).toEqual(before);
+  });
+
+  it("breaks an exact tie on placeId, so the order Places answered in cannot decide it", () => {
+    // Spec §5.4: two identical Places requests are not guaranteed to come
+    // back the same way, so sort stability is not something to lean on.
+    const twin = candidate("v-aaa", NEAR_THREE.location);
+    const scores = scoreCandidates({
+      ...INPUT,
+      candidates: [NEAR_THREE, twin],
+      viableSlots: new Map([
+        ["v-near-three", [MON_EVENING]],
+        ["v-aaa", [MON_EVENING]],
+      ]),
+    });
+
+    expect(compareLeximin(scores[0].leximin, scores[1].leximin)).toBe(0);
+    expect(rankByLeximin(scores)[0].candidate.placeId).toBe("v-aaa");
+    expect(rankByLeximin([...scores].reverse())[0].candidate.placeId).toBe(
+      "v-aaa"
+    );
+  });
+
+  it("refuses a candidate that arrived with no viable slot", () => {
+    // B7c should have dropped it; an empty vector must never be scored.
+    expect(() => scoreCandidates({ ...INPUT, viableSlots: new Map() })).toThrow(
+      /no viable slot/
+    );
+  });
+
+  it("gives the same answer twice for the same input", () => {
+    // Pure: no clock, no randomness, no I/O (spec §9).
+    expect(rankByLeximin(scoreCandidates(INPUT))).toEqual(
+      rankByLeximin(scoreCandidates(INPUT))
     );
   });
 });
