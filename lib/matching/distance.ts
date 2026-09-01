@@ -71,7 +71,17 @@
  *   which is the deterministic baseline.
  */
 
-import type { Kilometres, LatLng } from "@/lib/types";
+import type {
+  Burden,
+  Candidate,
+  DetourFactor,
+  Kilometres,
+  LatLng,
+  Participant,
+  SearchRegion,
+  SlotTolerance,
+  TimeSlot,
+} from "@/lib/types";
 
 /* -------------------------------------------------------------------------
  * Failures
@@ -251,4 +261,213 @@ export function burdenValue(
   assertToleranceKm(toleranceKm);
 
   return (distanceKm * clampDetourFactor(detourFactor)) / toleranceKm;
+}
+
+/* -------------------------------------------------------------------------
+ * The parameters the Context Resolver will one day supply
+ *
+ * Everything below has two producers and one consumer. Today the producer is
+ * the deterministic baseline — no regions, no factors, no per-slot
+ * tolerances, so every default applies. Tomorrow it is A12, which returns a
+ * `ResolvedContext` full of them.
+ *
+ * `BurdenOptions` is field-for-field a `Partial<ResolvedContext>`, and that
+ * is the whole trick: A12 passes its result in wholesale and not one
+ * signature in this file changes. The field names are load-bearing, because
+ * the assignability is structural — `distance.test.ts` pins it with a
+ * type-level assertion so a rename cannot break it quietly.
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Everything A12 may supply, all optional.
+ *
+ * Absent means the deterministic baseline: a detour factor of `1.0` and each
+ * person's own `toleranceKm` from their profile. That baseline is not a
+ * degraded mode — it is the behaviour spec §4.3 requires the Resolver to fall
+ * back to whenever it is off, times out, or fails validation.
+ */
+export type BurdenOptions = {
+  searchRegions?: readonly SearchRegion[];
+  detourFactors?: readonly DetourFactor[];
+  tolerances?: readonly SlotTolerance[];
+};
+
+/**
+ * Which region a point falls in — the nearest centre whose radius contains
+ * it, or `null` when none does.
+ *
+ * Nearest rather than first, because the regions overlap **by design**: spec
+ * §5.4 puts one query centre on each participant's neighbourhood, and
+ * neighbours share ground. Overlap is the normal case here, not an edge one.
+ *
+ * A point in no region at all is `null` rather than a nearest-centre guess. A
+ * detour factor is a claim about two *named* areas, and stretching one over a
+ * point in neither would be inventing a fact about geography — exactly what
+ * §4.1f keeps out of the deterministic layer.
+ */
+export function regionContaining(
+  point: LatLng,
+  regions: readonly SearchRegion[]
+): SearchRegion | null {
+  let best: SearchRegion | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const region of regions) {
+    const distance = straightLineKm(point, region.centre);
+    if (distance <= region.radiusKm && distance < bestDistance) {
+      best = region;
+      bestDistance = distance;
+    }
+  }
+
+  return best;
+}
+
+const pairKey = (from: string, to: string): string => `${from}>${to}`;
+
+/**
+ * How much further the journey really is than the straight line between its
+ * ends — `1.0` when nothing says otherwise.
+ *
+ * The lookup is directed first and symmetric second, and both halves earn
+ * their place: a river with no crossing is the same obstacle in either
+ * direction and A12 will state it once, while a one-way ramp or a tolled
+ * bridge is not, so an exact match must never be overridden by a reversed
+ * one. Hence: exact pair, then reversed pair, then no correction.
+ *
+ * Duplicate entries resolve last-write-wins. A13's validation is where a
+ * `ResolvedContext` containing two answers for one pair should be caught;
+ * this file does not get to fail a run over a parameter it can safely ignore.
+ */
+export function detourFactorBetween(
+  origin: LatLng,
+  destination: LatLng,
+  regions: readonly SearchRegion[],
+  factors: readonly DetourFactor[]
+): number {
+  const from = regionContaining(origin, regions);
+  const to = regionContaining(destination, regions);
+  if (!from || !to) return 1;
+
+  const byPair = new Map<string, number>();
+  for (const factor of factors) {
+    byPair.set(pairKey(factor.fromRegionId, factor.toRegionId), factor.factor);
+  }
+
+  const directed = byPair.get(pairKey(from.id, to.id));
+  const reversed = byPair.get(pairKey(to.id, from.id));
+
+  return clampDetourFactor(directed ?? reversed);
+}
+
+/** Two slots are the same slot when they name the same two instants. */
+const slotKey = (slot: TimeSlot): string =>
+  `${slot.start.getTime()}-${slot.end.getTime()}`;
+
+/**
+ * How far this person will travel, at this hour.
+ *
+ * The per-slot value if A12 supplied one, otherwise the profile's standing
+ * `toleranceKm`. Slots match on their instants rather than on object
+ * identity — the same trap `checkChosenPair` sidesteps by hand in
+ * `constraints.ts`, and the same answer.
+ *
+ * The Resolver is allowed to return a value *smaller* than the profile's:
+ * narrowing a tolerance only moves a candidate down a list, which the next
+ * cycle can undo, so §4.1g permits it. Only retrieval may not narrow.
+ */
+export function toleranceKmFor(
+  participant: Participant,
+  slot: TimeSlot,
+  tolerances: readonly SlotTolerance[]
+): Kilometres {
+  const key = slotKey(slot);
+  const resolved = tolerances.find(
+    (entry) =>
+      entry.participantId === participant.userId && slotKey(entry.slot) === key
+  );
+
+  const toleranceKm = resolved?.toleranceKm ?? participant.profile.toleranceKm;
+  assertToleranceKm(toleranceKm, {
+    id: participant.userId,
+    name: participant.name,
+  });
+  return toleranceKm;
+}
+
+/**
+ * Where this person is measured from — or a refusal to guess.
+ *
+ * `Participant.origin` is already the resolved one: tonight's amendment if
+ * there is one, otherwise home (spec §5.7). That precedence is applied
+ * upstream, and this file must not re-apply it.
+ *
+ * A missing origin **throws rather than dropping the person from the
+ * calculation**, and that is the single most important decision in this file
+ * after the formula itself. Leximin compares vectors position by position, so
+ * a vector one person short does not merely lose information — it *wins*
+ * comparisons it should lose. Quietly skipping whoever has not finished
+ * onboarding would make them the one person the fairness rule never protects,
+ * which is precisely the failure §5.4 exists to prevent.
+ */
+export function originOf(participant: Participant): LatLng {
+  if (participant.origin) return participant.origin;
+
+  throw new BurdenError(
+    "no_origin",
+    `distance: ${participant.name} has no home location set — someone still needs to fill in their details before this group can be weighed`,
+    participant.userId
+  );
+}
+
+/**
+ * Every burden for one venue: one per participant per slot, flat.
+ *
+ * Flat because that is what `ShortlistEntry.burdens` already declares, and
+ * because B7c's gate tests individual `(participant, slot)` cells — a nested
+ * shape would make the single most important consumer do a double loop to
+ * find what it needs.
+ *
+ * Distance and the detour factor are computed once per participant and reused
+ * across their slots. Only the denominator varies with the hour: how far away
+ * a venue is does not change at 18:00, but how far this person is willing to
+ * go might.
+ */
+export function burdensFor(
+  candidate: Candidate,
+  participants: readonly Participant[],
+  slots: readonly TimeSlot[],
+  options: BurdenOptions = {}
+): Burden[] {
+  const regions = options.searchRegions ?? [];
+  const factors = options.detourFactors ?? [];
+  const tolerances = options.tolerances ?? [];
+
+  const burdens: Burden[] = [];
+
+  for (const participant of participants) {
+    const origin = originOf(participant);
+    const distanceKm = straightLineKm(origin, candidate.location);
+    const detour = detourFactorBetween(
+      origin,
+      candidate.location,
+      regions,
+      factors
+    );
+
+    for (const slot of slots) {
+      burdens.push({
+        candidatePlaceId: candidate.placeId,
+        participantId: participant.userId,
+        slot,
+        value: burdenValue(
+          distanceKm,
+          detour,
+          toleranceKmFor(participant, slot, tolerances)
+        ),
+      });
+    }
+  }
+
+  return burdens;
 }

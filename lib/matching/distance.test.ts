@@ -1,12 +1,28 @@
 import { describe, expect, it } from "vitest";
 
-import type { LatLng } from "@/lib/types";
+import type {
+  Candidate,
+  DetourFactor,
+  LatLng,
+  Participant,
+  PreferenceProfile,
+  ResolvedContext,
+  SearchRegion,
+  SlotTolerance,
+  TimeSlot,
+} from "@/lib/types";
 import {
   assertToleranceKm,
   BurdenError,
   burdenValue,
+  burdensFor,
   clampDetourFactor,
+  detourFactorBetween,
+  originOf,
+  regionContaining,
   straightLineKm,
+  toleranceKmFor,
+  type BurdenOptions,
 } from "./distance";
 
 /**
@@ -160,5 +176,314 @@ describe("the burden formula", () => {
     } catch (error) {
       expect((error as BurdenError).participantId).toBeNull();
     }
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * Fixtures for everything below, which needs people and venues rather than
+ * bare numbers. Built the way `constraints.test.ts` builds them: a default
+ * with nothing interesting in it, and one field overridden per test.
+ * ---------------------------------------------------------------------- */
+
+const slot = (startIso: string, endIso: string): TimeSlot => ({
+  start: new Date(startIso),
+  end: new Date(endIso),
+});
+
+/** Monday 7 Sep 2026, 19:00–21:00 local. The default proposed slot. */
+const MON_EVENING = slot(
+  "2026-09-07T16:00:00.000Z",
+  "2026-09-07T18:00:00.000Z"
+);
+/** Monday 7 Sep 2026, 15:00–17:00 local. The same day, earlier. */
+const MON_AFTERNOON = slot(
+  "2026-09-07T12:00:00.000Z",
+  "2026-09-07T14:00:00.000Z"
+);
+
+function profile(
+  overrides: Partial<PreferenceProfile> = {}
+): PreferenceProfile {
+  return {
+    id: "p1",
+    userId: "u1",
+    hardConstraints: { dietary: [], allergies: [], unavailable: [] },
+    softPreferences: {
+      noiseLevel: "quiet",
+      activityStyle: "cultural",
+      budget: "modest",
+      cuisine: "familiar",
+    },
+    home: ROTHSCHILD,
+    homeNeighbourhood: "Rothschild",
+    toleranceKm: 8,
+    recurringMobilityRules: [],
+    createdAt: new Date("2026-09-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function participant(
+  userId: string,
+  name: string,
+  origin: LatLng | null = ROTHSCHILD,
+  overrides: Partial<PreferenceProfile> = {}
+): Participant {
+  return {
+    userId,
+    name,
+    profile: profile({ id: `profile-${userId}`, userId, ...overrides }),
+    context: null,
+    origin,
+    busy: [],
+  };
+}
+
+function candidate(placeId: string, location: LatLng): Candidate {
+  return {
+    placeId,
+    name: placeId,
+    address: null,
+    location,
+    neighbourhood: null,
+  };
+}
+
+describe("the origin a person is measured from", () => {
+  it("throws, naming the person, when someone has no home location set", () => {
+    // The decision this file leans on hardest. Leximin compares vectors
+    // position by position, so a vector one person short does not lose
+    // information — it *wins* comparisons it should lose. Skipping whoever
+    // has not finished onboarding would make them the one person the
+    // fairness rule never protects (spec §5.4).
+    const dana = participant("u-dana", "Dana", null);
+
+    try {
+      originOf(dana);
+      expect.unreachable("a participant with no origin must not be scored");
+    } catch (error) {
+      expect(error).toBeInstanceOf(BurdenError);
+      const burden = error as BurdenError;
+      expect(burden.kind).toBe("no_origin");
+      expect(burden.participantId).toBe("u-dana");
+      expect(burden.message).toContain("Dana");
+      expect(burden.message).toContain("fill in their details");
+    }
+  });
+
+  it("uses the origin as given, without re-applying the amendment rule", () => {
+    // `Participant.origin` is already resolved upstream — tonight's amendment
+    // if there is one, otherwise home (spec §5.7). Re-deriving it here would
+    // be a second implementation of a precedence rule that already has one.
+    const yotam = participant("u-yotam", "Yotam", JERUSALEM);
+    expect(originOf(yotam)).toEqual(JERUSALEM);
+  });
+});
+
+describe("the detour factor, per region pair", () => {
+  const FLORENTIN: SearchRegion = {
+    id: "florentin",
+    centre: { lat: 32.055, lng: 34.766 },
+    radiusKm: 2,
+  };
+  const RAMAT_GAN: SearchRegion = {
+    id: "ramat-gan",
+    centre: { lat: 32.082, lng: 34.814 },
+    radiusKm: 2,
+  };
+  const REGIONS = [FLORENTIN, RAMAT_GAN];
+
+  const across: DetourFactor = {
+    fromRegionId: "florentin",
+    toRegionId: "ramat-gan",
+    factor: 1.4,
+  };
+
+  it("is 1.0 when no regions and no factors are supplied", () => {
+    // The deterministic baseline this file ships with, before A12 exists.
+    expect(detourFactorBetween(ROTHSCHILD, JERUSALEM, [], [])).toBe(1);
+  });
+
+  it("applies the factor stated for the pair the two ends fall in", () => {
+    expect(
+      detourFactorBetween(FLORENTIN.centre, RAMAT_GAN.centre, REGIONS, [across])
+    ).toBe(1.4);
+  });
+
+  it("reads a factor stated in the other direction when there is no exact one", () => {
+    // A river with no crossing is the same obstacle both ways, and A12 will
+    // state it once rather than twice.
+    expect(
+      detourFactorBetween(RAMAT_GAN.centre, FLORENTIN.centre, REGIONS, [across])
+    ).toBe(1.4);
+  });
+
+  it("prefers an exact directed factor to the reversed one", () => {
+    // A one-way ramp is not symmetric, so an exact match must never be
+    // overridden by the reverse of some other entry.
+    const back: DetourFactor = {
+      fromRegionId: "ramat-gan",
+      toRegionId: "florentin",
+      factor: 1.1,
+    };
+
+    expect(
+      detourFactorBetween(RAMAT_GAN.centre, FLORENTIN.centre, REGIONS, [
+        across,
+        back,
+      ])
+    ).toBe(1.1);
+  });
+
+  it("clamps a factor below 1.0 that reached it through a region pair", () => {
+    const impossible: DetourFactor = {
+      fromRegionId: "florentin",
+      toRegionId: "ramat-gan",
+      factor: 0.6,
+    };
+
+    expect(
+      detourFactorBetween(FLORENTIN.centre, RAMAT_GAN.centre, REGIONS, [
+        impossible,
+      ])
+    ).toBe(1);
+  });
+
+  it("applies nothing to a point that lies outside every region", () => {
+    // A detour factor is a claim about two *named* areas. Stretching one over
+    // a point in neither would be inventing a fact about geography.
+    expect(
+      detourFactorBetween(JERUSALEM, RAMAT_GAN.centre, REGIONS, [across])
+    ).toBe(1);
+  });
+
+  it("puts a point inside two overlapping regions in the nearer one", () => {
+    // The regions overlap by design: spec §5.4 puts one query centre on each
+    // participant's neighbourhood, and neighbours share ground.
+    const wide: SearchRegion = {
+      id: "wide",
+      centre: { lat: 32.09, lng: 34.79 },
+      radiusKm: 12,
+    };
+
+    expect(regionContaining(FLORENTIN.centre, [wide, FLORENTIN])?.id).toBe(
+      "florentin"
+    );
+    expect(regionContaining(JERUSALEM, [wide, FLORENTIN])).toBeNull();
+  });
+});
+
+describe("how far this person will travel, at this hour", () => {
+  it("falls back to the profile's standing tolerance when nothing per-slot is given", () => {
+    const noa = participant("u-noa", "Noa");
+    expect(toleranceKmFor(noa, MON_EVENING, [])).toBe(8);
+  });
+
+  it("uses the per-slot tolerance for the slot it names, and the profile for the others", () => {
+    // The Resolver may narrow a tolerance freely — that only moves a
+    // candidate down a list, which the next cycle can undo (spec §4.1g).
+    const noa = participant("u-noa", "Noa");
+    const tight: SlotTolerance = {
+      participantId: "u-noa",
+      slot: MON_AFTERNOON,
+      toleranceKm: 2,
+    };
+
+    expect(toleranceKmFor(noa, MON_AFTERNOON, [tight])).toBe(2);
+    expect(toleranceKmFor(noa, MON_EVENING, [tight])).toBe(8);
+  });
+
+  it("does not read another participant's per-slot tolerance", () => {
+    const noa = participant("u-noa", "Noa");
+    const someoneElse: SlotTolerance = {
+      participantId: "u-rami",
+      slot: MON_EVENING,
+      toleranceKm: 1,
+    };
+
+    expect(toleranceKmFor(noa, MON_EVENING, [someoneElse])).toBe(8);
+  });
+
+  it("matches a slot by its instants, not by object identity", () => {
+    // Two distinct TimeSlot objects naming the same two instants are the same
+    // slot. `checkChosenPair` sidesteps this same trap by hand in A2.
+    const noa = participant("u-noa", "Noa");
+    const sameTimes = slot(
+      "2026-09-07T16:00:00.000Z",
+      "2026-09-07T18:00:00.000Z"
+    );
+
+    expect(sameTimes).not.toBe(MON_EVENING);
+    expect(
+      toleranceKmFor(noa, sameTimes, [
+        { participantId: "u-noa", slot: MON_EVENING, toleranceKm: 3 },
+      ])
+    ).toBe(3);
+  });
+
+  it("throws, naming the person, when the tolerance it found cannot be divided by", () => {
+    const rami = participant("u-rami", "Rami", ROTHSCHILD, { toleranceKm: 0 });
+    expect(() => toleranceKmFor(rami, MON_EVENING, [])).toThrow(/Rami/);
+  });
+});
+
+describe("the burdens for one venue", () => {
+  const VENUE = candidate("v1", { lat: 32.08, lng: 34.78 });
+
+  it("produces one burden per participant per slot, flat", () => {
+    // Flat is the shape `ShortlistEntry.burdens` already declares, and the
+    // shape B7c's gate wants — it tests individual cells.
+    const people = [
+      participant("u-noa", "Noa"),
+      participant("u-rami", "Rami", JERUSALEM),
+    ];
+
+    const burdens = burdensFor(VENUE, people, [MON_EVENING, MON_AFTERNOON]);
+
+    expect(burdens).toHaveLength(4);
+    expect(burdens.every((b) => b.candidatePlaceId === "v1")).toBe(true);
+    expect(new Set(burdens.map((b) => b.participantId))).toEqual(
+      new Set(["u-noa", "u-rami"])
+    );
+  });
+
+  it("keeps the burden the same across slots when only the venue is fixed", () => {
+    // Distance does not change at 18:00. Only the denominator can.
+    const noa = participant("u-noa", "Noa");
+    const [evening, afternoon] = burdensFor(
+      VENUE,
+      [noa],
+      [MON_EVENING, MON_AFTERNOON]
+    );
+
+    expect(evening.value).toBeCloseTo(afternoon.value, 12);
+  });
+
+  it("takes a whole ResolvedContext without any adaptation", () => {
+    // The A12 seam. `BurdenOptions` is field-for-field a Partial of this, so
+    // the Resolver's output passes in wholesale and no signature changes.
+    const resolved: ResolvedContext = {
+      searchRegions: [],
+      detourFactors: [],
+      tolerances: [
+        { participantId: "u-noa", slot: MON_EVENING, toleranceKm: 4 },
+      ],
+    };
+    const wholesale: BurdenOptions = resolved;
+
+    const noa = participant("u-noa", "Noa");
+    const [burden] = burdensFor(VENUE, [noa], [MON_EVENING], wholesale);
+    const [baseline] = burdensFor(VENUE, [noa], [MON_EVENING]);
+
+    // Half the tolerance, so exactly twice the burden.
+    expect(burden.value).toBeCloseTo(baseline.value * 2, 12);
+  });
+
+  it("refuses to score a venue for someone with no origin", () => {
+    const dana = participant("u-dana", "Dana", null);
+    expect(() => burdensFor(VENUE, [dana], [MON_EVENING])).toThrow(
+      /no home location/
+    );
   });
 });
