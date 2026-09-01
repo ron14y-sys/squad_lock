@@ -324,6 +324,7 @@ export function regionContaining(
   return best;
 }
 
+/** Directed: `a>b` is not `b>a`. The reversed lookup is a deliberate second step. */
 const pairKey = (from: string, to: string): string => `${from}>${to}`;
 
 /**
