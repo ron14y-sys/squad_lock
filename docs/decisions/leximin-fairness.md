@@ -135,9 +135,9 @@ So the clean statement "distance is slot-independent, only tolerance varies" is 
 3. Every failure is a `BurdenError` carrying a `kind` and, where a person's data is at fault, their `participantId`.
 4. The whole module is pure — no LLM, no network, no clock, no I/O — so a failing eval scenario stays attributable to a stage (§9).
 
-## A related bug found while building this
+## A related bug found while building this — [#86](https://github.com/ron14y-sys/squad_lock/issues/86)
 
-Two eval scenarios do not survive contact with the arithmetic they describe. Both are recorded as a bug rather than fixed here, because [F5](../../tasks/todo.md) requires all three of us to agree an eval answer, and A3 must not be the change that edits its own oracle.
+Two eval scenarios do not survive contact with the arithmetic they describe. Both are recorded in [#86](https://github.com/ron14y-sys/squad_lock/issues/86) rather than fixed here, because [F5](../../tasks/todo.md) requires all three of us to agree an eval answer, and A3 must not be the change that edits its own oracle.
 
 - **`06-no-perfect-solution-dispersed-group.json` — the expected answer is inverted.** Its trace claims ~13 km and ~9 km; the haversine over its own coordinates gives 10.45 km and 5.77 km. Those are road distances, not straight lines. Under the formula §5.4 actually commits to, the vectors are `[1.307, 0.006, 0.006]` for Herbert Samuel and `[1.154, 1.154, 0.778]` for Kfar Bat Yam, so **leximin picks Kfar Bat Yam and `expected.venue` is wrong**.
 - **`04-semantic-geography-trap.json` — the trap never fires.** It says Left Bank is "straight-line closest to Gili"; Rothschild 12 is closer (4.25 km against 5.23 km). Naive straight-line leximin already picks the expected answer with no detour factor at all, so the scenario measures nothing about the thing A12 and A14 exist to measure.

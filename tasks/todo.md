@@ -69,7 +69,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Verify: unit tests — a venue next door to three and an hour from the fourth loses to a moderately inconvenient one for everyone; **and two candidates tying on the worst-off participant are separated by the second-worst**
   - Files: `lib/matching/distance.ts`, tests
   - Decisions, and what A4, B7c, A12 and A13 inherit: [docs/decisions/leximin-fairness.md](../docs/decisions/leximin-fairness.md)
-  - ⚠️ Found while building it: **two eval scenarios contradict their own coordinates** — 06's expected answer is inverted, and 04's trap does not fire. Filed as a bug against F5; A5 will score a correct A3 as wrong on 06 until it is fixed.
+  - ⚠️ Found while building it: **two eval scenarios contradict their own coordinates** — 06's expected answer is inverted, and 04's trap does not fire. Filed as [#86](https://github.com/ron14y-sys/squad_lock/issues/86), against F5; A5 will score a correct A3 as wrong on 06 until it is fixed.
 
 - [ ] **A4 — Group Matching Agent**
   - Acceptance: one call over all profiles, availability and the shortlist returns a **schema-validated ranked top 3** (spec §4.1c). Each option carries a `(venue, datetime)` pair, a per-participant justification, and — internally — what it trades away and for whom. No free-text parsing. Runs the A2 post-check before returning. The whole run is persisted.
