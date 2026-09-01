@@ -103,7 +103,24 @@ export type BurdenErrorKind =
   /** A latitude, longitude or distance that is not a real point on Earth. */
   | "bad_coordinates"
   /** A candidate reached the scorer with no slot it is usable at. */
-  | "no_viable_slot";
+  | "no_viable_slot"
+  /**
+   * The burdens and the roster describe different groups of people.
+   *
+   * **Always a caller mistake, never a state of the data**, and that is why
+   * it has a kind of its own. The three kinds above are conditions a run can
+   * legitimately meet — somebody has not finished onboarding, a venue is
+   * usable at no hour — and consuming code is expected to catch them and
+   * carry on. This one means the code asked a question that does not make
+   * sense, and the only correct response is to fix the code.
+   *
+   * Sharing `no_viable_slot` for it, as an earlier version of this file did,
+   * set a trap for B7c: the natural handler for `no_viable_slot` is to drop
+   * the candidate, so a roster bug would have been swallowed as a data
+   * condition and a venue would have vanished from the pool in silence.
+   * Under spec §4.1g that is the one narrowing that cannot be undone.
+   */
+  | "roster_mismatch";
 
 /**
  * Thrown by everything in this file. Carries the kind and, where the fault is
@@ -534,6 +551,31 @@ export function leximinVector(
   burdens: readonly Burden[],
   participants: readonly Participant[]
 ): number[] {
+  const roster = new Set(participants.map((p) => p.userId));
+
+  // Checked in both directions, and the second direction is the one that
+  // matters. Walking only the roster catches a person with no burden — but
+  // it cannot see a burden with no person, and that is the quiet failure:
+  // the vector comes out perfectly well-formed, one entry short, describing
+  // a group that is not the group. A short vector wins comparisons it should
+  // lose, which is the same failure `originOf` exists to prevent, arriving
+  // through the other door.
+  //
+  // The rejection loop makes this reachable rather than theoretical. B5c
+  // marks somebody `cant_make_it` and the meeting returns to weighing, so
+  // the roster shrinks between runs; A8b carries the previous run's ranks 2
+  // and 3 forward into the next one. Burdens from one run meeting the roster
+  // of another is the ordinary shape of that loop, not an exotic misuse.
+  for (const burden of burdens) {
+    if (roster.has(burden.participantId)) continue;
+
+    throw new BurdenError(
+      "roster_mismatch",
+      `distance: these burdens cover ${burden.participantId}, who is not in the group being scored — burdens and roster must describe the same people`,
+      burden.participantId
+    );
+  }
+
   const vector = participants.map((participant) => {
     let best = Number.POSITIVE_INFINITY;
 
@@ -544,8 +586,8 @@ export function leximinVector(
 
     if (!Number.isFinite(best)) {
       throw new BurdenError(
-        "no_viable_slot",
-        `distance: there is no slot at which this venue can be scored for ${participant.name}`,
+        "roster_mismatch",
+        `distance: ${participant.name} is in the group but has no burden for this venue — burdens and roster must describe the same people`,
         participant.userId
       );
     }
@@ -637,8 +679,8 @@ export function compareLeximin(
 ): number {
   if (a.length !== b.length) {
     throw new BurdenError(
-      "no_viable_slot",
-      `distance: cannot compare fairness across ${a.length} people and ${b.length} — the group is the same for both`
+      "roster_mismatch",
+      `distance: cannot compare fairness across ${a.length} people and ${b.length} — two runs of the same meeting can have different rosters, but one comparison cannot`
     );
   }
 

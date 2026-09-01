@@ -1,7 +1,7 @@
 # Leximin fairness — the burden number, the ordering, and what it deliberately refuses to do
 
 **Task:** A3 ([tasks/todo.md](../../tasks/todo.md)) · **Blocks:** A4 (Group Matching Agent), B7c (candidate funnel) · **Feeds:** A12, A13 (Context Resolver)
-**Status:** complete. `lib/matching/distance.ts`, 50 tests, no LLM and no network.
+**Status:** complete. `lib/matching/distance.ts`, 52 tests, no LLM and no network.
 
 ---
 
@@ -57,6 +57,30 @@ Leximin compares vectors position by position. A vector one person short does no
 So `originOf` raises `BurdenError("no_origin")`, and the message names the person rather than printing a row id, because it ends up in front of a group of friends: _"Dana has no home location set — someone still needs to fill in their details before this group can be weighed."_
 
 `leximinVector` takes the roster as a parameter rather than inferring it from the burdens, for the same reason: the vector's length is load-bearing, so it is pinned by who is in the group and not by what happened to be in an array.
+
+### The burdens and the roster must describe the same people — checked both ways
+
+The same failure as the one above, arriving through the other door, and it took a question from a reviewer to find it.
+
+`leximinVector` takes the burdens and the roster separately. The obvious check is to walk the roster and make sure everyone has a burden — that catches a person who was never scored. It cannot catch the reverse: a **burden belonging to someone who is no longer in the group**. That vector comes out perfectly well-formed, one entry short, describing a group that is not the group. And a short vector wins comparisons it should lose.
+
+**This is reachable through the ordinary rejection loop, not through misuse.** [B5c](../../tasks/todo.md) marks somebody `cant_make_it` and the meeting returns to weighing, so the roster shrinks between runs of the same meeting. [A8b](../../tasks/todo.md) carries the previous run's ranks 2 and 3 forward into the next run. Burdens computed under one roster meeting the roster of the next run is the normal shape of that loop.
+
+So the check runs in both directions, and there is a test for each.
+
+### A caller mistake is not a data condition — `roster_mismatch`
+
+`BurdenErrorKind` was mixing two categories that must not share a label:
+
+| Kind                                            | Means                                         | A consumer should            |
+| ----------------------------------------------- | --------------------------------------------- | ---------------------------- |
+| `no_origin`, `bad_tolerance`, `bad_coordinates` | somebody's data is incomplete or broken       | catch it, and say who        |
+| `no_viable_slot`                                | this venue is usable at no hour               | catch it, and drop the venue |
+| `roster_mismatch`                               | **the code asked a question with no meaning** | never catch it. Fix the code |
+
+The first version of this file gave the roster failures the kind `no_viable_slot`, which set a trap for B7c. The natural handler for `no_viable_slot` is to drop the candidate — the message even invites it — so **a roster bug would have been swallowed as a data condition and a venue would have left the pool in silence.** Spec §4.1g is explicit that narrowing at retrieval is the one thing no later stage can undo.
+
+The kind is what code branches on; the message is only for people. Getting the message right and the kind wrong fixes nothing.
 
 ### The detour factor clamps, but the tolerance throws
 
@@ -146,6 +170,6 @@ Two eval scenarios do not survive contact with the arithmetic they describe. Bot
 
 ## How A3 was verified
 
-`npm run verify` — format, lint, `tsc --noEmit`, and the suite. 50 tests in `lib/matching/distance.test.ts`, including both acceptance tests from the task verbatim, the sphere oracle for the haversine, adversarial coordinates and tolerances, the transitivity of the quantised key, and the `ResolvedContext` wholesale pass as a type-level assertion.
+`npm run verify` — format, lint, `tsc --noEmit`, and the suite. 52 tests in `lib/matching/distance.test.ts`, including both acceptance tests from the task verbatim, the sphere oracle for the haversine, adversarial coordinates and tolerances, the transitivity of the quantised key, and the `ResolvedContext` wholesale pass as a type-level assertion.
 
 `npm run demo` runs the deterministic ranking end to end, between A2's filter and the agent call.

@@ -24,6 +24,7 @@ import {
   leximinVector,
   rankByLeximin,
   regionContaining,
+  scoreCandidate,
   scoreCandidates,
   straightLineKm,
   toleranceKmFor,
@@ -557,9 +558,54 @@ describe("the pre-rank vector", () => {
     const noa = participant("u-noa", "Noa");
     const absent = participant("u-ghost", "Ghost");
 
-    expect(() =>
-      leximinVector(burdensFor(VENUE, [noa], [MON_EVENING]), [noa, absent])
-    ).toThrow(/Ghost/);
+    try {
+      leximinVector(burdensFor(VENUE, [noa], [MON_EVENING]), [noa, absent]);
+      expect.unreachable("a vector missing a participant must not be built");
+    } catch (error) {
+      expect((error as BurdenError).kind).toBe("roster_mismatch");
+      expect((error as BurdenError).message).toContain("Ghost");
+    }
+  });
+
+  it("refuses burdens that cover somebody outside the group", () => {
+    // The quiet half, and the one worth the test. Walking only the roster
+    // catches a person with no burden; it cannot see a burden with no
+    // person, and that vector comes out *well-formed* — one entry short,
+    // describing a group that is not the group. A short vector wins
+    // comparisons it should lose.
+    //
+    // Reachable through the rejection loop, not exotic: B5c marks somebody
+    // `cant_make_it` and the meeting returns to weighing, so the roster
+    // shrinks between runs, while A8b carries the previous run's ranks 2 and
+    // 3 forward into the next one.
+    const noa = participant("u-noa", "Noa");
+    const rami = participant("u-rami", "Rami", JERUSALEM);
+    const runOne = burdensFor(VENUE, [noa, rami], [MON_EVENING]);
+
+    // Run two: Rami is out. The burdens still cover him.
+    try {
+      leximinVector(runOne, [noa]);
+      expect.unreachable("burdens for a departed participant must not pass");
+    } catch (error) {
+      expect((error as BurdenError).kind).toBe("roster_mismatch");
+      expect((error as BurdenError).participantId).toBe("u-rami");
+    }
+  });
+
+  it("keeps a roster problem distinct from a venue with no usable hour", () => {
+    // The kind is what code branches on, and B7c's natural handler for
+    // `no_viable_slot` is to drop the candidate. If a roster bug carried
+    // that kind it would be swallowed as a data condition and a venue would
+    // leave the pool in silence — the one narrowing spec §4.1g says cannot
+    // be undone.
+    const noa = participant("u-noa", "Noa");
+
+    try {
+      scoreCandidate(VENUE, [noa], []);
+      expect.unreachable("a venue with no viable slot must not be scored");
+    } catch (error) {
+      expect((error as BurdenError).kind).toBe("no_viable_slot");
+    }
   });
 });
 
@@ -593,10 +639,15 @@ describe("leximin", () => {
   });
 
   it("refuses to compare vectors of different lengths", () => {
-    // A missing participant must not win by absence.
-    expect(() => compareLeximin([1.8, 1.2], [1.8, 1.2, 0.9])).toThrow(
-      BurdenError
-    );
+    // A missing participant must not win by absence. Two runs of the same
+    // meeting can have different rosters — one comparison cannot.
+    try {
+      compareLeximin([1.8, 1.2], [1.8, 1.2, 0.9]);
+      expect.unreachable("two group sizes must not be compared");
+    } catch (error) {
+      expect(error).toBeInstanceOf(BurdenError);
+      expect((error as BurdenError).kind).toBe("roster_mismatch");
+    }
   });
 
   it("treats three vectors differing by a nanometre as one three-way tie", () => {
