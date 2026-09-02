@@ -41,6 +41,8 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Acceptance: 8–12 scenarios with profiles, calendars, the agreed-correct answer and its reasoning. At least 2 with no perfect solution · at least 2 with a rejection reason and expected follow-up · **1 hard-constraint trap** · **1 closed-on-the-night trap** · **1 mobility-window trap** where the answer is a _(venue, time)_ pair · **1 semantic-geography trap** (spec §9).
   - Verify: all three agree each answer is right
   - Files: `evals/scenarios/*.json`, `evals/README.md`
+  - Distances in a scenario are **straight lines computed from its own coordinates**, never road distances estimated by hand — that is how [#86](https://github.com/ron14y-sys/squad_lock/issues/86) happened. `__tests__/eval-scenarios.test.ts` recomputes 04 and 06 on every `npm test`.
+  - ⚠️ Still open: **05, 07 and 08 carry no venue coordinates**, so A5 cannot score a shortlist for them. Adding coordinates changes what those scenarios test, so it needs all three of you.
 
 - [x] **F6 — Deployed skeleton** — live on Vercel, mobile-first shell, installable. Verify on a real phone.
 - [x] **F7 — Secrets and environment** — `.env.example` committed, nothing secret ever committed. Verify: `git log -p | grep -iE 'sk-ant|AIza|client_secret'` is empty.
@@ -69,7 +71,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Verify: unit tests — a venue next door to three and an hour from the fourth loses to a moderately inconvenient one for everyone; **and two candidates tying on the worst-off participant are separated by the second-worst**
   - Files: `lib/matching/distance.ts`, tests
   - Decisions, and what A4, B7c, A12 and A13 inherit: [docs/decisions/leximin-fairness.md](../docs/decisions/leximin-fairness.md)
-  - ⚠️ Found while building it: **two eval scenarios contradict their own coordinates** — 06's expected answer is inverted, and 04's trap does not fire. Filed as [#86](https://github.com/ron14y-sys/squad_lock/issues/86), against F5; A5 will score a correct A3 as wrong on 06 until it is fixed.
+  - Found while building it: **two eval scenarios contradicted their own coordinates** — 06's expected answer was inverted and 04's trap did not fire. Filed as [#86](https://github.com/ron14y-sys/squad_lock/issues/86) against F5, fixed separately, and guarded by `__tests__/eval-scenarios.test.ts` so prose cannot drift from the numbers again.
 
 - [ ] **A4 — Group Matching Agent**
   - Acceptance: one call over all profiles, availability and the shortlist returns a **schema-validated ranked top 3** (spec §4.1c). Each option carries a `(venue, datetime)` pair, a per-participant justification, and — internally — what it trades away and for whom. No free-text parsing. Runs the A2 post-check before returning. The whole run is persisted.
