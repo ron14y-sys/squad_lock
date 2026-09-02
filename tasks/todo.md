@@ -57,17 +57,19 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Files: `lib/llm/client.ts`, `lib/llm/cost.ts`
   - Decisions and the contracts A4, A5, A7, A10 and A12 inherit: [docs/decisions/llm-client.md](../docs/decisions/llm-client.md)
 
-- [ ] **A2 — Hard-constraint filter and post-check**
+- [x] **A2 — Hard-constraint filter and post-check** — merged in #77.
   - Acceptance: a pure function dropping every candidate violating a hard constraint, and a second re-checking the agent's answer. **Both operate on `(venue, time slot)` pairs**, so they also enforce opening hours and each participant's mobility window (spec §5.4). Deterministic.
   - Verify: unit tests — the highest-rated venue violating a constraint is removed; a venue closed at the proposed hour is removed but survives at another hour; a fabricated agent answer violating either is caught
   - Note: build this **before A4**. It is the guardrail the single-agent design leans on.
   - Files: `lib/matching/constraints.ts`, tests
   - Decisions, and what A4 and B7c inherit: [docs/decisions/hard-constraints.md](../docs/decisions/hard-constraints.md)
 
-- [ ] **A3 — Leximin fairness scoring**
+- [x] **A3 — Leximin fairness scoring**
   - Acceptance: `burden = straight_line × detour_factor / tolerance_km` per participant per candidate, then **leximin** — sort burdens worst-first and compare lexicographically. Detour factor and tolerance arrive **as parameters**, defaulting to 1.0 and the profile value. Pure function, no LLM.
   - Verify: unit tests — a venue next door to three and an hour from the fourth loses to a moderately inconvenient one for everyone; **and two candidates tying on the worst-off participant are separated by the second-worst**
   - Files: `lib/matching/distance.ts`, tests
+  - Decisions, and what A4, B7c, A12 and A13 inherit: [docs/decisions/leximin-fairness.md](../docs/decisions/leximin-fairness.md)
+  - ⚠️ Found while building it: **two eval scenarios contradict their own coordinates** — 06's expected answer is inverted, and 04's trap does not fire. Filed as [#86](https://github.com/ron14y-sys/squad_lock/issues/86), against F5; A5 will score a correct A3 as wrong on 06 until it is fixed.
 
 - [ ] **A4 — Group Matching Agent**
   - Acceptance: one call over all profiles, availability and the shortlist returns a **schema-validated ranked top 3** (spec §4.1c). Each option carries a `(venue, datetime)` pair, a per-participant justification, and — internally — what it trades away and for whom. No free-text parsing. Runs the A2 post-check before returning. The whole run is persisted.

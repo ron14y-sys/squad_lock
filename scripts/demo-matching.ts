@@ -16,9 +16,10 @@
  *   1. Four people, carrying between them every kind of hard constraint
  *   2. Six venues — compliant, non-compliant, shut at the wrong hour, unknown
  *   3. A2 `filterPairs` — every dropped pair, and the exact reason
- *   4. A1 `generate` — the choice, streamed, with tokens and dollars
- *   5. A2 `assertChosenPairAllowed` on the real answer — the path that passes
- *   6. A2 `assertChosenPairAllowed` on four fabrications — the path that throws
+ *   4. A3 `scoreCandidates` — the burden on each person, and the leximin order
+ *   5. A1 `generate` — the choice, streamed, with tokens and dollars
+ *   6. A2 `assertChosenPairAllowed` on the real answer — the path that passes
+ *   7. A2 `assertChosenPairAllowed` on four fabrications — the path that throws
  *
  * Nothing here is imported by the app, and nothing here writes to a database.
  */
@@ -27,12 +28,18 @@ import {
   assertChosenPairAllowed,
   filterPairs,
   HardConstraintError,
+  viableSlotsByCandidate,
   type ConstraintInput,
   type PairCheck,
   type UnverifiedFact,
   type VenueDietaryFacts,
   type ViablePair,
 } from "@/lib/matching/constraints";
+import {
+  rankByLeximin,
+  scoreCandidates,
+  type CandidateScore,
+} from "@/lib/matching/distance";
 import {
   generate,
   LlmConfigError,
@@ -97,19 +104,34 @@ const BASE_PROFILE: Omit<PreferenceProfile, "id" | "userId"> = {
   updatedAt: new Date("2026-08-01T00:00:00.000Z"),
 };
 
-/** One member of the cast: the base profile, with this person's quirks laid over it. */
+/**
+ * One member of the cast: the base profile, with this person's quirks laid
+ * over it.
+ *
+ * `origin` follows the merged profile's `home` rather than the base one, so
+ * that the four of them genuinely stand in four different places. Before A3
+ * they all shared a coordinate, which was invisible while nothing measured a
+ * distance and would have made the burden grid four identical columns.
+ */
 function person(
   userId: string,
   name: string,
   profile: Partial<PreferenceProfile>,
   rest: Partial<Participant> = {}
 ): Participant {
+  const merged = {
+    ...BASE_PROFILE,
+    id: `profile-${userId}`,
+    userId,
+    ...profile,
+  };
+
   return {
     userId,
     name,
-    profile: { ...BASE_PROFILE, id: `profile-${userId}`, userId, ...profile },
+    profile: merged,
     context: null,
-    origin: BASE_PROFILE.home,
+    origin: merged.home,
     busy: [],
     ...rest,
   };
@@ -122,6 +144,7 @@ function person(
 const PARTICIPANTS: Participant[] = [
   person("dana", "Dana", {
     hardConstraints: { dietary: ["kosher"], allergies: [], unavailable: [] },
+    home: { lat: 32.056, lng: 34.769 },
     homeNeighbourhood: "Florentin",
   }),
   person("noa", "Noa", {
@@ -131,12 +154,13 @@ const PARTICIPANTS: Participant[] = [
       // She teaches on Monday evenings. Availability, not distance (spec §5.1).
       unavailable: [{ weekdays: ["monday"], from: "20:00", to: "23:00" }],
     },
+    home: { lat: 32.063, lng: 34.764 },
     homeNeighbourhood: "Neve Tzedek",
   }),
   person(
     "yotam",
     "Yotam",
-    { homeNeighbourhood: "Jaffa" },
+    { home: { lat: 32.052, lng: 34.752 }, homeNeighbourhood: "Jaffa" },
     {
       // A free/busy block from Google Calendar — an instant, machine-written.
       busy: [
@@ -156,6 +180,7 @@ const PARTICIPANTS: Participant[] = [
         { kind: "mode_unavailable", weekdays: ["friday"], mode: "car" },
         { kind: "mode_unavailable", weekdays: ["friday"], mode: "transit" },
       ],
+      home: { lat: 32.082, lng: 34.814 },
       homeNeighbourhood: "Ramat Gan",
     },
     {
@@ -523,7 +548,88 @@ function printFilter(viable: ViablePair[], dropped: PairCheck[]): void {
   }
 }
 
-/* ---------------------------------------------------------- 4 · the A1 call */
+/* ------------------------------------------------------ 4 · the A3 fairness */
+
+/**
+ * The deterministic fairness layer, over the pairs A2 left standing.
+ *
+ * Before this stage existed the demo asked the *model* to do this in prose —
+ * "prefer the option whose worst-off participant is least badly off" — which
+ * spec §4.1f forbids: the model never performs arithmetic and never sorts a
+ * candidate set, because that is what keeps `argmin` running over every
+ * candidate rather than over whichever ones it happened to weigh carefully.
+ * It was also being asked to do it without ever being told a distance.
+ */
+function rankFairly(viable: ViablePair[], candidates: Candidate[]) {
+  const viableSlots = viableSlotsByCandidate({ viable, dropped: [] });
+  const survivors = candidates.filter(
+    (c) => (viableSlots.get(c.placeId)?.length ?? 0) > 0
+  );
+
+  return rankByLeximin(
+    scoreCandidates({
+      candidates: survivors,
+      participants: PARTICIPANTS,
+      viableSlots,
+    })
+  );
+}
+
+/** Colour by how far past the person's own stated limit this is. */
+function burdenCell(value: number): string {
+  const shown = value.toFixed(2);
+  if (value <= 1) return green(shown);
+  if (value <= 2) return yellow(shown);
+  return red(shown);
+}
+
+function printFairness(ranked: CandidateScore[]): void {
+  heading("4", "A3 - burden and leximin fairness");
+
+  console.log(
+    dim(
+      `  ${pad("", 16)}${PARTICIPANTS.map((p) => pad(p.name, 10)).join("")}${pad("leximin", 28)}`
+    )
+  );
+
+  for (const score of ranked) {
+    // One column per person, at their most permissive slot - which is the
+    // basis the pre-rank uses, so that time-dependence never narrows what
+    // gets retrieved (spec §5.4, §4.1g).
+    const cells = PARTICIPANTS.map((person) => {
+      const best = Math.min(
+        ...score.burdens
+          .filter((b) => b.participantId === person.userId)
+          .map((b) => b.value)
+      );
+      return pad(burdenCell(best), 10);
+    });
+
+    const vector = `[${score.leximin.map((v) => v.toFixed(2)).join(", ")}]`;
+    console.log(
+      `  ${bold(pad(score.candidate.name, 16))}${cells.join("")}${dim(vector)}`
+    );
+  }
+
+  console.log(
+    dim(
+      "\n  Ranked worst-off participant first, ties broken on the second-worst."
+    )
+  );
+  console.log(
+    dim(
+      "  1.00 is exactly as far as that person said they would travel (spec §5.4)."
+    )
+  );
+  console.log(
+    dim(
+      "  A straight line with a correction factor - not a routed journey, and"
+    )
+  );
+  console.log(dim("  never a claim about real driving time."));
+}
+
+/* ---------------------------------------------------------- 5 · the A1 call */
 
 const SYSTEM_PROMPT = `You are the Group Matching Agent for a system that schedules get-togethers among friends.
 
@@ -531,8 +637,10 @@ Every (venue, slot) pair you are given has ALREADY passed a deterministic hard-c
 
 Return the top 3 options, ranked.
 
+The pairs are listed in fairness order, worst-off participant first, computed deterministically before you were called. Each one carries the burden it places on each person: 1.0 is exactly as far as that person said they were willing to travel, 1.4 is half again as far. You do not need to recompute or re-sort any of it.
+
 Rules:
-- Prefer the option whose worst-off participant is least badly off. Between two options that tie on the worst-off person, prefer the one that treats the second-worst better.
+- The fairness order is advice, not an instruction. Every pair listed is a valid choice, and a better-suited venue further down the list may well be the right answer - but if you pass over the fairest option, you are trading someone's journey for something else, so say what in "traded_away".
 - STRONGLY prefer a pair marked verified. A pair marked unverified carries something we could not check - its opening hours, or whether it meets somebody's dietary constraint. Choose one only when the verified options are clearly worse, and then say in "unverified_note" what the group should ring ahead and confirm.
 - If every option you rank is verified, leave "unverified_note" as an empty string.
 - Write a justification for EVERY participant on EVERY option, addressed to that person, in their own terms. Never omit anyone.
@@ -590,7 +698,10 @@ type AgentOption = {
  * The prompt A1 sends. Only pairs that survived A2 go in it — the agent is
  * never shown an option it is not allowed to pick.
  */
-function buildUserMessage(viable: ViablePair[]): string {
+function buildUserMessage(
+  viable: ViablePair[],
+  ranked: CandidateScore[]
+): string {
   const people = PARTICIPANTS.map((p) => ({
     id: p.userId,
     name: p.name,
@@ -599,17 +710,52 @@ function buildUserMessage(viable: ViablePair[]): string {
     soft_preferences: p.profile.softPreferences,
   }));
 
-  const pairs = viable.map((pair) => ({
-    venue_id: pair.candidatePlaceId,
-    venue_name: nameOf(pair.candidatePlaceId),
-    rating: venueById.get(pair.candidatePlaceId)?.rating,
-    neighbourhood: venueById.get(pair.candidatePlaceId)?.neighbourhood,
-    slot_id: idOfSlot(pair.slot),
-    when: whenOf(pair.slot),
-    verified: pair.unverified.length === 0,
-    unchecked:
-      pair.unverified.length > 0 ? describeUnverified(pair.unverified) : null,
-  }));
+  // Ranked order, and every pair carries the burden it puts on each person at
+  // that hour. The model is told the numbers rather than asked to guess them
+  // from neighbourhood names, which is all it had before A3 (spec §4.1f).
+  const rank = new Map(ranked.map((s, i) => [s.candidate.placeId, i]));
+  // Keyed by all three dimensions, because that is what a burden is: one
+  // venue, one hour, one person.
+  const byCell = new Map(
+    ranked.flatMap((score) =>
+      score.burdens.map(
+        (b) =>
+          [
+            `${b.candidatePlaceId}|${b.slot.start.getTime()}|${b.participantId}`,
+            b.value,
+          ] as const
+      )
+    )
+  );
+
+  const pairs = viable
+    .slice()
+    .sort(
+      (a, b) =>
+        (rank.get(a.candidatePlaceId) ?? Infinity) -
+        (rank.get(b.candidatePlaceId) ?? Infinity)
+    )
+    .map((pair) => ({
+      venue_id: pair.candidatePlaceId,
+      venue_name: nameOf(pair.candidatePlaceId),
+      rating: venueById.get(pair.candidatePlaceId)?.rating,
+      neighbourhood: venueById.get(pair.candidatePlaceId)?.neighbourhood,
+      slot_id: idOfSlot(pair.slot),
+      when: whenOf(pair.slot),
+      verified: pair.unverified.length === 0,
+      unchecked:
+        pair.unverified.length > 0 ? describeUnverified(pair.unverified) : null,
+      burden_by_participant: Object.fromEntries(
+        PARTICIPANTS.map((person) => [
+          person.name,
+          byCell
+            .get(
+              `${pair.candidatePlaceId}|${pair.slot.start.getTime()}|${person.userId}`
+            )
+            ?.toFixed(2) ?? null,
+        ])
+      ),
+    }));
 
   return [
     "Occasion: a catch-up dinner, first cycle.",
@@ -630,9 +776,10 @@ function buildUserMessage(viable: ViablePair[]): string {
  */
 async function runAgent(
   viable: ViablePair[],
+  ranked: CandidateScore[],
   records: LlmCallRecord[]
 ): Promise<AgentOption[] | null> {
-  heading("4", "A1 - the Gemini client");
+  heading("5", "A1 - the Gemini client");
 
   const config = resolveConfig("matching");
   console.log(
@@ -655,7 +802,7 @@ async function runAgent(
     result = await generate({
       task: "matching",
       system: SYSTEM_PROMPT,
-      input: buildUserMessage(viable),
+      input: buildUserMessage(viable, ranked),
       jsonSchema: RESULT_SCHEMA,
       onText: (_chunk, soFar) => {
         // The raw JSON as it arrives. Unlovely, and that is the point: this is
@@ -752,7 +899,7 @@ function printPostCheck(
   input: ConstraintInput,
   viable: ViablePair[]
 ): void {
-  heading("5", "A2 - the post-check on the answer");
+  heading("6", "A2 - the post-check on the answer");
 
   // With no call made, stand in the pair the filter itself blessed, so the
   // passing path is still shown.
@@ -770,7 +917,7 @@ function printPostCheck(
     console.log(`    ${red(String(error))}`);
   }
 
-  heading("6", "A2 - the post-check on four answers that must not pass");
+  heading("7", "A2 - the post-check on four answers that must not pass");
 
   // Always against the full pool, whatever `--fallback` did to the run above:
   // each of these is meant to demonstrate a different rule, and against a
@@ -833,7 +980,7 @@ async function main(): Promise<void> {
     .join(" · ");
   console.log(
     dim(
-      `A2 filters, A1 chooses, A2 checks the choice.   ${flags ? `${flags} · ` : ""}${APP_TIME_ZONE}`
+      `A2 filters, A3 ranks, A1 chooses, A2 checks the choice.   ${flags ? `${flags} · ` : ""}${APP_TIME_ZONE}`
     )
   );
 
@@ -864,8 +1011,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  const ranked = rankFairly(viable, candidates);
+  printFairness(ranked);
+
   const records: LlmCallRecord[] = [];
-  const options = await runAgent(viable, records);
+  const options = await runAgent(viable, ranked, records);
 
   if (options?.[0]) printDisclaimer(options[0], viable);
   printPostCheck(options?.[0] ?? null, input, viable);
