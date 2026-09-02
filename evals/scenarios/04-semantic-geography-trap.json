@@ -1,7 +1,7 @@
 {
   "id": "semantic-geography-trap",
   "trap": "semantic-geography",
-  "description": "Straight-line distance alone picks the wrong venue: one candidate looks closer on a map but is separated from a participant by a highway with limited crossings, while a nominally-farther candidate is actually easier to reach. This is the scenario that measures whether the Context Resolver's detour factor earns its place.",
+  "description": "Straight-line distance alone picks the wrong venue: one candidate is genuinely nearer the outlying participant on a map, but the Ayalon and the railway run between them with no crossing on that stretch, while a nominally-farther candidate sits on a continuous arterial. This is the scenario that measures whether the Context Resolver's detour factor earns its place.",
   "participants": [
     {
       "name": "Tal",
@@ -28,13 +28,13 @@
   "availability": [{ "day": "Tuesday", "start": "19:00", "end": "23:00" }],
   "candidateVenues": [
     {
-      "name": "Left Bank",
-      "neighborhood": "Florentin",
-      "coordinates": { "lat": 32.057, "lng": 34.7688 },
+      "name": "Shapira Social",
+      "neighborhood": "Shapira",
+      "coordinates": { "lat": 32.0555, "lng": 34.7885 },
       "kosher": false,
       "openingHours": { "Tuesday": ["18:00-00:00"] },
       "rating": 4.5,
-      "note": "Straight-line closest to Gili, but Ayalon Highway separates Ramat Gan from Florentin with few crossing points — the real detour is much longer than the straight line suggests."
+      "note": "3.99 km from Gili in a straight line — nearer than Rothschild 12, and the better-rated venue. But the Ayalon and the railway run together between Shapira and Ramat Gan with no crossing on this stretch, so the approach is a good deal longer than the line suggests."
     },
     {
       "name": "Rothschild 12",
@@ -43,11 +43,11 @@
       "kosher": false,
       "openingHours": { "Tuesday": ["18:00-00:00"] },
       "rating": 4.2,
-      "note": "Slightly farther from Gili in a straight line, but sits on a direct crossing route — genuinely faster to reach."
+      "note": "4.25 km from Gili — slightly farther in a straight line, but reached from Ramat Gan along a continuous arterial with no barrier to work around."
     }
   ],
   "expected": {
     "venue": "Rothschild 12",
-    "reasoning": "Naive straight-line distance would favor Left Bank for Gili. Once the highway barrier is accounted for (a higher detour factor between Ramat Gan and Florentin than between Ramat Gan and Rothschild), Rothschild 12 is the fairer choice despite the larger raw distance. A naive straight-line-only implementation is expected to get this one wrong — that gap is exactly what this scenario measures."
+    "reasoning": "Straight-line burdens (distance / toleranceKm, all tolerances 6 km, computed from the coordinates in this file): Shapira Social is [0.665 Gili, 0.376 Omer, 0.304 Tal] and Rothschild 12 is [0.708 Gili, 0.180 Omer, 0.171 Tal]. Leximin compares the worst-off participant first, so with no detour factor Shapira Social wins on 0.665 against 0.708 — and it is also the better-rated venue, so nothing else pulls the other way. A naive straight-line-only implementation is expected to get this one wrong; that gap is exactly what this scenario measures. Once the barrier between Shapira and Ramat Gan is priced in, Gili's burden at Shapira Social rises above hers at Rothschild 12 and the answer flips. The flip needs only that the Ramat Gan-Shapira detour factor exceed the Ramat Gan-Rothschild one by about 7% (4.247 / 3.988), so the scenario turns on the detour factor existing at all, not on its exact value: at a plausible 1.7 against 1.25 the vectors are [1.130, ...] and [0.885, ...] and Rothschild 12 wins comfortably. Note that the burden figure is a straight line with a correction factor, never a routed journey or a travel time (spec §5.4)."
   }
 }
