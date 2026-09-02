@@ -6,34 +6,54 @@
     {
       "name": "Adi",
       "neighborhood": "Kerem HaTeimanim",
-      "coordinates": { "lat": 32.0637, "lng": 34.7677 },
+      "coordinates": {
+        "lat": 32.0637,
+        "lng": 34.7677
+      },
       "hardConstraints": ["kosher"],
       "toleranceKm": 6
     },
     {
       "name": "Noam",
       "neighborhood": "Kerem HaTeimanim",
-      "coordinates": { "lat": 32.0637, "lng": 34.7677 },
+      "coordinates": {
+        "lat": 32.0637,
+        "lng": 34.7677
+      },
       "hardConstraints": ["vegan-option-required"],
       "toleranceKm": 6
     },
     {
       "name": "Hila",
       "neighborhood": "Kerem HaTeimanim",
-      "coordinates": { "lat": 32.0637, "lng": 34.7677 },
+      "coordinates": {
+        "lat": 32.0637,
+        "lng": 34.7677
+      },
       "hardConstraints": [],
-      "softPreferences": { "budget": "low" },
+      "softPreferences": {
+        "budget": "low"
+      },
       "toleranceKm": 6
     },
     {
       "name": "Eyal",
       "neighborhood": "Kerem HaTeimanim",
-      "coordinates": { "lat": 32.0637, "lng": 34.7677 },
+      "coordinates": {
+        "lat": 32.0637,
+        "lng": 34.7677
+      },
       "hardConstraints": [],
       "toleranceKm": 6
     }
   ],
-  "availability": [{ "day": "Monday", "start": "20:30", "end": "23:00" }],
+  "availability": [
+    {
+      "day": "Monday",
+      "start": "20:30",
+      "end": "23:00"
+    }
+  ],
   "candidateVenues": [
     {
       "name": "Meshek Barzilay",
@@ -41,7 +61,9 @@
       "kosher": false,
       "veganOptions": true,
       "priceLevel": "mid-high",
-      "openingHours": { "Monday": ["09:00-23:00"] },
+      "openingHours": {
+        "Monday": ["09:00-23:00"]
+      },
       "rating": 4.5
     },
     {
@@ -50,7 +72,9 @@
       "kosher": true,
       "veganOptions": true,
       "priceLevel": "low",
-      "openingHours": { "Monday": ["11:00-22:30"] },
+      "openingHours": {
+        "Monday": ["11:00-22:30"]
+      },
       "rating": 3.7
     },
     {
@@ -59,12 +83,18 @@
       "kosher": true,
       "veganOptions": true,
       "priceLevel": "mid-high",
-      "openingHours": { "Monday": ["18:00-01:00"] },
+      "openingHours": {
+        "Monday": ["18:00-01:00"]
+      },
       "rating": 4.4
     }
   ],
   "expected": {
     "venue": "HaKosem Kerem",
-    "reasoning": "Meshek Barzilay is not kosher, so Adi's hard constraint eliminates it regardless of rating — that part is mechanical. Between the two remaining kosher, vegan-friendly options, Nanuchka Kosher is better-rated but HaKosem Kerem is the only one where an actual stated participant preference (Hila's low budget) points toward it; nobody stated a preference for a higher-rated or pricier venue. Agreed by the team on this basis."
+    "time": {
+      "start": "20:30",
+      "end": "22:30"
+    },
+    "reasoning": "Meshek Barzilay is not kosher, so Adi's hard constraint eliminates it regardless of rating — that part is mechanical. Between the two remaining kosher, vegan-friendly options, Nanuchka Kosher is better-rated but HaKosem Kerem is the only one where an actual stated participant preference (Hila's low budget) points toward it; nobody stated a preference for a higher-rated or pricier venue. Agreed by the team on this basis. HaKosem closes at 22:30 while the group is free until 23:00, and that shortens the evening rather than ruling the venue out: the slot is the intersection, 20:30–22:30. This scenario is therefore also the clearest case of that rule — the answer that survives is the venue that closes earliest of the three."
   }
 }

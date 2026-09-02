@@ -9,7 +9,7 @@ Ground-truth scenarios for the matching engine, written **before the engine exis
 No engine exists yet to run these against. The expected answer in every file is computed **by hand**, using the same rules the deterministic layer will eventually implement:
 
 1. Drop any venue that violates a hard constraint (kosher, allergy, etc.) — spec §4.1b.
-2. Drop any `(venue, time)` pair where the venue is shut, or a participant has no viable way to get there in that slot — spec §5.4, §5.7.
+2. **Trim** each `(venue, time)` pair to the hours the venue is actually open, and drop it only if nothing survives — or if a participant has no viable way to get there in what does survive — spec §5.4, §5.7. See "The meeting shortens to fit the venue" below.
 3. Among what's left, apply leximin: the candidate that minimizes the worst participant's burden wins; ties are broken by the second-worst, then the third — spec §5.4.
 
 Steps 1–3 are mechanical — two people applying them by hand to the same scenario should reach the same answer. Where they don't, the scenario is underspecified and needs fixing, not the disagreement.
@@ -17,6 +17,19 @@ Steps 1–3 are mechanical — two people applying them by hand to the same scen
 **`05-no-perfect-solution-diet-conflict.json` is the exception.** There, steps 1–2 still apply mechanically, but step 3 doesn't produce a single forced answer — multiple venues survive and none dominates the others on every axis. For that one, `expected` records the team's actual agreed choice and reasoning, not a computed one. It was resolved after starting from a proposed recommendation rather than a blank page — worth doing again the next time a scenario lands here without a mechanically forced answer.
 
 **`06-no-perfect-solution-dispersed-group.json` is not that kind of exception, and treating it as one is what broke it** ([#86](https://github.com/ron14y-sys/squad_lock/issues/86)). Its two candidates have distinct leximin vectors, so step 3 does force an answer — the "no perfect solution" in its name means every venue leaves _someone_ over tolerance, not that the choice between them is a matter of taste.
+
+### The meeting shortens to fit the venue
+
+**A venue does not have to be open for the whole window the group is free.** The slot is the **intersection** of the two, and the meeting shortens to fit. A venue that closes at 22:30 when the group is free until 23:00 is not eliminated — it is a venue where the evening ends at 22:30.
+
+This is [B6](../tasks/todo.md)'s job, and has been since F5: _"free slots common to all confirmed participants, **intersected with venue opening hours and mobility windows** to produce viable `(venue, time)` pairs (spec §5.4)"_. Only an **empty** intersection drops the pair — which is exactly the `02-closed-on-the-night-trap` scenario, where the best-rated venue shuts at 20:00 and the group is not free until 21:00.
+
+Two consequences for whoever writes a scenario:
+
+- **`expected.time` is required whenever the venue's hours trim the group's window**, not only in mobility-window scenarios — because then the answer genuinely is a `(venue, time)` pair rather than a venue. It carries a start **and** an end.
+- **Do not confuse this with `windowsCoverSlot` in [`lib/matching/constraints.ts`](../lib/matching/constraints.ts)**, which demands the _whole_ slot sit inside a _single_ opening window. That rule is right, and it runs **after** the trimming — its job is to stop a slot spanning the gap between lunch and dinner service, not to reject a venue that closes early.
+
+A minimum viable meeting length is not yet decided. No scenario is near the edge — the tightest trim leaves two hours — so the guard test asserts only that the intersection is non-empty, and the number is B6's to choose.
 
 ### Distances are computed, never estimated
 
@@ -46,11 +59,13 @@ The burden formula is defined on a straight line with a detour factor. **The sys
   ],
   "expected": {
     "venue": "...",
-    "time": "optional — required for mobility-window scenarios",
+    "time": { "start": "HH:MM", "end": "HH:MM" },
     "reasoning": "..."
   }
 }
 ```
+
+`expected.time` is required for mobility-window scenarios and wherever the venue's opening hours trim the group's window; it is omitted only when the whole window survives.
 
 `rejection-loop` scenarios add `initialProposal`, `rejection` (who, free text), and `expectedConstraint` (the structured constraint the Constraint Updater should extract) alongside `expected` (the follow-up proposal).
 

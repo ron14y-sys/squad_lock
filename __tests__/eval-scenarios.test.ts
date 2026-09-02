@@ -43,8 +43,23 @@ type Scenario = {
    * geography. A5's runner will need them to score a shortlist at all — see
    * the note in `evals/README.md`.
    */
-  candidateVenues: { name: string; coordinates?: LatLng }[];
-  expected: { venue: string };
+  candidateVenues: {
+    name: string;
+    coordinates?: LatLng;
+    /** Weekday name to `"HH:MM-HH:MM"` spans, as Places reports them. */
+    openingHours: Record<string, string[]>;
+  }[];
+  availability: { day: string; start: string; end: string }[];
+  expected: {
+    venue: string;
+    /**
+     * Required for mobility-window scenarios and wherever the venue's hours
+     * trim the group's window — see `evals/README.md`. 03 still carries the
+     * old bare-start form; stage 2 of the #86 plan converts it.
+     */
+    time?: { start: string; end: string } | string;
+    reasoning: string;
+  };
 };
 
 const dir = join(__dirname, "..", "evals", "scenarios");
@@ -212,5 +227,134 @@ describe("04 — the semantic geography trap", () => {
 
     expect(km("Rothschild 12") / km("Shapira Social")).toBeLessThan(1.1);
     expect(km("Rothschild 12") / km("Shapira Social")).toBeGreaterThan(1);
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The meeting shortens to fit the venue
+ *
+ * A venue need not be open for the whole window the group is free: the slot
+ * is the intersection, and only an empty one drops the pair. B6 owns the real
+ * intersection (`tasks/todo.md`) and does not exist yet, so the small local
+ * one below stands in — it is deliberately not exported and not in
+ * `lib/matching/`, because a second implementation for B-track to reconcile
+ * with is worse than none.
+ *
+ * Note this is the step *before* `windowsCoverSlot`, which demands the whole
+ * slot sit inside a single opening window. That rule is right and unchanged;
+ * it stops a slot spanning the gap between lunch and dinner service.
+ * ---------------------------------------------------------------------- */
+
+const MINUTES_PER_DAY = 24 * 60;
+
+/** `"20:30"` to 1230. Throws rather than guessing — a malformed fixture is a bug. */
+const minutes = (time: string) => {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time.trim());
+  if (!match) throw new Error(`"${time}" is not an HH:MM wall-clock time`);
+  return Number(match[1]) * 60 + Number(match[2]);
+};
+
+const clock = (m: number) => {
+  const wrapped = ((m % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(wrapped / 60))}:${pad(wrapped % 60)}`;
+};
+
+/** An end at or before its start is how "21:00 to 01:00" is written down. */
+const span = (from: string, to: string) => {
+  const start = minutes(from);
+  const end = minutes(to);
+  return { start, end: end <= start ? end + MINUTES_PER_DAY : end };
+};
+
+type Trim = { start: string; end: string; minutes: number } | null;
+
+/**
+ * The group's window narrowed to one venue's hours on that day.
+ *
+ * Intersected against each opening window separately and the longest kept,
+ * never against their union — the same reason `windowsCoverSlot` tests
+ * containment in a single window.
+ */
+const trim = (scenario: Scenario, venueName: string): Trim => {
+  const free = scenario.availability[0]!;
+  const venue = scenario.candidateVenues.find((v) => v.name === venueName);
+  if (!venue) throw new Error(`no venue "${venueName}" in ${scenario.id}`);
+
+  const window = span(free.start, free.end);
+  let best: Trim = null;
+
+  for (const hours of venue.openingHours[free.day] ?? []) {
+    const [from, to] = hours.split("-");
+    if (!from || !to) throw new Error(`"${hours}" is not an HH:MM-HH:MM span`);
+    const open = span(from, to);
+
+    const start = Math.max(window.start, open.start);
+    const end = Math.min(window.end, open.end);
+    if (end <= start) continue;
+    if (best && best.minutes >= end - start) continue;
+    best = { start: clock(start), end: clock(end), minutes: end - start };
+  }
+
+  return best;
+};
+
+describe("a venue need not be open for the whole evening", () => {
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s leaves the expected venue some of the group's window",
+    (_id, scenario) => {
+      // The rule is that an early closing time *shortens* the meeting. Only
+      // an empty intersection drops the pair — 02's trap, asserted below.
+      expect(trim(scenario, scenario.expected.venue)).not.toBeNull();
+    }
+  );
+
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s states the trimmed slot wherever trimming happens",
+    (_id, scenario) => {
+      const trimmed = trim(scenario, scenario.expected.venue)!;
+      const free = scenario.availability[0]!;
+      const whole = trimmed.start === free.start && trimmed.end === free.end;
+      const stated = scenario.expected.time;
+
+      if (whole) return; // Nothing was trimmed; `expected.time` is optional.
+
+      // Trimming makes the answer a (venue, time) pair rather than a venue,
+      // so the scenario has to say which time.
+      expect(
+        stated,
+        `${scenario.id} trims but states no expected.time`
+      ).toBeDefined();
+      if (typeof stated === "string") return; // 03's old form — stage 2.
+      expect(stated).toEqual({ start: trimmed.start, end: trimmed.end });
+    }
+  );
+
+  it("shortens the evening at 05, rather than ruling the venue out", () => {
+    // HaKosem shuts at 22:30 and the group is free until 23:00. Under the
+    // old whole-window reading this venue was dropped and the scenario's
+    // expected answer was unreachable.
+    expect(
+      trim(byId("no-perfect-solution-diet-conflict"), "HaKosem Kerem")
+    ).toMatchObject({ start: "20:30", end: "22:30" });
+  });
+
+  it("shortens the evening at 07, so the rejection loop has a follow-up", () => {
+    // Quiet Corner shuts at midnight and the group is free until 01:00. It is
+    // the only candidate left after Beer Bazaar is rejected, so dropping it
+    // would leave the loop with nothing to propose.
+    expect(trim(byId("rejection-loop-noise"), "Quiet Corner")).toMatchObject({
+      start: "21:00",
+      end: "00:00",
+    });
+  });
+
+  it("still drops a venue shut for the whole window, which is 02's trap", () => {
+    const scenario = byId("closed-on-the-night-trap");
+
+    // Anna Loulou is the better-rated venue and shuts at 20:00; the group is
+    // not free until 21:00. An empty intersection is the one case that drops.
+    expect(trim(scenario, "Anna Loulou")).toBeNull();
+    expect(trim(scenario, scenario.expected.venue)).not.toBeNull();
   });
 });
