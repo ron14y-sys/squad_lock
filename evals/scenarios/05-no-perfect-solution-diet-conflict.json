@@ -1,7 +1,7 @@
 {
   "id": "no-perfect-solution-diet-conflict",
   "trap": "no-perfect-solution",
-  "description": "No venue satisfies every soft preference. The two hard constraints still fully determine the answer; the rest is an agreed, defensible compromise rather than a computed optimum.",
+  "description": "No venue satisfies every soft preference, and only one person stated one at all. The two hard constraints still fully determine which venues survive; choosing between the survivors is an agreed, defensible compromise rather than a computed optimum.",
   "participants": [
     {
       "name": "Adi",
@@ -64,11 +64,13 @@
         "lat": 32.0648,
         "lng": 34.7695
       },
+      "soft": {
+        "budget": "splurge"
+      },
       "dietary": {
         "satisfies": ["vegan-option-required"],
         "violates": ["kosher"]
       },
-      "priceLevel": "mid-high",
       "openingHours": {
         "Monday": ["09:00-23:00"]
       },
@@ -82,10 +84,12 @@
         "lat": 32.0637,
         "lng": 34.7679
       },
+      "soft": {
+        "budget": "modest"
+      },
       "dietary": {
         "satisfies": ["kosher", "vegan-option-required"]
       },
-      "priceLevel": "low",
       "openingHours": {
         "Monday": ["11:00-22:30"]
       },
@@ -99,10 +103,12 @@
         "lat": 32.0625,
         "lng": 34.766
       },
+      "soft": {
+        "budget": "splurge"
+      },
       "dietary": {
         "satisfies": ["kosher", "vegan-option-required"]
       },
-      "priceLevel": "mid-high",
       "openingHours": {
         "Monday": ["18:00-01:00"]
       },
@@ -115,6 +121,6 @@
       "start": "19:30",
       "end": "22:30"
     },
-    "reasoning": "Meshek Barzilay is known to violate Adi's kosher requirement, so the hard-constraint filter eliminates it regardless of rating — that part is mechanical. Between the two remaining kosher, vegan-friendly options, Nanuchka Kosher is better-rated but HaKosem Kerem is the only one an actual stated participant preference (Hila's modest budget) points toward; nobody stated a preference for a higher-rated or pricier venue. Agreed by the team on this basis. HaKosem closes at 22:30 while the group is free until 23:00, and that shortens the evening rather than ruling the venue out: the slot is the intersection, 19:30-22:30. This scenario is the clearest case of that rule — the answer that survives is the venue that closes earliest of the three. The group's window was 20:30-23:00 until the three-hour minimum meeting length was agreed; it starts at 19:30 so that HaKosem's shortened evening still clears the minimum."
+    "reasoning": "Meshek Barzilay is known to violate Adi's kosher requirement, so the hard-constraint filter eliminates it regardless of rating — that part is mechanical. Between the two remaining kosher, vegan-friendly options, Nanuchka Kosher is better-rated but HaKosem Kerem is the only one any stated preference points toward: Hila is the one person here with a `softPreferences` entry at all, and it is `budget: \"modest\"`, which matches HaKosem's own `soft.budget`. Adi, Noam and Eyal have no soft preferences, and that is a real state rather than a neutral opinion — an absent field may never cost a venue a place or win it one, so their silence does not become three votes for the better-rated option. Agreed by the team on this basis. HaKosem closes at 22:30 while the group is free until 23:00, and that shortens the evening rather than ruling the venue out: the slot is the intersection, 19:30-22:30, which is exactly the three-hour minimum. The group's window starts at 19:30 for that reason."
   }
 }
