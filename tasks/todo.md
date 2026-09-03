@@ -37,13 +37,14 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Verify: migration runs clean on an empty database; rollback works; `EXPLAIN` on "all open meetings for user X" uses the index
   - Files: schema and migration files
 
-- [ ] **F5 — Eval set**
+- [x] **F5 — Eval set**
   - Acceptance: 8–12 scenarios with profiles, calendars, the agreed-correct answer and its reasoning. At least 2 with no perfect solution · at least 2 with a rejection reason and expected follow-up · **1 hard-constraint trap** · **1 closed-on-the-night trap** · **1 mobility-window trap** where the answer is a _(venue, time)_ pair · **1 semantic-geography trap** (spec §9).
   - Verify: all three agree each answer is right
   - Files: `evals/scenarios/*.json`, `evals/README.md`
   - Distances in a scenario are **straight lines computed from its own coordinates**, never road distances estimated by hand — that is how [#86](https://github.com/ron14y-sys/squad_lock/issues/86) happened. `__tests__/eval-scenarios.test.ts` recomputes 04 and 06 on every `npm test`.
   - The shortest meeting worth proposing is **three hours**; a scenario must leave its expected venue at least that after its hours trim the group's window.
-  - ⚠️ Still open: **03 no longer tests what it claims.** Its car element was removed because the engine cannot express it, so spec §9's mobility-window trap is currently uncovered. Tracked in [#86](https://github.com/ron14y-sys/squad_lock/issues/86).
+  - The shortest meeting worth proposing is **three hours**, in both places it can be measured: the group's own free window, and the slot left after a venue's hours and everyone's reach have narrowed it.
+  - All eight traps agreed and verified by `__tests__/eval-scenarios.test.ts` on every `npm test`. The six design questions the fixtures could not answer are settled in [#86](https://github.com/ron14y-sys/squad_lock/issues/86).
 
 - [x] **F6 — Deployed skeleton** — live on Vercel, mobile-first shell, installable. Verify on a real phone.
 - [x] **F7 — Secrets and environment** — `.env.example` committed, nothing secret ever committed. Verify: `git log -p | grep -iE 'sk-ant|AIza|client_secret'` is empty.
@@ -77,6 +78,8 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 - [ ] **A4 — Group Matching Agent**
   - Acceptance: one call over all profiles, availability and the shortlist returns a **schema-validated ranked top 3** (spec §4.1c). Each option carries a `(venue, datetime)` pair, a per-participant justification, and — internally — what it trades away and for whom. No free-text parsing. Runs the A2 post-check before returning. The whole run is persisted.
   - Verify: a malformed response is rejected rather than accepted; runs end to end on one eval scenario
+  - **A missing soft preference must change nothing.** Every `SoftPreferences` field is optional, and not having an opinion is not the same as wanting either answer — an absent field may never cost an option a place or win it one, and may never be described in a justification as though it were a choice ([#86](https://github.com/ron14y-sys/squad_lock/issues/86)). Nothing deterministic branches on `softPreferences`, so this obligation is the prompt's and A6's.
+  - **Venue soft facts arrive beside the candidate**, not inside it — `VenueSoftFacts`, in the same `SoftPreferences` vocabulary the participants use, so matching is a field comparison.
   - **Unverified candidates** (decided at A2): a pair carries `unverified` when its opening hours or a dietary tag could not be checked. The agent **strongly prefers pairs with nothing unverified**, and when it falls back to one, the proposal carries an asterisk telling the person to ring ahead and confirm. Never phrase it as what the option cost them (§5.6). See [docs/decisions/hard-constraints.md](../docs/decisions/hard-constraints.md)
   - Files: `lib/matching/agent.ts`, `lib/matching/schemas.ts`
 
@@ -89,6 +92,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 ### Milestone 2 (weeks 4–6)
 
 - [ ] **A7 — Constraint Updater: free-text rejection → structured constraint** — the project's central mechanism. Haiku 4.5. Shares prompt, schema and validation conventions with A12.
+  - What it writes: a **per-meeting correction** on the rejecting participant's `ParticipantMeetingContext`, in `SoftPreferences` vocabulary — never an edit to the profile. "Too expensive this time" does not make somebody permanently thrifty, and a per-meeting row records whose objection it was and which re-weighing it triggered. Decided on [#86](https://github.com/ron14y-sys/squad_lock/issues/86); scenarios `07` and `08` are the worked examples. Depends on B11's column.
 - [ ] **A8 — Cycle loop with cap; new run from updated constraints** — cap 3, then `stuck`.
 - [ ] **A8b — Rejection re-run behaviour** _(decision resolved — implementation only)_
   - Acceptance: a rejection **always** triggers a new run. The previous run's ranks 2 and 3 **stay in the candidate pool** and compete again under the updated constraint, with justifications regenerated. **The option just rejected may not be re-proposed** — if it is, that is a validation failure signalling A7 did not capture the objection (spec §9).
@@ -125,7 +129,10 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 ### Milestone 2 (weeks 4–6)
 
 - [ ] **B5c — Conflict cancellation as one transaction** — approving A cancels colliding B **in a single transaction across both**; B **returns to weighing** with the approving user marked `cant_make_it`, never deleted. Verify a mid-write failure leaves neither half-updated.
-- [ ] **B6 — Google Calendar read and availability** — free slots common to all confirmed participants, **intersected with venue opening hours and mobility windows** to produce viable `(venue, time)` pairs (spec §5.4). Empty intersection → `stuck`, not a bad proposal.
+- [ ] **B6 — Google Calendar read and availability**
+  - Acceptance: free slots common to all confirmed participants, **intersected with venue opening hours and mobility windows** to produce viable `(venue, time)` pairs (spec §5.4). Empty intersection → `stuck`, not a bad proposal.
+  - **The shortest meeting worth proposing is three hours**, applied in both places: a group free window under three hours is `stuck` with a reason, and a `(venue, time)` pair narrowed under three hours is dropped — one pair, not the run (decided on [#86](https://github.com/ron14y-sys/squad_lock/issues/86)).
+  - **Mobility narrows a slot, it does not forbid a venue.** Compose `reachCapKm` (A2) into a `SlotTolerance`: `min(profile.toleranceKm, cap ?? Infinity)`. On foot the reach is about a kilometre; transit and car are uncapped ([#89](https://github.com/ron14y-sys/squad_lock/issues/89)). **This must be deterministic here, not in A12** — the Resolver ships dark and falls back, so a Resolver-only version hands a car-sized tolerance back to someone who cannot drive every time it is off.
 - [ ] **B7 — Google Places with two-tier caching**
   - Acceptance: **one query per participant neighbourhood, deduplicated** — not one wide bounding query, because a result cap makes a wider area mean worse coverage per participant (spec §5.4). Returns coordinates, **opening hours and `businessStatus`** for every result. **Search results cached long and keyed by rounded neighbourhood coordinates**, so the cache is shared across meetings and users; **hours cached briefly and fetched only for the shortlist.**
   - Verify: the same neighbourhood queried from two different meetings makes one outbound call; a permanently-closed venue never reaches a proposal; hours are not served from a week-old cache
@@ -146,7 +153,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - **Do this in Week 1, not Week 5.** It is ~$10–15/year — the only item in the project that costs real money — and DNS verification has a waiting period that does not care about milestone dates. It blocks B8, and B8 blocks the "friend receives an emailed link" success criterion (§12.1)
   - Verify: a test message arrives from the project address and does not land in spam
 - [ ] **B9 — Retry and error handling on external calls**
-- [ ] **B11 — Per-meeting context: persistence and batching** — write `ParticipantMeetingContext`; open a **~90-second batching window** that further amendments reset; the window is closed by the next feed poll, so **no cron and no background job** (spec §3.2). Verify two amendments 30 seconds apart produce exactly one run.
+- [ ] **B11 — Per-meeting context: persistence and batching** — ⚠️ also adds `softPreferences Json @default("{}")` to `participant_meeting_contexts` and its migration: `ParticipantMeetingContext.softPreferences` exists in `lib/types/meeting.ts` with **no column behind it**, and it is where a rejection lands (A7, [#86](https://github.com/ron14y-sys/squad_lock/issues/86)). Write `ParticipantMeetingContext`; open a **~90-second batching window** that further amendments reset; the window is closed by the next feed poll, so **no cron and no background job** (spec §3.2). Verify two amendments 30 seconds apart produce exactly one run.
 
 ---
 
@@ -156,6 +163,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 
 - [ ] **C1 — Mobile-first shell and navigation** — designed for a phone, not a shrunk desktop layout.
 - [ ] **C2 — Preference game** — this-or-that questions producing a soft-preference set in **under 60 seconds**, timed on someone who has not seen it.
+  - **Every question can be declined**, and declining stores nothing for that field rather than a default. `SoftPreferences` fields are all optional and an absent one changes nothing downstream; forcing four answers manufactures opinions nobody holds ([#86](https://github.com/ron14y-sys/squad_lock/issues/86)).
 - [ ] **C3 — Hard constraints screen** — kosher, allergies, fixed unavailable hours. Explicit, never inferred.
 - [ ] **C3b — Home location, travel tolerance and recurring mobility**
   - Acceptance: home at **neighbourhood granularity, not a street address**, with the privacy framing visible. Tolerance as a **labelled slider** ("on foot · the neighbourhood · half the city · anywhere") **storing kilometres**. Recurring rules — "no car on Fridays" — set here, because most of what varies is predictable and belongs in the profile rather than in a correction (spec §5.1).
