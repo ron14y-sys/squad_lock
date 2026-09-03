@@ -6,41 +6,69 @@
     {
       "name": "Yael",
       "neighborhood": "Florentin",
-      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "coordinates": {
+        "lat": 32.0567,
+        "lng": 34.7692
+      },
       "hardConstraints": [],
       "toleranceKm": 5
     },
     {
       "name": "Guy",
       "neighborhood": "Florentin",
-      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "coordinates": {
+        "lat": 32.0567,
+        "lng": 34.7692
+      },
       "hardConstraints": [],
       "toleranceKm": 5
     },
     {
       "name": "Shani",
       "neighborhood": "Florentin",
-      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "coordinates": {
+        "lat": 32.0567,
+        "lng": 34.7692
+      },
       "hardConstraints": [],
       "toleranceKm": 5
     }
   ],
-  "availability": [{ "day": "Saturday", "start": "21:00", "end": "01:00" }],
+  "availability": [
+    {
+      "day": "Saturday",
+      "date": "2026-09-12",
+      "start": "21:00",
+      "end": "01:00"
+    }
+  ],
   "candidateVenues": [
     {
+      "placeId": "place-07-beer-bazaar",
       "name": "Beer Bazaar",
       "neighborhood": "Florentin",
-      "kosher": false,
+      "coordinates": {
+        "lat": 32.056,
+        "lng": 34.77
+      },
       "atmosphere": "loud-bar",
-      "openingHours": { "Saturday": ["19:00-02:00"] },
+      "openingHours": {
+        "Saturday": ["19:00-02:00"]
+      },
       "rating": 4.4
     },
     {
+      "placeId": "place-07-quiet-corner",
       "name": "Quiet Corner",
       "neighborhood": "Florentin",
-      "kosher": false,
+      "coordinates": {
+        "lat": 32.0572,
+        "lng": 34.7685
+      },
       "atmosphere": "quiet-cafe",
-      "openingHours": { "Saturday": ["18:00-00:00"] },
+      "openingHours": {
+        "Saturday": ["18:00-00:00"]
+      },
       "rating": 4.1
     }
   ],
@@ -59,6 +87,10 @@
   },
   "expected": {
     "venue": "Quiet Corner",
-    "reasoning": "The rejection is not a blanket 'no' — it names atmosphere specifically. The next proposal must visibly respond to that: Quiet Corner is the only remaining candidate not tagged loud/bar-like, so it is the only materially different, on-topic follow-up, even though it's rated slightly lower than the rejected option."
+    "time": {
+      "start": "21:00",
+      "end": "00:00"
+    },
+    "reasoning": "The rejection is not a blanket 'no' — it names atmosphere specifically. The next proposal must visibly respond to that: Quiet Corner is the only remaining candidate not tagged loud/bar-like, so it is the only materially different, on-topic follow-up, even though it's rated slightly lower than the rejected option. Quiet Corner shuts at midnight while the group is free until 01:00, so the evening ends at midnight — the slot is the intersection, 21:00–00:00. Beer Bazaar staying open until 02:00 buys it nothing here: the objection was about noise, not about closing time."
   }
 }

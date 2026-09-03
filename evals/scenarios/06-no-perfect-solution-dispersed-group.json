@@ -1,53 +1,79 @@
 {
   "id": "no-perfect-solution-dispersed-group",
   "trap": "no-perfect-solution",
-  "description": "The group is geographically dispersed enough that every real candidate leaves someone over their stated comfortable travel tolerance. Leximin still picks a defensible answer — it minimizes the worst burden, it does not promise everyone comfort.",
+  "description": "The group is geographically dispersed enough that every real candidate leaves someone over their stated comfortable travel tolerance. Leximin still picks a defensible answer — it minimizes the worst burden, it does not promise everyone comfort, and it does not defer to the better-rated venue.",
   "participants": [
     {
       "name": "Keren",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
       "hardConstraints": [],
       "toleranceKm": 5
     },
     {
       "name": "Doron",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
       "hardConstraints": [],
       "toleranceKm": 5
     },
     {
       "name": "Amit",
       "neighborhood": "Rishon LeZion",
-      "coordinates": { "lat": 31.9718, "lng": 34.7896 },
+      "coordinates": {
+        "lat": 31.9718,
+        "lng": 34.7896
+      },
       "hardConstraints": [],
       "toleranceKm": 8
     }
   ],
-  "availability": [{ "day": "Sunday", "start": "19:00", "end": "22:00" }],
+  "availability": [
+    {
+      "day": "Sunday",
+      "date": "2026-09-06",
+      "start": "19:00",
+      "end": "22:00"
+    }
+  ],
   "candidateVenues": [
     {
+      "placeId": "place-06-herbert-samuel-grill",
       "name": "Herbert Samuel Grill",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.065, "lng": 34.7751 },
-      "kosher": false,
-      "openingHours": { "Sunday": ["12:00-23:00"] },
+      "coordinates": {
+        "lat": 32.065,
+        "lng": 34.7751
+      },
+      "openingHours": {
+        "Sunday": ["12:00-23:00"]
+      },
       "rating": 4.3,
-      "note": "~13km / far above Amit's stated tolerance."
+      "note": "On Keren and Doron's doorstep, and the better-rated venue — but 10.45 km from Amit against a tolerance of 8, a burden of 1.307."
     },
     {
+      "placeId": "place-06-kfar-bat-yam-midpoint-grill",
       "name": "Kfar Bat Yam Midpoint Grill",
       "neighborhood": "Bat Yam",
-      "coordinates": { "lat": 32.0171, "lng": 34.7508 },
-      "kosher": false,
-      "openingHours": { "Sunday": ["12:00-23:00"] },
+      "coordinates": {
+        "lat": 32.0171,
+        "lng": 34.7508
+      },
+      "openingHours": {
+        "Sunday": ["12:00-23:00"]
+      },
       "rating": 3.6,
-      "note": "Roughly equidistant from all three, but still ~9km for Keren and Doron — above their tolerance too, and it's the lowest-rated option."
+      "note": "Roughly equidistant from all three: 5.77 km for Keren and Doron against a tolerance of 5, a burden of 1.154 each, and 6.23 km for Amit against 8, a burden of 0.778. Over tolerance for two of the three, and the lowest-rated option."
     }
   ],
   "expected": {
-    "venue": "Herbert Samuel Grill",
-    "reasoning": "Every candidate leaves someone over tolerance, so there is no 'solution' in the strict sense. Averaging distance would favor the midpoint venue, but leximin (spec §5.4: burden = distance / toleranceKm) looks at the single worst-off participant per candidate: at Herbert Samuel, Amit is worst-off at roughly 13km / 8km tolerance = burden 1.625. At the midpoint venue, Keren and Doron are worst-off at roughly 9km / 5km tolerance = burden 1.8 — a higher worst-case burden, even though it looks fairer on a map, and it is also the lower-rated venue for everyone. Leximin itself, not just intuition, favors Herbert Samuel Grill. Agreed by the team on this basis."
+    "venue": "Kfar Bat Yam Midpoint Grill",
+    "reasoning": "Every candidate leaves someone over tolerance, so there is no 'solution' in the strict sense — but leximin still forces a single answer here, and it is not the comfortable one. Straight-line burdens (distance / toleranceKm, computed from the coordinates in this file): Herbert Samuel is [1.307 Amit, 0.006 Doron, 0.006 Keren] and Kfar Bat Yam is [1.154 Keren, 1.154 Doron, 0.778 Amit]. Leximin compares the worst-off participant first: 1.154 beats 1.307, so Kfar Bat Yam wins outright and the second and third entries are never reached. It wins despite being the lower-rated venue and despite putting two of the three over tolerance rather than one, because leximin minimizes the worst burden and has no exchange rate between kilometres and stars (spec §5.4). That is the thing this scenario checks. Agreed by the team on this basis. Note the numbers above are straight-line distances with no detour factor: the two participants are 10.4 km apart as the crow flies and rather further by road, and it is the straight line the burden formula is defined on — the system does not compute driving or travel time (spec §5.4)."
   }
 }

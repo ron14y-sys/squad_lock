@@ -1,58 +1,78 @@
 {
   "id": "mobility-window-trap",
   "trap": "mobility-window",
-  "description": "One participant has no car for part of the evening, so the group's best venue is wrong early and right later. The correct answer is a (venue, time) pair, not a venue alone.",
+  "description": "UNRESOLVED. This was the mobility-window trap: one participant had no car before 20:00, so the answer was a (venue, time) pair rather than a venue. The car element has been removed because the engine cannot express it — see `unresolved` below. What is left is mechanically correct but traps nothing.",
   "participants": [
     {
       "name": "Shira",
       "neighborhood": "Ramat Aviv",
-      "coordinates": { "lat": 32.1133, "lng": 34.7975 },
+      "coordinates": {
+        "lat": 32.1133,
+        "lng": 34.7975
+      },
       "hardConstraints": [],
-      "toleranceKm": 3,
-      "mobilityWindows": [
-        { "start": "18:00", "end": "20:00", "mode": "no-car" },
-        { "start": "20:00", "end": "23:00", "mode": "car" }
-      ]
+      "toleranceKm": 3
     },
     {
       "name": "Ben",
       "neighborhood": "Ramat Aviv",
-      "coordinates": { "lat": 32.1133, "lng": 34.7975 },
+      "coordinates": {
+        "lat": 32.1133,
+        "lng": 34.7975
+      },
       "hardConstraints": [],
       "toleranceKm": 8
     },
     {
       "name": "Liat",
       "neighborhood": "Ramat Aviv",
-      "coordinates": { "lat": 32.1133, "lng": 34.7975 },
+      "coordinates": {
+        "lat": 32.1133,
+        "lng": 34.7975
+      },
       "hardConstraints": [],
       "toleranceKm": 8
     }
   ],
-  "availability": [{ "day": "Wednesday", "start": "18:00", "end": "22:00" }],
+  "availability": [
+    {
+      "day": "Wednesday",
+      "date": "2026-09-09",
+      "start": "18:00",
+      "end": "22:00"
+    }
+  ],
   "candidateVenues": [
     {
+      "placeId": "place-03-herzl-16",
       "name": "Herzl 16",
       "neighborhood": "Ramat Aviv",
-      "coordinates": { "lat": 32.1128, "lng": 34.7969 },
-      "kosher": false,
-      "openingHours": { "Wednesday": ["12:00-23:00"] },
-      "rating": 3.9,
-      "reachableWithoutCar": true
+      "coordinates": {
+        "lat": 32.1128,
+        "lng": 34.7969
+      },
+      "openingHours": {
+        "Wednesday": ["12:00-23:00"]
+      },
+      "rating": 3.9
     },
     {
+      "placeId": "place-03-container-park",
       "name": "Container Park",
       "neighborhood": "Jaffa Port",
-      "coordinates": { "lat": 32.0517, "lng": 34.7503 },
-      "kosher": false,
-      "openingHours": { "Wednesday": ["12:00-01:00"] },
-      "rating": 4.6,
-      "reachableWithoutCar": false
+      "coordinates": {
+        "lat": 32.0517,
+        "lng": 34.7503
+      },
+      "openingHours": {
+        "Wednesday": ["12:00-01:00"]
+      },
+      "rating": 4.6
     }
   ],
   "expected": {
-    "venue": "Container Park",
-    "time": "20:30",
-    "reasoning": "Container Park is the fairer, better-rated choice for the group, but it needs a car and Shira has none before 20:00 — so any slot between 18:00 and 20:00 is invalid for her there. After 20:00 she has a car and it becomes fully valid. The correct answer is Container Park at 20:30, not Herzl 16 (settling for the worse venue) and not Container Park at 18:30 (ignoring the mobility window)."
-  }
+    "venue": "Herzl 16",
+    "reasoning": "With the car element removed, nothing here is a trap. Neither venue breaks a hard constraint, both are open for the whole of the group's Wednesday 18:00-22:00 window, and leximin decides it outright: Herzl 16 is 80 metres from all three participants (worst burden 0.026) against Container Park's 8.17 km (worst burden 2.72, well over Shira's 3 km tolerance). Container Park is better-rated, and leximin has no exchange rate between kilometres and stars. Mechanically forced, not agreed."
+  },
+  "unresolved": "Two things had to go. `reachableWithoutCar` was a venue field with nowhere to live: `Candidate` has no such concept, and A2's `immobile` violation is not it — `availableModes` fires only when a person has NO mode at all, so a participant without a car still has transit and walk and the pair was never dropped. And the `mobilityWindows` here used a vocabulary that does not exist: `{start, end, mode: \"no-car\"}` against a real `{ mode: \"car\" | \"transit\" | \"walk\", available: boolean, window: LocalWindow }`. Separately, the old expected answer was the one leximin rejects hardest: Container Park is 8.17 km from the group (burden 2.72 against Shira's 3 km tolerance) while Herzl 16 is 80 metres away (0.026). B7c's gate on T would very likely have dropped it before any agent saw it. The answer below is now what the rules in README force, and it tests nothing that `lib/matching/distance.test.ts` does not already test better. But spec §9 and F5 REQUIRE one mobility-window trap, so deleting this file is not free either. The decision is tracked in #86: rewrite it around `immobile` — the one mobility concept A2 actually implements — so the answer is a genuine (venue, time) pair again."
 }

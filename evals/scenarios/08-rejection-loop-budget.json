@@ -6,41 +6,69 @@
     {
       "name": "Idan",
       "neighborhood": "Ramat Aviv",
-      "coordinates": { "lat": 32.1133, "lng": 34.7975 },
+      "coordinates": {
+        "lat": 32.1133,
+        "lng": 34.7975
+      },
       "hardConstraints": [],
       "toleranceKm": 6
     },
     {
       "name": "Michal",
       "neighborhood": "Ramat Aviv",
-      "coordinates": { "lat": 32.1133, "lng": 34.7975 },
+      "coordinates": {
+        "lat": 32.1133,
+        "lng": 34.7975
+      },
       "hardConstraints": [],
       "toleranceKm": 6
     },
     {
       "name": "Oren",
       "neighborhood": "Ramat Aviv",
-      "coordinates": { "lat": 32.1133, "lng": 34.7975 },
+      "coordinates": {
+        "lat": 32.1133,
+        "lng": 34.7975
+      },
       "hardConstraints": [],
       "toleranceKm": 6
     }
   ],
-  "availability": [{ "day": "Friday", "start": "13:00", "end": "16:00" }],
+  "availability": [
+    {
+      "day": "Friday",
+      "date": "2026-09-11",
+      "start": "13:00",
+      "end": "16:00"
+    }
+  ],
   "candidateVenues": [
     {
+      "placeId": "place-08-herbert-samuel-tasting-menu",
       "name": "Herbert Samuel Tasting Menu",
       "neighborhood": "Ramat Aviv",
-      "kosher": false,
+      "coordinates": {
+        "lat": 32.112,
+        "lng": 34.799
+      },
       "priceLevel": "high",
-      "openingHours": { "Friday": ["12:00-16:00"] },
+      "openingHours": {
+        "Friday": ["12:00-16:00"]
+      },
       "rating": 4.7
     },
     {
+      "placeId": "place-08-tzafta",
       "name": "Tzafta",
       "neighborhood": "Ramat Aviv",
-      "kosher": false,
+      "coordinates": {
+        "lat": 32.114,
+        "lng": 34.7968
+      },
       "priceLevel": "low",
-      "openingHours": { "Friday": ["11:00-16:30"] },
+      "openingHours": {
+        "Friday": ["11:00-16:30"]
+      },
       "rating": 4.0
     }
   ],
