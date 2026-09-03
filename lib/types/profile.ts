@@ -69,15 +69,32 @@ export type RecurringMobilityRule =
 
 /**
  * The initial signal from the this-or-that preference game (spec §5.1, C2).
- * Four forced choices, not a long form — each field is one binary lever,
- * not a free-text description, so it can be handed to the matching agent
- * without any parsing step.
+ * Four binary levers, not a free-text description, so the set can be handed
+ * to the matching agent without any parsing step.
+ *
+ * **Every field is optional, and an absent one must change nothing.** Not
+ * having an opinion about noise is a real state — someone skipped that
+ * question, or the profile predates it — and it is not the same as wanting
+ * either answer. A missing field may never cost a venue a place or win it
+ * one; the agent weighs the fields that are present and is silent about the
+ * rest (decided on [#86](https://github.com/ron14y-sys/squad_lock/issues/86)).
+ *
+ * That is already how the deterministic column behaves, because nothing in it
+ * branches on `softPreferences` at all. The obligation is A4's prompt and
+ * A6's justification check, and it is written into both.
+ *
+ * C2 therefore needs a way to decline a question rather than forcing four
+ * answers, or it will manufacture opinions nobody holds.
+ *
+ * `VenueSoftFacts` in `./matching` is `Partial<SoftPreferences>` on purpose:
+ * a venue answers the same four questions a person does, so matching one to
+ * the other is a field comparison rather than a vocabulary translation.
  */
 export type SoftPreferences = {
-  noiseLevel: "lively" | "quiet";
-  activityStyle: "outdoorsy" | "cultural";
-  budget: "modest" | "splurge";
-  cuisine: "familiar" | "adventurous";
+  noiseLevel?: "lively" | "quiet";
+  activityStyle?: "outdoorsy" | "cultural";
+  budget?: "modest" | "splurge";
+  cuisine?: "familiar" | "adventurous";
 };
 
 export type PreferenceProfile = {
@@ -92,6 +109,9 @@ export type PreferenceProfile = {
    * JSON Schema is the real validation boundary. Typed here anyway so the
    * preference game (C2) and anything that renders a profile agree on a
    * shape, rather than each guessing at an `unknown`.
+   *
+   * May be `{}`. Someone with no stated preference is not someone with a
+   * neutral one — see `SoftPreferences`.
    */
   softPreferences: SoftPreferences;
 

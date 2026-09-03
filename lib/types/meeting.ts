@@ -10,7 +10,7 @@ import type {
   LocalWindow,
   TimeSlot,
 } from "./primitives";
-import type { MobilityMode } from "./profile";
+import type { MobilityMode, SoftPreferences } from "./profile";
 
 /**
  * The stored lifecycle (database enum `MeetingStatus`).
@@ -128,6 +128,29 @@ export type ParticipantMeetingContext = {
   originLabel: string | null;
 
   mobilityWindows: MobilityWindow[];
+
+  /**
+   * A soft preference that applies to **this meeting only** — where a
+   * rejection lands (spec §3.2, §5.7, A7).
+   *
+   * "Too expensive this time" does not make someone permanently thrifty, so
+   * the Constraint Updater writes a correction here rather than editing the
+   * profile. Being on this row also answers the two questions a free-standing
+   * constraint object could not: **whose** it is (`userId`, above) and **for
+   * how long** (this meeting, and the timeline can say which amendment
+   * triggered which re-weighing). Decided on
+   * [#86](https://github.com/ron14y-sys/squad_lock/issues/86).
+   *
+   * Outranks the profile's `softPreferences`, field by field, on the same
+   * precedence as `origin` above.
+   *
+   * ⚠️ **Not persisted yet.** `participant_meeting_contexts` has no column
+   * for it — B11 owns this table's persistence and adds the column and the
+   * migration together. Until then this field exists for A7's schema and for
+   * the eval set, and nothing reads it back from the database.
+   */
+  softPreferences: SoftPreferences | null;
+
   note: string | null;
   createdAt: Date;
 };
