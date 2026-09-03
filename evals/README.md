@@ -106,6 +106,21 @@ And the things that **were** wrong, fixed in [#86](https://github.com/ron14y-sys
 
 8 of 8–12 required, all agreed by the team — but see the warning on row 3: seven of them currently test what they claim to.
 
+## Six questions this folder cannot answer on its own
+
+Fixing the scenarios in [#86](https://github.com/ron14y-sys/squad_lock/issues/86) turned up six things that are design decisions rather than fixture work. They are written up in full [in that issue](https://github.com/ron14y-sys/squad_lock/issues/86#issuecomment-5522438137), with options and a recommendation for each. In short:
+
+| #   | Question                                                                                                                                       | Blocks                    |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| 1   | `priceLevel` and `atmosphere` have nowhere to live — `Candidate` carries neither, yet 05, 07 and 08 all turn on them                           | **A5** on three scenarios |
+| 2   | How a venue that needs a particular way of travelling is expressed. A2's `immobile` is not it — it fires only when a person has no mode at all | question 3                |
+| 3   | What happens to scenario 03, which now traps nothing — so **spec §9's mobility-window requirement is currently unmet**                         | **§9 coverage**           |
+| 4   | What `expectedConstraint` really is. 07 and 08 assert a shape no type defines, with a vocabulary that does not join up to the venues'          | **A7**                    |
+| 5   | `SoftPreferences` has no "no opinion" value, so 05's premise cannot be written down                                                            | 05's reasoning            |
+| 6   | Whether the three-hour minimum also gates the group's own free window, before any venue is considered                                          | B6's acceptance           |
+
+F5 says an eval answer needs all three of us, so none of these is settled by one person editing a file.
+
 ## What happens to these later
 
 Once the matching engine exists (Track A), task **A5 — Eval runner** reads every file in this folder, runs the real engine against each one, and reports pass rate, cost, duration, and hard-constraint violations (must be zero). Nothing in this folder changes when that happens — these are answers, not implementation, which is what makes them useful as a check on the engine rather than a description of it.
