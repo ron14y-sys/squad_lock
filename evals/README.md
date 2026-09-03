@@ -29,7 +29,7 @@ Two consequences for whoever writes a scenario:
 - **`expected.time` is required whenever the venue's hours trim the group's window**, not only in mobility-window scenarios — because then the answer genuinely is a `(venue, time)` pair rather than a venue. It carries a start **and** an end.
 - **Do not confuse this with `windowsCoverSlot` in [`lib/matching/constraints.ts`](../lib/matching/constraints.ts)**, which demands the _whole_ slot sit inside a _single_ opening window. That rule is right, and it runs **after** the trimming — its job is to stop a slot spanning the gap between lunch and dinner service, not to reject a venue that closes early.
 
-A minimum viable meeting length is not yet decided. No scenario is near the edge — the tightest trim leaves two hours — so the guard test asserts only that the intersection is non-empty, and the number is B6's to choose.
+**The shortest meeting worth proposing is three hours.** An intersection below that is not a meeting, so a scenario has to leave the expected venue at least three hours after trimming. Two scenarios did not when the number was agreed, and both had their availability widened rather than their venue changed: 02 from 21:00 to 20:00 (Anna Loulou still shuts at 20:00, so an intersection of zero length keeps the trap intact) and 05 from 20:30 to 19:30 (HaKosem still shuts at 22:30, so the trimmed evening is now exactly three hours).
 
 ### Distances are computed, never estimated
 
@@ -41,8 +41,6 @@ The burden formula is defined on a straight line with a detour factor. **The sys
 
 [`__tests__/eval-scenarios.test.ts`](../__tests__/eval-scenarios.test.ts) recomputes 04 and 06 from their own coordinates on every `npm test`, so prose that drifts from the numbers fails immediately rather than months later in a pass-rate report.
 
-**Three scenarios carry no venue coordinates at all** — 05, 07 and 08 turn on diet, noise and price, and were written without a geography. A5's runner needs them to score a shortlist, so they will have to be added before it can run those three. Not done here: adding coordinates changes what a scenario tests, and that needs all three of us.
-
 ## Scenario format
 
 ```json
@@ -50,12 +48,13 @@ The burden formula is defined on a straight line with a detour factor. **The sys
   "id": "kebab-case-id",
   "trap": "hard-constraint | closed-on-the-night | mobility-window | semantic-geography | no-perfect-solution | rejection-loop",
   "description": "One sentence: what this scenario is designed to catch.",
+  "unresolved": "optional — present only while a scenario is known not to test what it claims",
   "participants": [
-    /* name, neighbourhood, coordinates, hardConstraints, softPreferences, toleranceKm, optional mobilityWindows */
+    /* name, neighborhood, coordinates, hardConstraints, softPreferences, toleranceKm */
   ],
-  "availability": [/* shared free slots */],
+  "availability": [/* day, date (YYYY-MM-DD), start, end */],
   "candidateVenues": [
-    /* name, neighbourhood, coordinates, kosher, openingHours, rating */
+    /* placeId, name, neighborhood, coordinates, dietary, openingHours, rating */
   ],
   "expected": {
     "venue": "...",
@@ -69,20 +68,43 @@ The burden formula is defined on a straight line with a detour factor. **The sys
 
 `rejection-loop` scenarios add `initialProposal`, `rejection` (who, free text), and `expectedConstraint` (the structured constraint the Constraint Updater should extract) alongside `expected` (the follow-up proposal).
 
+### What the fixture says, and what the engine reads
+
+A scenario is **wrong** when it says something the engine cannot express, and merely **different** when it says the same thing in a friendlier way. The first kind gets fixed in the file. The second stays, and the mapping lives here.
+
+| Fixture                                       | Engine                                                    | Why it is only a spelling                                                                    |
+| --------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `hardConstraints: ["kosher"]`                 | `{ dietary: ["kosher"], allergies: [], unavailable: [] }` | Lossless. Which bucket a tag belongs in is the adapter's business, not the scenario author's |
+| `openingHours: { "Monday": ["11:00-22:30"] }` | `LocalWindow[]`                                           | Lossless, and this is the shape Places actually returns                                      |
+| `availability: { day, date, start, end }`     | one or more `TimeSlot`s                                   | Needs the date, which is why the date is there                                               |
+| `neighborhood`                                | `neighbourhood`                                           | Two spellings of one word                                                                    |
+
+And the things that **were** wrong, fixed in [#86](https://github.com/ron14y-sys/squad_lock/issues/86):
+
+| Was                                   | Now                                | What could not be said                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kosher: false`, `veganOptions: true` | `dietary: { satisfies, violates }` | A2 has **three** states, and the third — _not known_ — never drops a candidate, it marks the pair unverified for A4 to warn about. A boolean cannot say which one it means. Tags match through `normaliseTag`, which lowercases and trims and maps nothing, so `"vegan-option-required"` must be spelled the same on both sides |
+| no venue coordinates                  | `coordinates` on every venue       | `Candidate.location` is required, and A3 divides by it. Where they were added, the expected answer was also made the nearest, so no scenario quietly asks the agent to overrule the fairness order                                                                                                                              |
+| no venue id                           | `placeId` on every venue           | The dedupe key, the cache key, A3's leximin tiebreak, and the id inside every `ConstraintViolation`. Deliberately readable rather than a real Places id, so a failing assertion names a venue                                                                                                                                   |
+| `softPreferences: { budget: "low" }`  | `budget: "modest"`                 | `SoftPreferences.budget` is `"modest" \| "splurge"`. `"low"` is not a value it has                                                                                                                                                                                                                                              |
+| `mobilityWindows: { mode: "no-car" }` | removed — see 03                   | The real type is `{ mode: "car" \| "transit" \| "walk", available: boolean, window }`, so "no car" is `{ mode: "car", available: false }`                                                                                                                                                                                       |
+
+**Still not expressible, and tracked in #86:** `SoftPreferences` has no "no opinion" value — all four fields are required, produced by the preference game. So 05's premise, that Hila is the only person who stated a preference, cannot be written down. Choosing values for the other three participants would change the answer, so the fields were left as they are and the question goes to the team.
+
 ## Required coverage (spec §9)
 
-| #   | File                                          | Trap                | Why it's here                                                                                                                |
-| --- | --------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `01-hard-constraint-trap.json`                | hard-constraint     | The best-rated venue violates a hard constraint. It must never be the answer.                                                |
-| 2   | `02-closed-on-the-night-trap.json`            | closed-on-the-night | The best-rated venue is shut at every time the group is free.                                                                |
-| 3   | `03-mobility-window-trap.json`                | mobility-window     | A participant has no car for part of the evening — the answer is a `(venue, time)` pair, not a venue.                        |
-| 4   | `04-semantic-geography-trap.json`             | semantic-geography  | Straight-line distance alone picks the wrong venue across a highway barrier — measures the Context Resolver's detour factor. |
-| 5   | `05-no-perfect-solution-diet-conflict.json`   | no-perfect-solution | Conflicting hard/soft requirements; the answer is agreed, not computed.                                                      |
-| 6   | `06-no-perfect-solution-dispersed-group.json` | no-perfect-solution | Every candidate leaves someone over their tolerance, and leximin picks the lower-rated venue anyway.                         |
-| 7   | `07-rejection-loop-noise.json`                | rejection-loop      | A rejection about atmosphere must produce a visibly quieter follow-up.                                                       |
-| 8   | `08-rejection-loop-budget.json`               | rejection-loop      | A rejection about cost must produce a visibly cheaper follow-up.                                                             |
+| #   | File                                          | Trap                | Why it's here                                                                                                                                                                                                                                                 |
+| --- | --------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `01-hard-constraint-trap.json`                | hard-constraint     | The best-rated venue violates a hard constraint. It must never be the answer.                                                                                                                                                                                 |
+| 2   | `02-closed-on-the-night-trap.json`            | closed-on-the-night | The best-rated venue is shut at every time the group is free.                                                                                                                                                                                                 |
+| 3   | `03-mobility-window-trap.json`                | mobility-window     | ⚠️ **Unresolved.** The car element was removed in [#86](https://github.com/ron14y-sys/squad_lock/issues/86) — the engine cannot express it. The file is mechanically correct but traps nothing, so §9's mobility-window requirement is currently **not** met. |
+| 4   | `04-semantic-geography-trap.json`             | semantic-geography  | Straight-line distance alone picks the wrong venue across a highway barrier — measures the Context Resolver's detour factor.                                                                                                                                  |
+| 5   | `05-no-perfect-solution-diet-conflict.json`   | no-perfect-solution | Conflicting hard/soft requirements; the answer is agreed, not computed.                                                                                                                                                                                       |
+| 6   | `06-no-perfect-solution-dispersed-group.json` | no-perfect-solution | Every candidate leaves someone over their tolerance, and leximin picks the lower-rated venue anyway.                                                                                                                                                          |
+| 7   | `07-rejection-loop-noise.json`                | rejection-loop      | A rejection about atmosphere must produce a visibly quieter follow-up.                                                                                                                                                                                        |
+| 8   | `08-rejection-loop-budget.json`               | rejection-loop      | A rejection about cost must produce a visibly cheaper follow-up.                                                                                                                                                                                              |
 
-8 of 8–12 required, all agreed by the team.
+8 of 8–12 required, all agreed by the team — but see the warning on row 3: seven of them currently test what they claim to.
 
 ## What happens to these later
 

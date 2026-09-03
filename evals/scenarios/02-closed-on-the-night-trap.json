@@ -6,46 +6,72 @@
     {
       "name": "Noa",
       "neighborhood": "Florentin",
-      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "coordinates": {
+        "lat": 32.0567,
+        "lng": 34.7692
+      },
       "hardConstraints": [],
       "toleranceKm": 5
     },
     {
       "name": "Itai",
       "neighborhood": "Florentin",
-      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "coordinates": {
+        "lat": 32.0567,
+        "lng": 34.7692
+      },
       "hardConstraints": [],
       "toleranceKm": 5
     },
     {
       "name": "Roni",
       "neighborhood": "Florentin",
-      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "coordinates": {
+        "lat": 32.0567,
+        "lng": 34.7692
+      },
       "hardConstraints": [],
       "toleranceKm": 5
     }
   ],
-  "availability": [{ "day": "Thursday", "start": "21:00", "end": "23:00" }],
+  "availability": [
+    {
+      "day": "Thursday",
+      "date": "2026-09-10",
+      "start": "20:00",
+      "end": "23:00"
+    }
+  ],
   "candidateVenues": [
     {
+      "placeId": "place-02-anna-loulou",
       "name": "Anna Loulou",
       "neighborhood": "Jaffa",
-      "coordinates": { "lat": 32.0498, "lng": 34.752 },
-      "kosher": false,
-      "openingHours": { "Thursday": ["18:00-20:00"] },
+      "coordinates": {
+        "lat": 32.0498,
+        "lng": 34.752
+      },
+      "openingHours": {
+        "Thursday": ["18:00-20:00"]
+      },
       "rating": 4.9
     },
     {
+      "placeId": "place-02-port-said",
       "name": "Port Said",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.0644, "lng": 34.7735 },
-      "kosher": false,
-      "openingHours": { "Thursday": ["12:00-01:00"] },
+      "coordinates": {
+        "lat": 32.0644,
+        "lng": 34.7735
+      },
+      "openingHours": {
+        "Thursday": ["12:00-01:00"]
+      },
       "rating": 4.4
     }
   ],
   "expected": {
     "venue": "Port Said",
-    "reasoning": "Anna Loulou is rated highest but closes at 20:00, before the group's 21:00-23:00 window even opens. It fails the opening-hours check for every viable time slot, so Port Said — open until 1am — is the only candidate left."
+    "reasoning": "Anna Loulou is rated highest but closes at 20:00, exactly when the group's 20:00-23:00 window opens. The intersection of the two is empty, which is the one case that drops a pair rather than shortening it, so Port Said — open until 1am — is the only candidate left. The group's window was 21:00-23:00 until the three-hour minimum meeting length was agreed; widening it to 20:00 keeps the trap intact, since an intersection of zero length is still empty."
   }
 }

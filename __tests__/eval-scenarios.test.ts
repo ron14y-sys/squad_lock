@@ -2,12 +2,14 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { windowsCoverSlot } from "@/lib/matching/constraints";
 import {
   burdenValue,
   compareLeximin,
   straightLineKm,
 } from "@/lib/matching/distance";
-import type { LatLng } from "@/lib/types";
+import { APP_TIME_ZONE } from "@/lib/types";
+import type { LatLng, LocalWindow, TimeSlot } from "@/lib/types";
 
 /**
  * Guards issue #86: two eval scenarios whose written distances did not match
@@ -35,29 +37,34 @@ type Scenario = {
   participants: {
     name: string;
     coordinates: LatLng;
+    hardConstraints: string[];
     toleranceKm: number;
   }[];
-  /**
-   * `coordinates` is optional because three scenarios do not carry them:
-   * 05, 07 and 08 turn on diet, noise and price, and were written without a
-   * geography. A5's runner will need them to score a shortlist at all — see
-   * the note in `evals/README.md`.
-   */
   candidateVenues: {
+    /** Not a real Places id — readable, so a failing assertion names a venue. */
+    placeId: string;
     name: string;
-    coordinates?: LatLng;
+    coordinates: LatLng;
+    /** The engine's three states. A tag in neither is "not known" (A2). */
+    dietary?: { satisfies?: string[]; violates?: string[] };
     /** Weekday name to `"HH:MM-HH:MM"` spans, as Places reports them. */
     openingHours: Record<string, string[]>;
+    rating?: number;
   }[];
-  availability: { day: string; start: string; end: string }[];
+  availability: {
+    day: string;
+    /** `YYYY-MM-DD`, so a `TimeSlot` can be built. 07 crosses midnight. */
+    date: string;
+    start: string;
+    end: string;
+  }[];
   expected: {
     venue: string;
     /**
      * Required for mobility-window scenarios and wherever the venue's hours
-     * trim the group's window — see `evals/README.md`. 03 still carries the
-     * old bare-start form; stage 2 of the #86 plan converts it.
+     * trim the group's window — see `evals/README.md`.
      */
-    time?: { start: string; end: string } | string;
+    time?: { start: string; end: string };
     reasoning: string;
   };
 };
@@ -92,11 +99,7 @@ const vectorFor = (
   detour: Record<string, number> = {}
 ) => {
   const venue = scenario.candidateVenues.find((v) => v.name === venueName);
-  if (!venue?.coordinates) {
-    throw new Error(
-      `no venue "${venueName}" with coordinates in ${scenario.id}`
-    );
-  }
+  if (!venue) throw new Error(`no venue "${venueName}" in ${scenario.id}`);
   const at = venue.coordinates;
 
   return scenario.participants
@@ -136,7 +139,6 @@ describe("every eval scenario", () => {
       // silently randomise a ranking.
       for (const p of scenario.participants) {
         for (const v of scenario.candidateVenues) {
-          if (!v.coordinates) continue;
           const at = v.coordinates;
           expect(() => straightLineKm(p.coordinates, at)).not.toThrow();
         }
@@ -336,7 +338,7 @@ describe("a venue need not be open for the whole evening", () => {
     // expected answer was unreachable.
     expect(
       trim(byId("no-perfect-solution-diet-conflict"), "HaKosem Kerem")
-    ).toMatchObject({ start: "20:30", end: "22:30" });
+    ).toMatchObject({ start: "19:30", end: "22:30" });
   });
 
   it("shortens the evening at 07, so the rejection loop has a follow-up", () => {
@@ -356,5 +358,171 @@ describe("a venue need not be open for the whole evening", () => {
     // not free until 21:00. An empty intersection is the one case that drops.
     expect(trim(scenario, "Anna Loulou")).toBeNull();
     expect(trim(scenario, scenario.expected.venue)).not.toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The vocabulary the engine actually uses
+ *
+ * A scenario is wrong when it says something the engine cannot express, and
+ * merely different when it says the same thing in a friendlier way. These
+ * assertions cover the first kind. The friendlier spellings that remain — a
+ * flat `hardConstraints` array, opening hours keyed by weekday name — are
+ * documented as an adapter in `evals/README.md` instead.
+ * ---------------------------------------------------------------------- */
+
+/** Agreed with the shortest meeting worth proposing. See `evals/README.md`. */
+const MINIMUM_MEETING_MINUTES = 180;
+
+const WEEKDAY = new Intl.DateTimeFormat("en-GB", {
+  timeZone: APP_TIME_ZONE,
+  weekday: "long",
+});
+
+const LOCAL_CLOCK = new Intl.DateTimeFormat("en-GB", {
+  timeZone: APP_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+/**
+ * A wall-clock time in `APP_TIME_ZONE` as the instant a `TimeSlot` needs.
+ *
+ * Guessed as UTC and then corrected by the zone's offset at that guess, which
+ * is exact everywhere except inside a DST transition — and the assertion
+ * below catches that rather than letting an hour go quietly missing.
+ */
+const instantOf = (date: string, time: string, addDays = 0) => {
+  const guess = new Date(`${date}T${time}:00Z`);
+  guess.setUTCDate(guess.getUTCDate() + addDays);
+
+  const local = new Date(
+    new Date(guess).toLocaleString("en-US", { timeZone: APP_TIME_ZONE })
+  );
+  const utc = new Date(
+    new Date(guess).toLocaleString("en-US", { timeZone: "UTC" })
+  );
+  const instant = new Date(guess.getTime() - (local.getTime() - utc.getTime()));
+
+  if (LOCAL_CLOCK.format(instant) !== time) {
+    throw new Error(
+      `${date} ${time} does not exist in ${APP_TIME_ZONE} — a DST transition?`
+    );
+  }
+  return instant;
+};
+
+/** The trimmed slot as the two instants `windowsCoverSlot` expects. */
+const slotOf = (scenario: Scenario, venueName: string): TimeSlot => {
+  const free = scenario.availability[0]!;
+  const trimmed = trim(scenario, venueName)!;
+  const start = instantOf(free.date, trimmed.start);
+  // "00:00" as an end means the following midnight, not the one just passed.
+  const end = instantOf(
+    free.date,
+    trimmed.end,
+    trimmed.end <= trimmed.start ? 1 : 0
+  );
+  return { start, end };
+};
+
+const openingWindowsOf = (
+  scenario: Scenario,
+  venueName: string
+): LocalWindow[] => {
+  const free = scenario.availability[0]!;
+  const venue = scenario.candidateVenues.find((v) => v.name === venueName)!;
+  return (venue.openingHours[free.day] ?? []).map((hours) => {
+    const [from, to] = hours.split("-");
+    return {
+      weekdays: [free.day.toLowerCase() as LocalWindow["weekdays"][number]],
+      from: from!,
+      to: to!,
+    };
+  });
+};
+
+describe("the fixtures speak the engine's vocabulary", () => {
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s gives every venue an id, and no two the same",
+    (_id, scenario) => {
+      // `placeId` is the dedupe key, the cache key, A3's leximin tiebreak,
+      // and the id inside every `ConstraintViolation`.
+      const ids = scenario.candidateVenues.map((v) => v.placeId);
+      for (const id of ids) expect(id).toMatch(/^place-\d\d-[a-z0-9-]+$/);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  );
+
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s names a date that really is the weekday it claims",
+    (_id, scenario) => {
+      // `TimeSlot` is instants, so a weekday name alone cannot build one —
+      // and 07's window crosses midnight, so the date is not cosmetic.
+      for (const free of scenario.availability) {
+        expect(WEEKDAY.format(instantOf(free.date, "12:00"))).toBe(free.day);
+      }
+    }
+  );
+
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s leaves the expected venue at least the minimum meeting length",
+    (_id, scenario) => {
+      expect(
+        trim(scenario, scenario.expected.venue)!.minutes
+      ).toBeGreaterThanOrEqual(MINIMUM_MEETING_MINUTES);
+    }
+  );
+
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s never answers with a venue known to break someone's hard constraint",
+    (_id, scenario) => {
+      // A2 matches tags through `normaliseTag`, which lowercases and trims
+      // and maps nothing — so "vegan-option-required" has to be spelled the
+      // same on both sides or the constraint silently becomes unverified.
+      const venue = scenario.candidateVenues.find(
+        (v) => v.name === scenario.expected.venue
+      )!;
+      const refused = new Set(
+        (venue.dietary?.violates ?? []).map((t) => t.trim().toLowerCase())
+      );
+
+      for (const p of scenario.participants) {
+        for (const tag of p.hardConstraints) {
+          expect(refused.has(tag.trim().toLowerCase())).toBe(false);
+        }
+      }
+    }
+  );
+
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s builds a slot the real opening-hours check accepts",
+    (_id, scenario) => {
+      // The round-trip the local `trim` helper is standing in for: once the
+      // slot has been narrowed to the venue's hours, A2's whole-slot
+      // containment must accept it. If the two ever disagree, this fails.
+      const venue = scenario.expected.venue;
+      expect(
+        windowsCoverSlot(
+          openingWindowsOf(scenario, venue),
+          slotOf(scenario, venue)
+        )
+      ).toBe(true);
+    }
+  );
+
+  it("drops 01's better-rated venue on a dietary fact, not on a boolean", () => {
+    const scenario = byId("hard-constraint-trap");
+    const toto = scenario.candidateVenues.find((v) => v.name === "Toto")!;
+
+    // `kosher: false` could not say which of A2's three states it meant.
+    // "Known to violate" is the one that drops a candidate; "not known"
+    // would have left Toto in the pool, marked unverified for A4 to warn on.
+    expect(toto.dietary?.violates).toContain("kosher");
+    expect(toto.rating).toBeGreaterThan(
+      scenario.candidateVenues.find((v) => v.name === scenario.expected.venue)!
+        .rating ?? 0
+    );
   });
 });

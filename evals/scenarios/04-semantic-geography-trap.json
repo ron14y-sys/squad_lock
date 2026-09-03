@@ -6,42 +6,68 @@
     {
       "name": "Tal",
       "neighborhood": "Florentin",
-      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
+      "coordinates": {
+        "lat": 32.0567,
+        "lng": 34.7692
+      },
       "hardConstraints": [],
       "toleranceKm": 6
     },
     {
       "name": "Omer",
       "neighborhood": "Neve Tzedek",
-      "coordinates": { "lat": 32.0608, "lng": 34.7654 },
+      "coordinates": {
+        "lat": 32.0608,
+        "lng": 34.7654
+      },
       "hardConstraints": [],
       "toleranceKm": 6
     },
     {
       "name": "Gili",
       "neighborhood": "Ramat Gan",
-      "coordinates": { "lat": 32.084, "lng": 34.8142 },
+      "coordinates": {
+        "lat": 32.084,
+        "lng": 34.8142
+      },
       "hardConstraints": [],
       "toleranceKm": 6
     }
   ],
-  "availability": [{ "day": "Tuesday", "start": "19:00", "end": "23:00" }],
+  "availability": [
+    {
+      "day": "Tuesday",
+      "date": "2026-09-08",
+      "start": "19:00",
+      "end": "23:00"
+    }
+  ],
   "candidateVenues": [
     {
+      "placeId": "place-04-shapira-social",
       "name": "Shapira Social",
       "neighborhood": "Shapira",
-      "coordinates": { "lat": 32.0555, "lng": 34.7885 },
-      "kosher": false,
-      "openingHours": { "Tuesday": ["18:00-00:00"] },
+      "coordinates": {
+        "lat": 32.0555,
+        "lng": 34.7885
+      },
+      "openingHours": {
+        "Tuesday": ["18:00-00:00"]
+      },
       "rating": 4.5,
       "note": "3.99 km from Gili in a straight line — nearer than Rothschild 12, and the better-rated venue. But the Ayalon and the railway run together between Shapira and Ramat Gan with no crossing on this stretch, so the approach is a good deal longer than the line suggests."
     },
     {
+      "placeId": "place-04-rothschild-12",
       "name": "Rothschild 12",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.065, "lng": 34.7751 },
-      "kosher": false,
-      "openingHours": { "Tuesday": ["18:00-00:00"] },
+      "coordinates": {
+        "lat": 32.065,
+        "lng": 34.7751
+      },
+      "openingHours": {
+        "Tuesday": ["18:00-00:00"]
+      },
       "rating": 4.2,
       "note": "4.25 km from Gili — slightly farther in a straight line, but reached from Ramat Gan along a continuous arterial with no barrier to work around."
     }

@@ -6,42 +6,68 @@
     {
       "name": "Keren",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
       "hardConstraints": [],
       "toleranceKm": 5
     },
     {
       "name": "Doron",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
       "hardConstraints": [],
       "toleranceKm": 5
     },
     {
       "name": "Amit",
       "neighborhood": "Rishon LeZion",
-      "coordinates": { "lat": 31.9718, "lng": 34.7896 },
+      "coordinates": {
+        "lat": 31.9718,
+        "lng": 34.7896
+      },
       "hardConstraints": [],
       "toleranceKm": 8
     }
   ],
-  "availability": [{ "day": "Sunday", "start": "19:00", "end": "22:00" }],
+  "availability": [
+    {
+      "day": "Sunday",
+      "date": "2026-09-06",
+      "start": "19:00",
+      "end": "22:00"
+    }
+  ],
   "candidateVenues": [
     {
+      "placeId": "place-06-herbert-samuel-grill",
       "name": "Herbert Samuel Grill",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.065, "lng": 34.7751 },
-      "kosher": false,
-      "openingHours": { "Sunday": ["12:00-23:00"] },
+      "coordinates": {
+        "lat": 32.065,
+        "lng": 34.7751
+      },
+      "openingHours": {
+        "Sunday": ["12:00-23:00"]
+      },
       "rating": 4.3,
       "note": "On Keren and Doron's doorstep, and the better-rated venue — but 10.45 km from Amit against a tolerance of 8, a burden of 1.307."
     },
     {
+      "placeId": "place-06-kfar-bat-yam-midpoint-grill",
       "name": "Kfar Bat Yam Midpoint Grill",
       "neighborhood": "Bat Yam",
-      "coordinates": { "lat": 32.0171, "lng": 34.7508 },
-      "kosher": false,
-      "openingHours": { "Sunday": ["12:00-23:00"] },
+      "coordinates": {
+        "lat": 32.0171,
+        "lng": 34.7508
+      },
+      "openingHours": {
+        "Sunday": ["12:00-23:00"]
+      },
       "rating": 3.6,
       "note": "Roughly equidistant from all three: 5.77 km for Keren and Doron against a tolerance of 5, a burden of 1.154 each, and 6.23 km for Amit against 8, a burden of 0.778. Over tolerance for two of the three, and the lowest-rated option."
     }

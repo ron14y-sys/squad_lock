@@ -42,7 +42,8 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Verify: all three agree each answer is right
   - Files: `evals/scenarios/*.json`, `evals/README.md`
   - Distances in a scenario are **straight lines computed from its own coordinates**, never road distances estimated by hand — that is how [#86](https://github.com/ron14y-sys/squad_lock/issues/86) happened. `__tests__/eval-scenarios.test.ts` recomputes 04 and 06 on every `npm test`.
-  - ⚠️ Still open: **05, 07 and 08 carry no venue coordinates**, so A5 cannot score a shortlist for them. Adding coordinates changes what those scenarios test, so it needs all three of you.
+  - The shortest meeting worth proposing is **three hours**; a scenario must leave its expected venue at least that after its hours trim the group's window.
+  - ⚠️ Still open: **03 no longer tests what it claims.** Its car element was removed because the engine cannot express it, so spec §9's mobility-window trap is currently uncovered. Tracked in [#86](https://github.com/ron14y-sys/squad_lock/issues/86).
 
 - [x] **F6 — Deployed skeleton** — live on Vercel, mobile-first shell, installable. Verify on a real phone.
 - [x] **F7 — Secrets and environment** — `.env.example` committed, nothing secret ever committed. Verify: `git log -p | grep -iE 'sk-ant|AIza|client_secret'` is empty.

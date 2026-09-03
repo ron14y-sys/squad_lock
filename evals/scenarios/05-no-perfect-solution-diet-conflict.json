@@ -32,7 +32,7 @@
       },
       "hardConstraints": [],
       "softPreferences": {
-        "budget": "low"
+        "budget": "modest"
       },
       "toleranceKm": 6
     },
@@ -50,16 +50,24 @@
   "availability": [
     {
       "day": "Monday",
-      "start": "20:30",
+      "date": "2026-09-07",
+      "start": "19:30",
       "end": "23:00"
     }
   ],
   "candidateVenues": [
     {
+      "placeId": "place-05-meshek-barzilay",
       "name": "Meshek Barzilay",
       "neighborhood": "Kerem HaTeimanim",
-      "kosher": false,
-      "veganOptions": true,
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7695
+      },
+      "dietary": {
+        "satisfies": ["vegan-option-required"],
+        "violates": ["kosher"]
+      },
       "priceLevel": "mid-high",
       "openingHours": {
         "Monday": ["09:00-23:00"]
@@ -67,10 +75,16 @@
       "rating": 4.5
     },
     {
+      "placeId": "place-05-hakosem-kerem",
       "name": "HaKosem Kerem",
       "neighborhood": "Kerem HaTeimanim",
-      "kosher": true,
-      "veganOptions": true,
+      "coordinates": {
+        "lat": 32.0637,
+        "lng": 34.7679
+      },
+      "dietary": {
+        "satisfies": ["kosher", "vegan-option-required"]
+      },
       "priceLevel": "low",
       "openingHours": {
         "Monday": ["11:00-22:30"]
@@ -78,10 +92,16 @@
       "rating": 3.7
     },
     {
+      "placeId": "place-05-nanuchka-kosher",
       "name": "Nanuchka Kosher",
       "neighborhood": "Kerem HaTeimanim",
-      "kosher": true,
-      "veganOptions": true,
+      "coordinates": {
+        "lat": 32.0625,
+        "lng": 34.766
+      },
+      "dietary": {
+        "satisfies": ["kosher", "vegan-option-required"]
+      },
       "priceLevel": "mid-high",
       "openingHours": {
         "Monday": ["18:00-01:00"]
@@ -92,9 +112,9 @@
   "expected": {
     "venue": "HaKosem Kerem",
     "time": {
-      "start": "20:30",
+      "start": "19:30",
       "end": "22:30"
     },
-    "reasoning": "Meshek Barzilay is not kosher, so Adi's hard constraint eliminates it regardless of rating — that part is mechanical. Between the two remaining kosher, vegan-friendly options, Nanuchka Kosher is better-rated but HaKosem Kerem is the only one where an actual stated participant preference (Hila's low budget) points toward it; nobody stated a preference for a higher-rated or pricier venue. Agreed by the team on this basis. HaKosem closes at 22:30 while the group is free until 23:00, and that shortens the evening rather than ruling the venue out: the slot is the intersection, 20:30–22:30. This scenario is therefore also the clearest case of that rule — the answer that survives is the venue that closes earliest of the three."
+    "reasoning": "Meshek Barzilay is known to violate Adi's kosher requirement, so the hard-constraint filter eliminates it regardless of rating — that part is mechanical. Between the two remaining kosher, vegan-friendly options, Nanuchka Kosher is better-rated but HaKosem Kerem is the only one an actual stated participant preference (Hila's modest budget) points toward; nobody stated a preference for a higher-rated or pricier venue. Agreed by the team on this basis. HaKosem closes at 22:30 while the group is free until 23:00, and that shortens the evening rather than ruling the venue out: the slot is the intersection, 19:30-22:30. This scenario is the clearest case of that rule — the answer that survives is the venue that closes earliest of the three. The group's window was 20:30-23:00 until the three-hour minimum meeting length was agreed; it starts at 19:30 so that HaKosem's shortened evening still clears the minimum."
   }
 }

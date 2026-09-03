@@ -6,41 +6,73 @@
     {
       "name": "Dana",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
       "hardConstraints": ["kosher"],
       "toleranceKm": 4
     },
     {
       "name": "Yoav",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
       "hardConstraints": [],
       "toleranceKm": 4
     },
     {
       "name": "Maya",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
       "hardConstraints": [],
       "toleranceKm": 4
     }
   ],
-  "availability": [{ "day": "Thursday", "start": "20:00", "end": "23:00" }],
+  "availability": [
+    {
+      "day": "Thursday",
+      "date": "2026-09-10",
+      "start": "20:00",
+      "end": "23:00"
+    }
+  ],
   "candidateVenues": [
     {
+      "placeId": "place-01-toto",
       "name": "Toto",
       "neighborhood": "Rothschild",
-      "coordinates": { "lat": 32.065, "lng": 34.7751 },
-      "kosher": false,
-      "openingHours": { "Thursday": ["18:00-01:00"] },
+      "coordinates": {
+        "lat": 32.065,
+        "lng": 34.7751
+      },
+      "dietary": {
+        "violates": ["kosher"]
+      },
+      "openingHours": {
+        "Thursday": ["18:00-01:00"]
+      },
       "rating": 4.8
     },
     {
+      "placeId": "place-01-container",
       "name": "Container",
       "neighborhood": "Jaffa Port",
-      "coordinates": { "lat": 32.0517, "lng": 34.7503 },
-      "kosher": true,
-      "openingHours": { "Thursday": ["19:00-00:00"] },
+      "coordinates": {
+        "lat": 32.0517,
+        "lng": 34.7503
+      },
+      "dietary": {
+        "satisfies": ["kosher"]
+      },
+      "openingHours": {
+        "Thursday": ["19:00-00:00"]
+      },
       "rating": 4.3
     }
   ],
