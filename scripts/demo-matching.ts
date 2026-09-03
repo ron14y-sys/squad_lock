@@ -200,6 +200,7 @@ const PARTICIPANTS: Participant[] = [
             window: { weekdays: [], from: "00:00", to: "23:59" },
           },
         ],
+        softPreferences: null,
         note: "on crutches this week",
         createdAt: new Date("2026-09-05T00:00:00.000Z"),
       },
