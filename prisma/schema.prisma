@@ -36,6 +36,8 @@ model User {
   responses              Response[]
   participantContexts    ParticipantMeetingContext[]
   conflictDismissals     ConflictDismissal[]
+  sentInvitations        Invitation[]                @relation("InvitationSender")
+  acceptedInvitations     Invitation[]                @relation("InvitationAcceptor")
 
   @@map("users")
 }
@@ -91,8 +93,9 @@ model Group {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members  GroupMember[]
-  meetings Meeting[]
+  members     GroupMember[]
+  meetings    Meeting[]
+  invitations Invitation[]
 
   @@map("groups")
 }
@@ -111,6 +114,58 @@ model GroupMember {
   @@unique([groupId, userId])
   @@index([userId])
   @@map("group_members")
+}
+
+/// An invitation to join a Group, by email (spec §5.3, §12.1) — the only
+/// way anyone joins a group at all. Deliberately keyed on `email`, not
+/// `userId`: per the spec's own success criteria, the invitee's *first*
+/// contact with the app is this email, so they do not have a User row yet
+/// when it is sent. Accepting it (after they sign in — B2) is what creates
+/// their GroupMember row; nothing here does that automatically.
+///
+/// `token` is what the emailed link carries, so accepting works without
+/// requiring the invitee to already be signed in with a session that knows
+/// the group id. The actual *send* — the transactional email itself — is
+/// B8's job, not this model's; a row here can exist and be accepted whether
+/// or not that email ever went out (spec §5.5, D16's same principle applied
+/// one step earlier).
+///
+/// `email` is stored as the caller supplies it; normalising it
+/// (trim + lowercase) before every write and lookup is the API layer's job,
+/// same as `User.email`.
+model Invitation {
+  id      String @id @default(cuid())
+  groupId String
+  email   String
+
+  invitedById String
+  status      InvitationStatus @default(pending)
+  /// Unguessable by construction (a v4 UUID), not because anything hashes it.
+  token       String           @unique @default(uuid())
+
+  /// Set only once status flips to `accepted`.
+  acceptedByUserId String?
+  respondedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group      Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  invitedBy  User  @relation("InvitationSender", fields: [invitedById], references: [id])
+  acceptedBy User? @relation("InvitationAcceptor", fields: [acceptedByUserId], references: [id])
+
+  /// One live invitation per (group, email) at a time — inviting the same
+  /// address twice re-sends, it does not duplicate. Also means an email that
+  /// left the group can't be re-invited without first clearing the old row;
+  /// not a case the spec calls out, so not solved ahead of being needed.
+  @@unique([groupId, email])
+  @@index([email])
+  @@map("invitations")
+}
+
+enum InvitationStatus {
+  pending
+  accepted
 }
 
 // ---------------------------------------------------------------------------
