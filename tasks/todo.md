@@ -113,8 +113,11 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - `calendar.freebusy` confirmed non-sensitive in the Cloud Console (decision D13); scope verified end-to-end against both the temporary dev project and the shared `squad-lock` project — a `User` row is created correctly in both.
   - ⚠️ Still open: the shared `squad-lock` project's OAuth consent screen is still in **Testing** status (test users only, 7-day refresh-token expiry) — publishing **In production** is the one step left to fully satisfy the "token still works 8 days after it was issued" verify line above.
   - Verify: the consent screen lists only the free/busy scope; a token still works 8 days after it was issued
-- [ ] **B3 — Preference profile persistence** — hard constraints, soft preferences, **`tolerance_km`** and the **recurring mobility rules** (spec §5.1) save and load per user.
-- [ ] **B4 — Groups and membership** — create, invite by email, accept, list.
+- [x] **B3 — Preference profile persistence** — hard constraints, soft preferences, **`tolerance_km`** and the **recurring mobility rules** (spec §5.1) save and load per user. Merged in #82 (`app/api/preferences/route.ts`, `lib/preferences/schema.ts`, `lib/types/preference-profile-from-row.ts`). C3's `HardConstraintsForm` and the location form now call it directly and are covered by their own tests.
+- [x] **B4 — Groups and membership** — create, invite by email, accept, list. Four routes: `POST /api/groups`, `POST /api/groups/[id]/invitations`, `POST /api/invitations/[token]/accept`, `GET /api/groups`.
+  - `Invitation` is a separate model from `GroupMember`, keyed on email rather than userId — per the spec's own success criteria the invitee has no `User` row yet when the invite is sent, and only gets one at accept time (B2's sign-in).
+  - The real email send is B8's job (Resend); accepting works off the invitation's token today whether or not that email exists yet.
+  - ⚠️ API only — no screen calls any of these four routes yet (no "create group" or "invite" UI exists). Verifiable directly today only by calling the endpoints, not by clicking through the app.
 - [ ] **B5 — Meetings and responses**
   - Acceptance: initiate with any subset of date/time/venue — **the all-blank case is the default path**. Three response kinds. **Both caps enforced server-side:** 3 open meetings per group, and **1 free amendment per participant per meeting** (spec §3.1).
   - Verify: an all-blank meeting persists; a fourth open meeting is rejected by the API called directly; a second amendment by the same person costs a cycle
