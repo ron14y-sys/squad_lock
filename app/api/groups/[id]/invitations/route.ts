@@ -8,6 +8,47 @@ import { getPrisma } from "@/lib/db/client";
 import { inviteToGroupSchema } from "@/lib/groups/schema";
 import { Prisma } from "@/lib/generated/prisma/client";
 
+/**
+ * Listing a group's invitations, for the "pending and accepted members"
+ * view (C4, spec §5.3). Deliberately omits `token`: that value is the
+ * invited person's own unguessable link, not something every other member
+ * of the group should be able to read off a roster.
+ */
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<Response> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return Response.json({ error: "Not signed in." }, { status: 401 });
+  }
+
+  const { id: groupId } = await params;
+
+  const prisma = getPrisma();
+
+  const membership = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+  });
+  if (!membership) {
+    return Response.json({ error: "Group not found." }, { status: 404 });
+  }
+
+  const invitations = await prisma.invitation.findMany({
+    where: { groupId },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      createdAt: true,
+    },
+  });
+
+  return Response.json(invitations);
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
