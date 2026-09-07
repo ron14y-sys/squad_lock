@@ -33,6 +33,7 @@ if (!CONNECTED) {
 }
 
 const SLOT_START = new Date("2026-09-10T17:00:00.000Z");
+const SLOT_END = new Date("2026-09-10T20:00:00.000Z");
 
 function draftFor(meetingId: string): MatchRunDraft {
   return {
@@ -49,6 +50,7 @@ function draftFor(meetingId: string): MatchRunDraft {
           location: { lat: 32.0648, lng: 34.7749 },
         },
         proposedDatetime: SLOT_START,
+        proposedEnd: SLOT_END,
         participantJustifications: { "u-dana": "A ten-minute walk for you." },
         tradeoffs: { tradedAway: "Yoav walks further." },
         unverified: [],
@@ -62,6 +64,7 @@ function draftFor(meetingId: string): MatchRunDraft {
           location: null,
         },
         proposedDatetime: SLOT_START,
+        proposedEnd: SLOT_END,
         participantJustifications: { "u-dana": "Quieter, and still close." },
         tradeoffs: { tradedAway: "" },
         unverified: [{ kind: "opening_hours" as const }],

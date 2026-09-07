@@ -15,6 +15,7 @@ import { toMatchRunCreate } from "./match-run";
  */
 
 const SLOT_START = new Date("2026-09-10T17:00:00.000Z");
+const SLOT_END = new Date("2026-09-10T20:00:00.000Z");
 
 /**
  * A3's output, which is what a shortlist really is: `CandidateScore` *is* a
@@ -57,6 +58,7 @@ const DRAFT: MatchRunDraft = {
         location: { lat: 32.0648, lng: 34.7749 },
       },
       proposedDatetime: SLOT_START,
+      proposedEnd: SLOT_END,
       participantJustifications: { "u-dana": "A ten-minute walk for you." },
       tradeoffs: { tradedAway: "Yoav walks further than he would to Middle." },
       unverified: [],
@@ -70,6 +72,7 @@ const DRAFT: MatchRunDraft = {
         location: null,
       },
       proposedDatetime: SLOT_START,
+      proposedEnd: SLOT_END,
       participantJustifications: { "u-dana": "Quieter, and still close." },
       tradeoffs: { tradedAway: "" },
       unverified: [{ kind: "opening_hours" as const }],

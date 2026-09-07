@@ -68,7 +68,6 @@ import type {
   MatchOption,
   MatchRun,
   Participant,
-  TimeSlot,
   VenueSoftFacts,
 } from "@/lib/types";
 
@@ -143,8 +142,6 @@ export type MatchAgentInput = {
   participants: Participant[];
   /** The pool the agent may choose from. Anything not here cannot be picked. */
   candidates: Candidate[];
-  /** Every slot that was offered — the post-check's `slot_not_offered` set. */
-  slots: TimeSlot[];
   /** A2's survivors. The agent sees these and nothing else. */
   viable: ViablePair[];
   /** A3's scores, already ranked. Advice to the model, not an instruction. */
@@ -359,14 +356,27 @@ export function interpretAnswer(
 ): MatchRunDraft {
   const options = validateOptions(parse(text), input);
 
+  // The slots the agent was actually shown — one entry per distinct slot in
+  // `viable`, which is the list the payload was built from.
+  //
+  // **Deliberately not a second list.** An earlier version advertised
+  // `viable`'s slots in the prompt and looked the answer up in a separate
+  // `input.slots`. They held the same values, so nothing failed — but nothing
+  // made them agree either, and B6 is the change that separates them: once a
+  // slot is trimmed to a venue's opening hours, the trimmed window is in
+  // `viable` and not in the group's raw availability. Every option would then
+  // be rejected as "a slot that was not offered", blaming the model for a time
+  // this file put in the prompt itself.
+  const slotById = new Map(
+    input.viable.map((pair) => [slotId(pair.slot), pair.slot])
+  );
+
   const constraintInput: ConstraintInput = {
     candidates: input.candidates,
     participants: input.participants,
-    slots: input.slots,
+    slots: [...slotById.values()],
     venueFacts: input.venueFacts,
   };
-
-  const slotById = new Map(input.slots.map((slot) => [slotId(slot), slot]));
   const candidateById = new Map(input.candidates.map((c) => [c.placeId, c]));
   const unverifiedByPair = new Map(
     input.viable.map((pair) => [
@@ -403,6 +413,7 @@ export function interpretAnswer(
         location: candidate.location,
       },
       proposedDatetime: slot.start,
+      proposedEnd: slot.end,
       participantJustifications: Object.fromEntries(
         option.justifications.map((j) => [j.participant_id, j.reason])
       ),

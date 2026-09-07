@@ -85,6 +85,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Decisions, and what A5, A6, A7 and B11 inherit: [docs/decisions/matching-agent.md](../docs/decisions/matching-agent.md)
   - **The model does not write the "ring ahead" note.** A2 already knows what could not be checked, so code writes the sentence and the model is only told which pairs are verified — preferring one is a judgement, stating the fact is not (spec §4.4).
   - **What could not be verified is stored as a fact, not a sentence.** `MatchOption.unverified` holds A2's `UnverifiedFact[]`; the Hebrew "ring ahead" line the group reads is `unverifiedNote` in `lib/format/hebrew-labels.ts`, rendered at display time — the same rule `WEEKDAY_LABELS` follows.
+  - **Two things B6 would have broken are already fixed**: the slot lookup derives from `viable` rather than a second list that could disagree with it, and `MatchOption.proposedEnd` exists so a meeting that shortens to fit a venue can say so. Both were one line now and a backfill later.
   - The post-check runs on **all three** options, not just rank 1: ranks 2 and 3 are persisted, shown as "we also considered", and carried into the next cycle by A8b.
   - ⚠️ **The migration adding the cost columns and `MatchOption.unverified` has not been applied to any database** — there is none in dev or CI. Whoever holds the connection string runs `npm run db:migrate:deploy`.
 

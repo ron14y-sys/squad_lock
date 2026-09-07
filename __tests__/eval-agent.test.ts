@@ -60,7 +60,6 @@ describe("every scenario, through the real filter and the real scorer", () => {
 
       expect(input.participants.length).toBeGreaterThan(0);
       expect(input.candidates.length).toBeGreaterThan(0);
-      expect(input.slots.length).toBeGreaterThan(0);
 
       // Every survivor was scored, and every score covers every person. This
       // holds whether or not the scenario needs trimming, so it is asserted
@@ -109,7 +108,7 @@ describe("the hard-constraint trap, before any model is involved", () => {
         {
           rank: 1,
           venue_id: "place-01-toto",
-          slot_id: slotId(INPUT.slots[0]),
+          slot_id: slotId(INPUT.viable[0].slot),
           justifications: INPUT.participants.map((person) => ({
             participant_id: person.userId,
             reason: "Highest rated and closest to all three of you.",

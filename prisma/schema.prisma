@@ -285,6 +285,10 @@ model MatchOption {
   venueLng     Float?
 
   proposedDatetime DateTime
+  /// When it ends. Stored rather than implied: B6 shortens a meeting to fit a
+  /// venue's opening hours, and "until midnight" is then the answer, not a
+  /// detail (eval scenario 07 asserts it).
+  proposedEnd      DateTime
 
   /// userId -> justification text, written for that viewer specifically
   /// (spec §5.6).

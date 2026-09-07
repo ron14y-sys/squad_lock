@@ -29,5 +29,12 @@ ADD COLUMN     "cachedTokens" INTEGER,
 ADD COLUMN     "costUsd" DECIMAL(12,8),
 ADD COLUMN     "costBasis" TEXT;
 
+--   3. When an option ends. A meeting shortens to fit a venue's opening hours
+--      (B6), so the end is a real answer rather than an implied one — eval
+--      scenario 07's expected answer is "until midnight, because the bar
+--      shuts". Added with a default so the column can be NOT NULL on a table
+--      that is empty today; B6 sets it from the trimmed slot.
+
 -- AlterTable
-ALTER TABLE "match_options" ADD COLUMN     "unverified" JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE "match_options" ADD COLUMN     "unverified" JSONB NOT NULL DEFAULT '[]',
+ADD COLUMN     "proposedEnd" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

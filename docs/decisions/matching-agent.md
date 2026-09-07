@@ -151,6 +151,37 @@ does not re-run the match. B11 is where `runMatchingAgent` and
   call when nothing survived the filter, because that is `stuck` and the group
   is owed a reason (§5.4). B5 already has a `stuck` status for it to land in.
 
+## Two things B6 would otherwise have broken
+
+Both were found by review before B6 exists, and both are fixed here because
+each is one line now and a migration or a backfill later.
+
+### The slot lookup reads the list the prompt was built from
+
+The payload advertises `slotId(pair.slot)` from `input.viable`; an earlier
+version looked the answer back up in a separate `input.slots` holding the
+group's raw availability. The two held the same values, so nothing failed —
+but nothing made them agree, and B6 is exactly the change that separates them.
+Once a slot is trimmed to a venue's opening hours the trimmed window is in
+`viable` and not in the group's free window, so every option would have been
+rejected as _"a slot that was not offered"_ — blaming the model for a time the
+code itself put in the prompt, which is the most misleading symptom available.
+
+`MatchAgentInput.slots` is therefore **gone**: the offered slots are derived
+from `viable`, so the two lists cannot disagree because there is only one.
+`agent.test.ts` covers it with a pair whose slot is narrower than the group's
+window — the shape B6 will produce.
+
+### An option stores when it ends
+
+`MatchOption.proposedEnd` and the `match_options` column behind it. B6's whole
+purpose is that a meeting shortens to fit a venue, which makes the end a real
+answer rather than one implied by the group's window: eval scenario `07`'s
+expected answer is "until midnight, because the bar shuts", and A5 has to
+compare against it. Adding the column now costs one line on an empty table;
+adding it after real runs exist is a backfill nobody can compute, because the
+venues' hours will have moved on.
+
 ## The gaps, stated plainly
 
 **1. No database exists in dev or CI.** B1 provisioned Supabase and set `DATABASE_URL` on Vercel only; no local `.env.local` carries it and `.github/workflows/ci.yml` has no service container. Consequences:

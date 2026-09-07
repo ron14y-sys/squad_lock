@@ -682,7 +682,6 @@ async function runAgent(
       occasion: "a catch-up dinner",
       participants: PARTICIPANTS,
       candidates,
-      slots: SLOTS.map((s) => s.slot),
       viable,
       ranked,
       venueFacts: VENUE_FACTS,
@@ -726,7 +725,7 @@ async function runAgent(
       option.unverified.length > 0 ? yellow("unverified") : green("verified");
     console.log(
       `    ${bold(`#${option.rank}`)} ${bold(pad(option.venue.name, 14))}` +
-        `${dim(pad(WHEN.format(option.proposedDatetime), 20))}${badge}`
+        `${dim(pad(whenOf({ start: option.proposedDatetime, end: option.proposedEnd }), 20))}${badge}`
     );
     if (option.rank === 1) {
       for (const [userId, reason] of Object.entries(
@@ -754,7 +753,7 @@ async function runAgent(
 function printDisclaimer(chosen: MatchOptionDraft): void {
   console.log(`\n  ${bold("What the group would see")}`);
   console.log(
-    `    ${bold(chosen.venue.name)}, ${WHEN.format(chosen.proposedDatetime)}`
+    `    ${bold(chosen.venue.name)}, ${whenOf({ start: chosen.proposedDatetime, end: chosen.proposedEnd })}`
   );
 
   const note = unverifiedNote(chosen.unverified);

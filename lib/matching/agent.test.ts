@@ -135,7 +135,6 @@ function inputFor(
     cycleNumber: 1,
     participants,
     candidates,
-    slots,
     viable: filtered.viable,
     ranked: rankViable(filtered, candidates, participants),
     venueFacts,
@@ -207,13 +206,44 @@ describe("a well-formed answer", () => {
     });
   });
 
-  it("proposes the start of the slot as the datetime", () => {
+  it("carries both ends of the slot, not just the start", () => {
+    // B6 shortens a meeting to fit a venue's opening hours, so the end is a
+    // real answer rather than one implied by the group's free window — eval
+    // scenario 07's expected answer is "until midnight, because the bar shuts".
     const draft = interpretAnswer(
       answer([{ rank: 1, venue: "place-near" }]),
       inputFor([NEAR])
     );
 
     expect(draft.options[0].proposedDatetime).toEqual(THURSDAY.start);
+    expect(draft.options[0].proposedEnd).toEqual(THURSDAY.end);
+  });
+
+  it("looks a slot up in what was offered, not in the group's raw window", () => {
+    // The two used to be separate lists that happened to agree. B6 separates
+    // them: a trimmed slot is in `viable` and not in the group's availability,
+    // and looking up the wrong list would reject the agent's correct answer as
+    // "a slot that was not offered" — blaming the model for a time this file
+    // put in the prompt.
+    const input = inputFor([NEAR]);
+    const trimmed = {
+      start: THURSDAY.start,
+      end: new Date(THURSDAY.end.getTime() - 30 * 60_000),
+    };
+
+    const draft = interpretAnswer(
+      answer([{ rank: 1, venue: "place-near", slot: slotId(trimmed) }]),
+      {
+        ...input,
+        // what B6 will hand over: a pair whose slot is narrower than the
+        // window the group was free for.
+        viable: [
+          { candidatePlaceId: "place-near", slot: trimmed, unverified: [] },
+        ],
+      }
+    );
+
+    expect(draft.options[0].proposedEnd).toEqual(trimmed.end);
   });
 
   it("keys the justifications by user id, so a viewer gets their own", () => {

@@ -355,7 +355,6 @@ export function scenarioAgentInput(
     occasion: scenario.description,
     participants,
     candidates,
-    slots,
     viable: filtered.viable,
     ranked: rankViable(filtered, candidates, participants),
     venueFacts,

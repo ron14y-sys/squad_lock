@@ -199,6 +199,16 @@ export type MatchOption = {
   venue: VenueSnapshot;
   /** A machine chose it, so it is an instant. */
   proposedDatetime: Date;
+  /**
+   * When it ends — the other half of the slot the agent chose.
+   *
+   * Stored rather than implied, because [B6](../../tasks/todo.md) is the stage
+   * that makes it differ from "the end of the group's free window": a venue
+   * that shuts at midnight shortens the evening, and "until midnight" is then
+   * the answer rather than a detail. Eval scenario `07` states exactly that in
+   * its `expected.time`, so A5 has to be able to compare against it.
+   */
+  proposedEnd: Date;
   /** `userId` → the justification written for that viewer specifically (spec §5.6). */
   participantJustifications: Record<string, string>;
   /**

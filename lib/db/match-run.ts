@@ -62,6 +62,7 @@ export type MatchRunCreateData = {
       venueLat: number | null;
       venueLng: number | null;
       proposedDatetime: Date;
+      proposedEnd: Date;
       participantJustifications: Prisma.InputJsonValue;
       tradeoffs: Prisma.InputJsonValue;
       unverified: Prisma.InputJsonValue;
@@ -129,6 +130,7 @@ export function toMatchRunCreate(
         venueLat: option.venue.location?.lat ?? null,
         venueLng: option.venue.location?.lng ?? null,
         proposedDatetime: option.proposedDatetime,
+        proposedEnd: option.proposedEnd,
         participantJustifications: asJson(option.participantJustifications),
         tradeoffs: asJson(option.tradeoffs),
         unverified: asJson(option.unverified),
