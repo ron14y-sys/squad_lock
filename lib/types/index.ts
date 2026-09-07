@@ -10,8 +10,9 @@
  *   boundary in A4, not in a file everything imports.
  * - **Logic.** No distance calculation, no leximin, no status derivation.
  *   Types state the contract; the functions live with whoever owns them.
- * - **The other six converters.** `meetingFromRow` is the worked example;
- *   `preferenceProfileFromRow` is the second.
+ * - **The other five converters.** `meetingFromRow` is the worked example;
+ *   `preferenceProfileFromRow` is the second,
+ *   `participantMeetingContextFromRow` the third.
  * - **`lib/spike/`.** Its `Participant` and `Candidate` are the model-payload
  *   shape, frozen for the F2 measurement. Different thing, same words.
  */
@@ -22,3 +23,4 @@ export * from "./meeting";
 export * from "./matching";
 export * from "./meeting-from-row";
 export * from "./preference-profile-from-row";
+export * from "./participant-meeting-context-from-row";
