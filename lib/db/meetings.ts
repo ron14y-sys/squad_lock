@@ -24,8 +24,12 @@ import type {
 /** spec §3.1's "Three Mandatory Caps": at most 3 open meetings per group. */
 const OPEN_MEETING_CAP = 3;
 
-/** Every status except closed/cancelled counts as "open" against the cap. */
-const OPEN_MEETING_STATUSES: MeetingStatus[] = [
+/**
+ * Every status except closed/cancelled counts as "open" — against the cap
+ * here, and against the conflict query in lib/db/conflict-dismissal.ts,
+ * which is why this is exported rather than kept private to this file.
+ */
+export const OPEN_MEETING_STATUSES: MeetingStatus[] = [
   MeetingStatus.weighing,
   MeetingStatus.awaiting,
   MeetingStatus.stuck,
