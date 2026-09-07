@@ -127,9 +127,10 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - `currentDatetime` is deliberately left unset by `initiateMeeting` even when a full pinned date+time is given — see that function's own comment. Whichever task first reads it (the feed, most likely) is where the `APP_TIME_ZONE` conversion belongs.
   - Re-weighing after a spent cycle (the batching window, the agent call) is B11's job, not this one's.
   - ⚠️ API only — no screen calls either route yet.
-- [ ] **B5b — Cross-group conflict query**
-  - Acceptance: for a user, every pair of their open meetings **on the same day less than 4 hours apart**, across all groups (spec §5.7). Honours `ConflictDismissal`. Pure query plus a pure overlap function, no LLM.
-  - Verify: unit test with a user in three groups and two colliding meetings in different groups — both returned; a same-day pair 6 hours apart is not; a dismissed pair is not. Runs on the F4 index
+- [x] **B5b — Cross-group conflict query** — `findConflictingMeetings(userId)` in `lib/db/conflict-dismissal.ts` (merged in #99): every pair of a user's own open meetings, across every group, on the same calendar day in `APP_TIME_ZONE` and less than 4 hours apart, with any `ConflictDismissal`ed pair left out. A pure query plus a pure overlap function (`meetingsConflict`), no LLM.
+  - `canonicalMeetingPair` puts a pair of meeting ids into `ConflictDismissal`'s ordered unique-constraint order — used by the lookup here, and meant for any future insert too.
+  - Excludes meetings with no `currentDatetime` yet at the query itself — nothing proposed, nothing to conflict on. Since nothing populates that column yet (see B5's own note), this is correct today but has nothing live to find until matching (Track A) exists.
+  - The auto-cancellation this feeds (approving one conflicting meeting cancels the other, in one transaction) is B5c's job; the warning strip and its two escape hatches are C6's.
 
 ### Milestone 2 (weeks 4–6)
 
