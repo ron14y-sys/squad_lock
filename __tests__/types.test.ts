@@ -4,10 +4,14 @@ import type {
   MeetingStatus as PrismaMeetingStatus,
   ResponseStatus as PrismaResponseStatus,
 } from "@/lib/generated/prisma/enums";
-import type { MeetingModel } from "@/lib/generated/prisma/models";
-import type { PreferenceProfileModel } from "@/lib/generated/prisma/models";
+import type {
+  MeetingModel,
+  ParticipantMeetingContextModel,
+  PreferenceProfileModel,
+} from "@/lib/generated/prisma/models";
 import {
   meetingFromRow,
+  participantMeetingContextFromRow,
   preferenceProfileFromRow,
   type MeetingStatus,
   type ResponseStatus,
@@ -200,5 +204,65 @@ describe("preferenceProfileFromRow", () => {
       allergies: ["peanuts"],
       unavailable: [],
     });
+  });
+});
+
+/**
+ * ---------------------------------------------------------------------------
+ * participantMeetingContextFromRow
+ * ---------------------------------------------------------------------------
+ */
+
+function participantMeetingContextRow(
+  overrides: Partial<ParticipantMeetingContextModel> = {}
+): ParticipantMeetingContextModel {
+  return {
+    id: "pmc1",
+    meetingId: "m1",
+    userId: "u1",
+    originLat: null,
+    originLng: null,
+    originLabel: null,
+    mobilityWindows: [],
+    note: null,
+    createdAt: new Date("2026-08-27T09:00:00.000Z"),
+    ...overrides,
+  } satisfies ParticipantMeetingContextModel;
+}
+
+describe("participantMeetingContextFromRow", () => {
+  it("composes the two origin columns into one LatLng", () => {
+    const context = participantMeetingContextFromRow(
+      participantMeetingContextRow({ originLat: 32.08, originLng: 34.78 })
+    );
+
+    expect(context.origin).toEqual({ lat: 32.08, lng: 34.78 });
+  });
+
+  it("treats an unset origin as null, not as (0, 0)", () => {
+    expect(
+      participantMeetingContextFromRow(participantMeetingContextRow()).origin
+    ).toBeNull();
+  });
+
+  it("carries the rest of the row through unchanged", () => {
+    const mobilityWindows = [
+      {
+        mode: "car",
+        available: false,
+        window: { weekdays: [], from: "18:00", to: "21:00" },
+      },
+    ];
+    const context = participantMeetingContextFromRow(
+      participantMeetingContextRow({
+        originLabel: "Coming from work",
+        mobilityWindows,
+        note: "No car tonight.",
+      })
+    );
+
+    expect(context.originLabel).toBe("Coming from work");
+    expect(context.mobilityWindows).toEqual(mobilityWindows);
+    expect(context.note).toBe("No car tonight.");
   });
 });
