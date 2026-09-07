@@ -134,7 +134,9 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 
 ### Milestone 2 (weeks 4–6)
 
-- [ ] **B5c — Conflict cancellation as one transaction** — approving A cancels colliding B **in a single transaction across both**; B **returns to weighing** with the approving user marked `cant_make_it`, never deleted. Verify a mid-write failure leaves neither half-updated.
+- [x] **B5c — Conflict cancellation as one transaction** — approving A cancels colliding B **in a single transaction across both**; B **returns to weighing** with the approving user marked `cant_make_it`, never deleted. `cancelConflictingMeetings` in `lib/db/meetings.ts` (merged in #101), inside the same `tx` as the approval, reusing `meetingsConflict`/`canonicalMeetingPair` from B5b.
+  - `RespondToMeetingResult.cancelledConflicts: Meeting[]` carries the cancelled meetings back to the caller.
+  - ⚠️ Not independently verified against a mid-write failure — no test in this repo touches a real database (same gap as B5's other `lib/db` functions). The atomicity claim rests on everything living inside one `prisma.$transaction` callback, checked by reading the code, not by a test that forces a failure partway through.
 - [ ] **B6 — Google Calendar read and availability**
   - Acceptance: free slots common to all confirmed participants, **intersected with venue opening hours and mobility windows** to produce viable `(venue, time)` pairs (spec §5.4). Empty intersection → `stuck`, not a bad proposal.
   - **The shortest meeting worth proposing is three hours**, applied in both places: a group free window under three hours is `stuck` with a reason, and a `(venue, time)` pair narrowed under three hours is dropped — one pair, not the run (decided on [#86](https://github.com/ron14y-sys/squad_lock/issues/86)).
