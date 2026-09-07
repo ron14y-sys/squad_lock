@@ -30,14 +30,14 @@ model User {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  preferenceProfile     PreferenceProfile?
-  groupMemberships      GroupMember[]
-  initiatedMeetings     Meeting[]                 @relation("MeetingInitiator")
-  responses              Response[]
-  participantContexts    ParticipantMeetingContext[]
-  conflictDismissals     ConflictDismissal[]
-  sentInvitations        Invitation[]                @relation("InvitationSender")
-  acceptedInvitations     Invitation[]                @relation("InvitationAcceptor")
+  preferenceProfile   PreferenceProfile?
+  groupMemberships    GroupMember[]
+  initiatedMeetings   Meeting[]                   @relation("MeetingInitiator")
+  responses           Response[]
+  participantContexts ParticipantMeetingContext[]
+  conflictDismissals  ConflictDismissal[]
+  sentInvitations     Invitation[]                @relation("InvitationSender")
+  acceptedInvitations Invitation[]                @relation("InvitationAcceptor")
 
   @@map("users")
 }
@@ -60,9 +60,9 @@ model PreferenceProfile {
 
   /// Home location at neighbourhood granularity, never a street address
   /// (spec §5.4) — this is also what keeps the venue cache shareable.
-  homeLat            Float?
-  homeLng            Float?
-  homeNeighbourhood  String?
+  homeLat           Float?
+  homeLng           Float?
+  homeNeighbourhood String?
 
   /// Travel tolerance in kilometres — stored as km, presented as a labelled
   /// slider (spec §5.1). Per-time-slot tolerance is layered on top of this
@@ -209,14 +209,14 @@ model Meeting {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  group     Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  initiator User   @relation("MeetingInitiator", fields: [initiatorId], references: [id])
+  group     Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  initiator User  @relation("MeetingInitiator", fields: [initiatorId], references: [id])
 
-  matchRuns            MatchRun[]
-  responses            Response[]
-  participantContexts  ParticipantMeetingContext[]
-  dismissalsAsA        ConflictDismissal[]         @relation("MeetingA")
-  dismissalsAsB        ConflictDismissal[]         @relation("MeetingB")
+  matchRuns           MatchRun[]
+  responses           Response[]
+  participantContexts ParticipantMeetingContext[]
+  dismissalsAsA       ConflictDismissal[]         @relation("MeetingA")
+  dismissalsAsB       ConflictDismissal[]         @relation("MeetingB")
 
   @@index([groupId])
   @@index([status, currentDatetime])
@@ -226,7 +226,7 @@ model Meeting {
 /// One weighing cycle of a meeting (spec §6.2, §4.1d — every run persisted
 /// in full).
 model MatchRun {
-  id          String   @id @default(cuid())
+  id          String @id @default(cuid())
   meetingId   String
   cycleNumber Int
 
@@ -234,9 +234,30 @@ model MatchRun {
   /// distances and viable time slots (spec §5.4).
   shortlist Json
 
+  /// What this run cost, recorded because a log line cannot be totalled later
+  /// (A4; docs/decisions/llm-client.md said these columns belong with whatever
+  /// creates a run). A5 reports cost per scenario from them and §6.4 wants a
+  /// cost-per-decision figure for the report — both read the number back, so
+  /// it has to be stored and not merely printed.
+  ///
+  /// All nullable together: a run that failed before the call has none of
+  /// them, and `costUsd` is null — never 0 — for a model missing from the
+  /// price table, because a blank averaged into a total as a real measurement
+  /// is worse than no figure at all (lib/llm/cost.ts, `CostBasis`).
+  model         String?
+  thinkingLevel String?
+  durationMs    Int?
+  inputTokens   Int?
+  outputTokens  Int?
+  thoughtTokens Int?
+  cachedTokens  Int?
+  costUsd       Decimal? @db.Decimal(12, 8)
+  /// "exact" | "approximate" | "unknown" — how far to trust `costUsd`.
+  costBasis     String?
+
   createdAt DateTime @default(now())
 
-  meeting Meeting        @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  meeting Meeting       @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   options MatchOption[]
 
   /// Which ParticipantMeetingContext rows this run saw — so the timeline can
@@ -264,6 +285,10 @@ model MatchOption {
   venueLng     Float?
 
   proposedDatetime DateTime
+  /// When it ends. Stored rather than implied: B6 shortens a meeting to fit a
+  /// venue's opening hours, and "until midnight" is then the answer, not a
+  /// detail (eval scenario 07 asserts it).
+  proposedEnd      DateTime
 
   /// userId -> justification text, written for that viewer specifically
   /// (spec §5.6).
@@ -273,6 +298,20 @@ model MatchOption {
   /// timeline and the report, but never rendered as a comparative cost line
   /// to the person who bore it (spec §5.6, §4.1c).
   tradeoffs Json
+
+  /// What A2 could not check about this (venue, slot) — an UnverifiedFact[],
+  /// e.g. `[{"kind":"opening_hours"}]`. Empty when everything was verified.
+  ///
+  /// The counterpart of `tradeoffs`, and its opposite in every way: this one
+  /// IS shown, to everybody, with the asterisk docs/decisions/hard-constraints.md
+  /// requires. Written by code from A2's findings, never by the model — a fact
+  /// about a venue is code's to state (spec §4.4).
+  ///
+  /// **The structured fact, not the sentence.** The app is `lang="he"
+  /// dir="rtl"`, and lib/format/hebrew-labels.ts is where a stored English
+  /// literal becomes Hebrew at render time. Freezing the rendered sentence
+  /// here would have made every historical row a translation problem.
+  unverified Json @default("[]")
 
   createdAt DateTime @default(now())
 
@@ -290,12 +329,12 @@ model MatchOption {
 /// instead of a scan (spec §5.7): index on (userId), join to Meeting by its
 /// primary key.
 model Response {
-  id     String @id @default(cuid())
+  id        String @id @default(cuid())
   meetingId String
   userId    String
 
-  status     ResponseStatus @default(pending)
-  reasonText String?
+  status      ResponseStatus @default(pending)
+  reasonText  String?
   respondedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -339,8 +378,8 @@ model ParticipantMeetingContext {
 
   createdAt DateTime @default(now())
 
-  meeting  Meeting                @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  user     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meeting    Meeting               @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   seenByRuns MatchRunSeenContext[]
 
   @@index([meetingId, userId, createdAt])
@@ -366,7 +405,7 @@ model MatchRunSeenContext {
 /// enforced by the application before every insert and lookup; see
 /// lib/db/conflict-dismissal.ts.
 model ConflictDismissal {
-  id         String @id @default(cuid())
+  id         String   @id @default(cuid())
   userId     String
   meetingAId String
   meetingBId String

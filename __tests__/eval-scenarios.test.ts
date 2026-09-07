@@ -1,6 +1,12 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+
+import {
+  instantOf,
+  loadScenario,
+  loadScenarios,
+  openingWindows,
+  type Scenario,
+} from "@/evals/adapter";
 
 import { REACH_BY_MODE, windowsCoverSlot } from "@/lib/matching/constraints";
 import {
@@ -10,7 +16,6 @@ import {
 } from "@/lib/matching/distance";
 import { APP_TIME_ZONE } from "@/lib/types";
 import type {
-  LatLng,
   LocalWindow,
   MobilityMode,
   SoftPreferences,
@@ -36,78 +41,15 @@ import type {
  *
  * ⚠️ These are straight-line distances with a detour correction, never a
  * routed journey. Nothing here computes driving or travel time (spec §5.4).
+ *
+ * The `Scenario` type, the loader and `instantOf` all live in
+ * [`evals/adapter.ts`](../evals/adapter.ts) now — this file used to carry its
+ * own copies, and a fixture format described in two places is the drift #86
+ * was made of.
  */
 
-type Scenario = {
-  id: string;
-  trap: string;
-  participants: {
-    name: string;
-    coordinates: LatLng;
-    hardConstraints: string[];
-    toleranceKm: number;
-    /** The real `MobilityWindow` shape — mode, available, LocalWindow. */
-    mobilityWindows?: {
-      mode: MobilityMode;
-      available: boolean;
-      window: LocalWindow;
-    }[];
-    softPreferences?: SoftPreferences;
-  }[];
-  candidateVenues: {
-    /** Not a real Places id — readable, so a failing assertion names a venue. */
-    placeId: string;
-    name: string;
-    coordinates: LatLng;
-    /** The engine's three states. A tag in neither is "not known" (A2). */
-    dietary?: { satisfies?: string[]; violates?: string[] };
-    /** `VenueSoftFacts` — the same four axes a person answers. */
-    soft?: VenueSoftFacts;
-    /** Weekday name to `"HH:MM-HH:MM"` spans, as Places reports them. */
-    openingHours: Record<string, string[]>;
-    rating?: number;
-  }[];
-  availability: {
-    day: string;
-    /** `YYYY-MM-DD`, so a `TimeSlot` can be built. 07 crosses midnight. */
-    date: string;
-    start: string;
-    end: string;
-  }[];
-  expected: {
-    venue: string;
-    /**
-     * Required for mobility-window scenarios and wherever the venue's hours
-     * trim the group's window — see `evals/README.md`.
-     */
-    time?: { start: string; end: string };
-    reasoning: string;
-  };
-  initialProposal?: { venue: string };
-  rejection?: { by: string; text: string };
-  /** Rejection-loop scenarios only — what A7 should extract. */
-  expectedConstraint?: {
-    participant: string;
-    softPreferences: SoftPreferences;
-  };
-};
-
-const dir = join(__dirname, "..", "evals", "scenarios");
-
-const files = readdirSync(dir)
-  .filter((f) => f.endsWith(".json"))
-  .sort();
-
-const load = (file: string) =>
-  JSON.parse(readFileSync(join(dir, file), "utf8")) as Scenario;
-
-const scenarios = files.map(load);
-
-const byId = (id: string) => {
-  const found = scenarios.find((s) => s.id === id);
-  if (!found) throw new Error(`no eval scenario with id "${id}"`);
-  return found;
-};
+const scenarios = loadScenarios();
+const byId = loadScenario;
 
 /**
  * One candidate's leximin vector over a scenario, worst-first.
@@ -151,7 +93,7 @@ const round = (v: number[]) => v.map((x) => Number(x.toFixed(3)));
 
 describe("every eval scenario", () => {
   it("has at least one file to check, so a moved folder fails loudly", () => {
-    expect(files.length).toBeGreaterThanOrEqual(8);
+    expect(scenarios.length).toBeGreaterThanOrEqual(8);
   });
 
   it.each(scenarios.map((s) => [s.id, s] as const))(
@@ -496,40 +438,6 @@ const WEEKDAY = new Intl.DateTimeFormat("en-GB", {
   weekday: "long",
 });
 
-const LOCAL_CLOCK = new Intl.DateTimeFormat("en-GB", {
-  timeZone: APP_TIME_ZONE,
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-/**
- * A wall-clock time in `APP_TIME_ZONE` as the instant a `TimeSlot` needs.
- *
- * Guessed as UTC and then corrected by the zone's offset at that guess, which
- * is exact everywhere except inside a DST transition — and the assertion
- * below catches that rather than letting an hour go quietly missing.
- */
-const instantOf = (date: string, time: string, addDays = 0) => {
-  const guess = new Date(`${date}T${time}:00Z`);
-  guess.setUTCDate(guess.getUTCDate() + addDays);
-
-  const local = new Date(
-    new Date(guess).toLocaleString("en-US", { timeZone: APP_TIME_ZONE })
-  );
-  const utc = new Date(
-    new Date(guess).toLocaleString("en-US", { timeZone: "UTC" })
-  );
-  const instant = new Date(guess.getTime() - (local.getTime() - utc.getTime()));
-
-  if (LOCAL_CLOCK.format(instant) !== time) {
-    throw new Error(
-      `${date} ${time} does not exist in ${APP_TIME_ZONE} — a DST transition?`
-    );
-  }
-  return instant;
-};
-
 /** The trimmed slot as the two instants `windowsCoverSlot` expects. */
 const slotOf = (scenario: Scenario, venueName: string): TimeSlot => {
   const free = scenario.availability[0]!;
@@ -544,20 +452,14 @@ const slotOf = (scenario: Scenario, venueName: string): TimeSlot => {
   return { start, end };
 };
 
+/** That venue's hours on the one evening the group is free. */
 const openingWindowsOf = (
   scenario: Scenario,
   venueName: string
 ): LocalWindow[] => {
   const free = scenario.availability[0]!;
   const venue = scenario.candidateVenues.find((v) => v.name === venueName)!;
-  return (venue.openingHours[free.day] ?? []).map((hours) => {
-    const [from, to] = hours.split("-");
-    return {
-      weekdays: [free.day.toLowerCase() as LocalWindow["weekdays"][number]],
-      from: from!,
-      to: to!,
-    };
-  });
+  return openingWindows({ [free.day]: venue.openingHours[free.day] ?? [] });
 };
 
 describe("the fixtures speak the engine's vocabulary", () => {

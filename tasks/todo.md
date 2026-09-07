@@ -75,17 +75,27 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Decisions, and what A4, B7c, A12 and A13 inherit: [docs/decisions/leximin-fairness.md](../docs/decisions/leximin-fairness.md)
   - Found while building it: **two eval scenarios contradicted their own coordinates** — 06's expected answer was inverted and 04's trap did not fire. Filed as [#86](https://github.com/ron14y-sys/squad_lock/issues/86) against F5, fixed separately, and guarded by `__tests__/eval-scenarios.test.ts` so prose cannot drift from the numbers again.
 
-- [ ] **A4 — Group Matching Agent**
+- [x] **A4 — Group Matching Agent**
   - Acceptance: one call over all profiles, availability and the shortlist returns a **schema-validated ranked top 3** (spec §4.1c). Each option carries a `(venue, datetime)` pair, a per-participant justification, and — internally — what it trades away and for whom. No free-text parsing. Runs the A2 post-check before returning. The whole run is persisted.
   - Verify: a malformed response is rejected rather than accepted; runs end to end on one eval scenario
   - **A missing soft preference must change nothing.** Every `SoftPreferences` field is optional, and not having an opinion is not the same as wanting either answer — an absent field may never cost an option a place or win it one, and may never be described in a justification as though it were a choice ([#86](https://github.com/ron14y-sys/squad_lock/issues/86)). Nothing deterministic branches on `softPreferences`, so this obligation is the prompt's and A6's.
   - **Venue soft facts arrive beside the candidate**, not inside it — `VenueSoftFacts`, in the same `SoftPreferences` vocabulary the participants use, so matching is a field comparison.
   - **Unverified candidates** (decided at A2): a pair carries `unverified` when its opening hours or a dietary tag could not be checked. The agent **strongly prefers pairs with nothing unverified**, and when it falls back to one, the proposal carries an asterisk telling the person to ring ahead and confirm. Never phrase it as what the option cost them (§5.6). See [docs/decisions/hard-constraints.md](../docs/decisions/hard-constraints.md)
-  - Files: `lib/matching/agent.ts`, `lib/matching/schemas.ts`
+  - Files: `lib/matching/agent.ts`, `lib/matching/schemas.ts`, `lib/db/match-run.ts`, `evals/adapter.ts`
+  - Decisions, and what A5, A6, A7 and B11 inherit: [docs/decisions/matching-agent.md](../docs/decisions/matching-agent.md)
+  - **The model does not write the "ring ahead" note.** A2 already knows what could not be checked, so code writes the sentence and the model is only told which pairs are verified — preferring one is a judgement, stating the fact is not (spec §4.4).
+  - **What could not be verified is stored as a fact, not a sentence.** `MatchOption.unverified` holds A2's `UnverifiedFact[]`; the Hebrew "ring ahead" line the group reads is `unverifiedNote` in `lib/format/hebrew-labels.ts`, rendered at display time — the same rule `WEEKDAY_LABELS` follows.
+  - **Two things B6 would have broken are already fixed**: the slot lookup derives from `viable` rather than a second list that could disagree with it, and `MatchOption.proposedEnd` exists so a meeting that shortens to fit a venue can say so. Both were one line now and a backfill later.
+  - The post-check runs on **all three** options, not just rank 1: ranks 2 and 3 are persisted, shown as "we also considered", and carried into the next cycle by A8b.
+  - ⚠️ **The migration adding the cost columns and `MatchOption.unverified` has not been applied to any database** — there is none in dev or CI. Whoever holds the connection string runs `npm run db:migrate:deploy`.
 
 - [ ] **A5 — Eval runner** — `npm run eval` prints pass rate, cost, duration, cycles and hard-constraint violations per scenario. Violations column must be zero.
+  - **Much of the groundwork is done in A4** — `evals/adapter.ts` turns a scenario into a complete `MatchAgentInput` by running A2 and A3 for real, `runMatchingAgent` returns tokens and dollars alongside the draft, and `MatchRun` now has columns to store them. The full list is in [docs/decisions/matching-agent.md](../docs/decisions/matching-agent.md), "What A5 inherits".
+  - Still to build: the runner itself, **judging an answer against `expected`** (A4 only checks an answer is legal, never that it is right), and **rate limiting** — 20 free requests a day does not cover eight scenarios with a rejection loop each.
+  - ⚠️ **A fair pass rate needs B6.** Without it a meeting cannot shorten to fit a venue, so `03`, `05` and `07` lose the pair that should win. `needsTrim(scenario)` in `evals/adapter.ts` derives which ones; report them separately rather than counting them as failures.
 
 - [ ] **A6 — Per-participant justification quality**
+  - A4 left this space deliberately empty. It already rejects a justification addressed to somebody **not** in the meeting — only an answer can get that wrong — and leaves the mirror case, a participant left out, entirely to A6 along with its test. The validation hook is `validateOptions` in `lib/matching/agent.ts`.
   - Acceptance: every option names every confirmed participant; a run omitting someone fails validation. **Justifications carry no comparative cost line** (spec §5.6) — an option's trade-off data is persisted for the timeline and the report, never rendered to the person who bore it.
   - Verify: an agent response covering 5 of 6 participants is rejected
 
@@ -162,6 +172,8 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Verify: a test message arrives from the project address and does not land in spam
 - [ ] **B9 — Retry and error handling on external calls**
 - [ ] **B11 — Per-meeting context: persistence and batching** — ⚠️ also adds `softPreferences Json @default("{}")` to `participant_meeting_contexts` and its migration: `ParticipantMeetingContext.softPreferences` exists in `lib/types/meeting.ts` with **no column behind it**, and it is where a rejection lands (A7, [#86](https://github.com/ron14y-sys/squad_lock/issues/86)). Write `ParticipantMeetingContext`; open a **~90-second batching window** that further amendments reset; the window is closed by the next feed poll, so **no cron and no background job** (spec §3.2). Verify two amendments 30 seconds apart produce exactly one run.
+  - **This is where B5 hands over to A4.** `respondToMeeting` already spends the cycle and flips to `stuck` at the cap; what it does not do is re-run the match. `runMatchingAgent` + `persistMatchRun` are the two calls B11 needs — a `MatchRun` row needs its `Meeting` row, which B5 now creates. See [docs/decisions/matching-agent.md](../docs/decisions/matching-agent.md).
+  - Whoever writes the first `currentDatetime` value takes the `APP_TIME_ZONE` conversion B5 deliberately left alone. The rank-1 option's `proposedDatetime` is already an instant, so a run is the cheapest place to set it.
 
 ---
 

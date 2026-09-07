@@ -17,7 +17,7 @@
  *   2. Six venues — compliant, non-compliant, shut at the wrong hour, unknown
  *   3. A2 `filterPairs` — every dropped pair, and the exact reason
  *   4. A3 `scoreCandidates` — the burden on each person, and the leximin order
- *   5. A1 `generate` — the choice, streamed, with tokens and dollars
+ *   5. A4 `runMatchingAgent` — the choice, streamed, with tokens and dollars
  *   6. A2 `assertChosenPairAllowed` on the real answer — the path that passes
  *   7. A2 `assertChosenPairAllowed` on four fabrications — the path that throws
  *
@@ -41,12 +41,18 @@ import {
   type CandidateScore,
 } from "@/lib/matching/distance";
 import {
-  generate,
+  AgentAnswerError,
+  runMatchingAgent,
+  type MatchOptionDraft,
+  type MatchRunDraft,
+} from "@/lib/matching/agent";
+import {
   LlmConfigError,
   resolveConfig,
   type LlmCallRecord,
 } from "@/lib/llm/client";
 import { describeTotal, totalCost } from "@/lib/llm/cost";
+import { unverifiedNote } from "@/lib/format/hebrew-labels";
 import { APP_TIME_ZONE } from "@/lib/types";
 import type {
   Candidate,
@@ -356,14 +362,17 @@ function heading(step: string, title: string): void {
   console.log(dim("-".repeat(74)));
 }
 
-const slotById = new Map(SLOTS.map((s) => [s.id, s.slot]));
 const venueById = new Map(CANDIDATES.map((c) => [c.placeId, c]));
 const nameOf = (placeId: string) => venueById.get(placeId)?.name ?? placeId;
 const idOfSlot = (slot: TimeSlot) =>
   SLOTS.find((s) => s.slot === slot)?.id ?? "unknown-slot";
 
-/** The unverified facts as a phrase: `opening hours, "kosher"`. */
-function describeUnverified(facts: UnverifiedFact[]): string {
+/**
+ * The unverified facts as a phrase: `opening hours, "kosher"` — for this
+ * script's own tables. The sentence the *group* sees is A4's
+ * `describeUnverified`, and it is deliberately not this.
+ */
+function unverifiedPhrase(facts: UnverifiedFact[]): string {
   return facts
     .map((f) => (f.kind === "opening_hours" ? "opening hours" : `"${f.tag}"`))
     .join(", ");
@@ -544,7 +553,7 @@ function printFilter(viable: ViablePair[], dropped: PairCheck[]): void {
   );
   for (const pair of viable.filter((p) => p.unverified.length > 0)) {
     console.log(
-      `    ${yellow("*")} ${pad(nameOf(pair.candidatePlaceId), 14)}${dim(pad(idOfSlot(pair.slot), 16))}unchecked: ${describeUnverified(pair.unverified)}`
+      `    ${yellow("*")} ${pad(nameOf(pair.candidatePlaceId), 14)}${dim(pad(idOfSlot(pair.slot), 16))}unchecked: ${unverifiedPhrase(pair.unverified)}`
     );
   }
 }
@@ -632,155 +641,22 @@ function printFairness(ranked: CandidateScore[]): void {
 
 /* ---------------------------------------------------------- 5 · the A1 call */
 
-const SYSTEM_PROMPT = `You are the Group Matching Agent for a system that schedules get-togethers among friends.
-
-Every (venue, slot) pair you are given has ALREADY passed a deterministic hard-constraint filter. Do not second-guess it, and choose only from the pairs listed.
-
-Return the top 3 options, ranked.
-
-The pairs are listed in fairness order, worst-off participant first, computed deterministically before you were called. Each one carries the burden it places on each person: 1.0 is exactly as far as that person said they were willing to travel, 1.4 is half again as far. You do not need to recompute or re-sort any of it.
-
-Rules:
-- The fairness order is advice, not an instruction. Every pair listed is a valid choice, and a better-suited venue further down the list may well be the right answer - but if you pass over the fairest option, you are trading someone's journey for something else, so say what in "traded_away".
-- STRONGLY prefer a pair marked verified. A pair marked unverified carries something we could not check - its opening hours, or whether it meets somebody's dietary constraint. Choose one only when the verified options are clearly worse, and then say in "unverified_note" what the group should ring ahead and confirm.
-- If every option you rank is verified, leave "unverified_note" as an empty string.
-- Write a justification for EVERY participant on EVERY option, addressed to that person, in their own terms. Never omit anyone.
-- A justification never tells a person what the option cost them relative to an alternative they did not get. That goes in "traded_away", which the person never sees.`;
-
-const RESULT_SCHEMA = {
-  type: "object",
-  properties: {
-    options: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          rank: { type: "integer" },
-          venue_id: { type: "string" },
-          slot_id: { type: "string" },
-          justifications: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                participant_id: { type: "string" },
-                reason: { type: "string" },
-              },
-              required: ["participant_id", "reason"],
-            },
-          },
-          traded_away: { type: "string" },
-          unverified_note: { type: "string" },
-        },
-        required: [
-          "rank",
-          "venue_id",
-          "slot_id",
-          "justifications",
-          "traded_away",
-          "unverified_note",
-        ],
-      },
-    },
-  },
-  required: ["options"],
-};
-
-type AgentOption = {
-  rank: number;
-  venue_id: string;
-  slot_id: string;
-  justifications: { participant_id: string; reason: string }[];
-  traded_away: string;
-  unverified_note: string;
-};
-
 /**
- * The prompt A1 sends. Only pairs that survived A2 go in it — the agent is
- * never shown an option it is not allowed to pick.
- */
-function buildUserMessage(
-  viable: ViablePair[],
-  ranked: CandidateScore[]
-): string {
-  const people = PARTICIPANTS.map((p) => ({
-    id: p.userId,
-    name: p.name,
-    neighbourhood: p.profile.homeNeighbourhood,
-    tolerance_km: p.profile.toleranceKm,
-    soft_preferences: p.profile.softPreferences,
-  }));
-
-  // Ranked order, and every pair carries the burden it puts on each person at
-  // that hour. The model is told the numbers rather than asked to guess them
-  // from neighbourhood names, which is all it had before A3 (spec §4.1f).
-  const rank = new Map(ranked.map((s, i) => [s.candidate.placeId, i]));
-  // Keyed by all three dimensions, because that is what a burden is: one
-  // venue, one hour, one person.
-  const byCell = new Map(
-    ranked.flatMap((score) =>
-      score.burdens.map(
-        (b) =>
-          [
-            `${b.candidatePlaceId}|${b.slot.start.getTime()}|${b.participantId}`,
-            b.value,
-          ] as const
-      )
-    )
-  );
-
-  const pairs = viable
-    .slice()
-    .sort(
-      (a, b) =>
-        (rank.get(a.candidatePlaceId) ?? Infinity) -
-        (rank.get(b.candidatePlaceId) ?? Infinity)
-    )
-    .map((pair) => ({
-      venue_id: pair.candidatePlaceId,
-      venue_name: nameOf(pair.candidatePlaceId),
-      rating: venueById.get(pair.candidatePlaceId)?.rating,
-      neighbourhood: venueById.get(pair.candidatePlaceId)?.neighbourhood,
-      slot_id: idOfSlot(pair.slot),
-      when: whenOf(pair.slot),
-      verified: pair.unverified.length === 0,
-      unchecked:
-        pair.unverified.length > 0 ? describeUnverified(pair.unverified) : null,
-      burden_by_participant: Object.fromEntries(
-        PARTICIPANTS.map((person) => [
-          person.name,
-          byCell
-            .get(
-              `${pair.candidatePlaceId}|${pair.slot.start.getTime()}|${person.userId}`
-            )
-            ?.toFixed(2) ?? null,
-        ])
-      ),
-    }));
-
-  return [
-    "Occasion: a catch-up dinner, first cycle.",
-    "",
-    "Participants:",
-    JSON.stringify(people, null, 2),
-    "",
-    "Allowed (venue, slot) pairs - every one of these already passes every hard constraint:",
-    JSON.stringify(pairs, null, 2),
-    "",
-    "Return the ranked top 3, choosing only from the pairs above.",
-  ].join("\n");
-}
-
-/**
- * Stage 4: stream the choice out of Gemini and print the cost. Returns `null`
+ * Stage 5: stream the choice out of Gemini and print the cost. Returns `null`
  * under `--offline`, which makes no call at all.
+ *
+ * **The prompt and the schema are not here.** They live in
+ * `lib/matching/agent.ts`, which is A4 — this script used to carry its own
+ * copy of both, and two prompts that are meant to be one prompt drift the
+ * moment somebody edits the wrong file. What the demo owns is the printing.
  */
 async function runAgent(
   viable: ViablePair[],
   ranked: CandidateScore[],
+  candidates: Candidate[],
   records: LlmCallRecord[]
-): Promise<AgentOption[] | null> {
-  heading("5", "A1 - the Gemini client");
+): Promise<MatchRunDraft | null> {
+  heading("5", "A4 - the matching agent");
 
   const config = resolveConfig("matching");
   console.log(
@@ -798,20 +674,23 @@ async function runAgent(
   console.log(`\n  ${dim("streaming...")}\n`);
 
   let printed = 0;
-  let result;
+  let outcome;
   try {
-    result = await generate({
-      task: "matching",
-      system: SYSTEM_PROMPT,
-      input: buildUserMessage(viable, ranked),
-      jsonSchema: RESULT_SCHEMA,
+    outcome = await runMatchingAgent({
+      meetingId: "demo-meeting",
+      cycleNumber: 1,
+      occasion: "a catch-up dinner",
+      participants: PARTICIPANTS,
+      candidates,
+      viable,
+      ranked,
+      venueFacts: VENUE_FACTS,
       onText: (_chunk, soFar) => {
         // The raw JSON as it arrives. Unlovely, and that is the point: this is
         // what streaming looks like before anything has parsed it.
         process.stdout.write(dim(soFar.slice(printed)));
         printed = soFar.length;
       },
-      onUsage: (record) => records.push(record),
     });
   } catch (error) {
     if (error instanceof LlmConfigError) {
@@ -819,60 +698,66 @@ async function runAgent(
       console.log(dim("  Run with --offline to see the rest of the pipeline."));
       return null;
     }
+    // A4's three failure modes are three different errors on purpose, and the
+    // demo is the place that shows the difference rather than describing it.
+    if (error instanceof AgentAnswerError) {
+      console.log(
+        `\n  ${red("the answer was refused")}  ${dim(error.message)}`
+      );
+      return null;
+    }
+    if (error instanceof HardConstraintError) {
+      console.log(`\n  ${red("the answer broke a hard constraint")}`);
+      for (const v of error.violations) {
+        console.log(`      ${magenta(pad(v.kind, 18))}${dim(v.detail)}`);
+      }
+      return null;
+    }
     throw error;
   }
 
-  // The client logs its own `[llm] …` line as the call completes — the one
-  // just above this. Reprinting it here would only make it look like two calls.
+  records.push(outcome.call);
   console.log("");
 
-  const parsed = JSON.parse(result.text) as { options: AgentOption[] };
-  const options = [...parsed.options].sort((a, b) => a.rank - b.rank);
-
   console.log(`\n  ${bold("What came back")}`);
-  for (const option of options) {
-    const pair = viable.find(
-      (p) =>
-        p.candidatePlaceId === option.venue_id &&
-        idOfSlot(p.slot) === option.slot_id
-    );
-    const badge = !pair
-      ? red("not in the allowed set")
-      : pair.unverified.length > 0
-        ? yellow("unverified")
-        : green("verified");
-
+  for (const option of outcome.draft.options) {
+    const badge =
+      option.unverified.length > 0 ? yellow("unverified") : green("verified");
     console.log(
-      `    ${bold(`#${option.rank}`)} ${bold(pad(nameOf(option.venue_id), 14))}${dim(pad(option.slot_id, 16))}${badge}`
+      `    ${bold(`#${option.rank}`)} ${bold(pad(option.venue.name, 14))}` +
+        `${dim(pad(whenOf({ start: option.proposedDatetime, end: option.proposedEnd }), 20))}${badge}`
     );
     if (option.rank === 1) {
-      for (const j of option.justifications) {
-        console.log(`        ${dim(`${j.participant_id}:`)} ${j.reason}`);
+      for (const [userId, reason] of Object.entries(
+        option.participantJustifications
+      )) {
+        const who =
+          PARTICIPANTS.find((p) => p.userId === userId)?.name ?? userId;
+        console.log(`        ${dim(`${who}:`)} ${reason}`);
       }
+      const traded = (option.tradeoffs as { tradedAway?: string }).tradedAway;
       console.log(
-        `        ${dim(`traded away (internal, never shown): ${option.traded_away}`)}`
+        `        ${dim(`traded away (internal, never shown): ${traded || "nothing"}`)}`
       );
     }
   }
 
-  return options;
+  return outcome.draft;
 }
 
-/** The disclaimer is rendered from the flag, never from anything the model said. */
-function printDisclaimer(chosen: AgentOption, viable: ViablePair[]): void {
-  const pair = viable.find(
-    (p) =>
-      p.candidatePlaceId === chosen.venue_id &&
-      idOfSlot(p.slot) === chosen.slot_id
-  );
-  const slot = slotById.get(chosen.slot_id);
-
+/**
+ * The disclaimer, rendered from A2's flag rather than from anything the model
+ * said. A4 writes the sentence when it builds the option; nothing here decides
+ * whether there is one.
+ */
+function printDisclaimer(chosen: MatchOptionDraft): void {
   console.log(`\n  ${bold("What the group would see")}`);
   console.log(
-    `    ${bold(nameOf(chosen.venue_id))}, ${slot ? whenOf(slot) : chosen.slot_id}`
+    `    ${bold(chosen.venue.name)}, ${whenOf({ start: chosen.proposedDatetime, end: chosen.proposedEnd })}`
   );
 
-  if (!pair || pair.unverified.length === 0) {
+  const note = unverifiedNote(chosen.unverified);
+  if (!note) {
     console.log(
       `    ${green("Everything about this one is confirmed - no note needed.")}`
     );
@@ -884,28 +769,33 @@ function printDisclaimer(chosen: AgentOption, viable: ViablePair[]): void {
     return;
   }
 
-  console.log(
-    `    ${yellow("*")} We could not confirm ${describeUnverified(pair.unverified)} for this venue.`
-  );
-  console.log(`      ${yellow("Give them a ring before you set off.")}`);
-  if (chosen.unverified_note) {
-    console.log(dim(`      the agent added: ${chosen.unverified_note}`));
-  }
+  // The real Hebrew sentence, from the formatting layer — this is the line
+  // the group actually reads on their phone.
+  console.log(`    ${yellow("*")} ${note}`);
 }
 
 /* ------------------------------------------------------ 5 & 6 · the post-check */
 
 function printPostCheck(
-  chosen: AgentOption | null,
+  chosen: MatchOptionDraft | null,
   input: ConstraintInput,
   viable: ViablePair[]
 ): void {
   heading("6", "A2 - the post-check on the answer");
 
+  // A4 has already run this check — a draft that exists is a draft that
+  // passed. Running it again in the open is the point of a demonstration.
+  //
   // With no call made, stand in the pair the filter itself blessed, so the
   // passing path is still shown.
-  const venueId = chosen?.venue_id ?? viable[0].candidatePlaceId;
-  const slot = (chosen && slotById.get(chosen.slot_id)) ?? viable[0].slot;
+  const venueId = chosen?.venue.placeId ?? viable[0].candidatePlaceId;
+  const slot =
+    viable.find(
+      (pair) =>
+        pair.candidatePlaceId === venueId &&
+        (!chosen ||
+          pair.slot.start.getTime() === chosen.proposedDatetime.getTime())
+    )?.slot ?? viable[0].slot;
 
   try {
     assertChosenPairAllowed({ candidatePlaceId: venueId, slot }, input);
@@ -981,7 +871,7 @@ async function main(): Promise<void> {
     .join(" · ");
   console.log(
     dim(
-      `A2 filters, A3 ranks, A1 chooses, A2 checks the choice.   ${flags ? `${flags} · ` : ""}${APP_TIME_ZONE}`
+      `A2 filters, A3 ranks, A4 chooses, A2 checks the choice.   ${flags ? `${flags} · ` : ""}${APP_TIME_ZONE}`
     )
   );
 
@@ -1016,10 +906,11 @@ async function main(): Promise<void> {
   printFairness(ranked);
 
   const records: LlmCallRecord[] = [];
-  const options = await runAgent(viable, ranked, records);
+  const draft = await runAgent(viable, ranked, candidates, records);
+  const top = draft?.options.find((option) => option.rank === 1) ?? null;
 
-  if (options?.[0]) printDisclaimer(options[0], viable);
-  printPostCheck(options?.[0] ?? null, input, viable);
+  if (top) printDisclaimer(top);
+  printPostCheck(top, input, viable);
 
   if (records.length > 0) {
     const total = totalCost(records.map((r) => r.cost));

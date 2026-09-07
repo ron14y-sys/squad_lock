@@ -124,8 +124,25 @@ Fixing the scenarios in [#86](https://github.com/ron14y-sys/squad_lock/issues/86
 | 5   | `SoftPreferences` had no "no opinion" value                        | Every field is optional, and an absent one changes nothing                                                                                                                   |
 | 6   | Whether three hours also gates the group's own window              | Yes — one number, both places                                                                                                                                                |
 
+## Reading a scenario as the engine reads it
+
+[`evals/adapter.ts`](adapter.ts) turns a file in this folder into the engine's own types, and then runs A2's filter and A3's scorer over it for real. It was written for A4 and **A5 owns it** — the eval runner needs exactly this translation.
+
+```ts
+import { loadScenario, scenarioAgentInput } from "@/evals/adapter";
+
+const input = scenarioAgentInput(loadScenario("hard-constraint-trap"));
+```
+
+It performs only the _spellings_ in the table above; anything a scenario says that the engine cannot express is still a bug in the file. Two things it deliberately does not do:
+
+- **It does not trim a slot to a venue's opening hours.** That is [B6](../tasks/todo.md), which does not exist yet, so the slot is the group's whole free window and A2 drops any pair the venue cannot cover entirely. Right for `02`, wrong for `03`, `05` and `07`, where the meeting should shorten instead of vanishing. `needsTrim(scenario)` derives that from the fixture — a scenario states an `expected.time` narrower than the window the group was free for — so A5 can report those separately until B6 lands.
+- **It does not judge an answer.** A4 checks that an answer is legal; checking it is _right_ against `expected` is A5's.
+
 ## What happens to these later
 
 Once the matching engine exists (Track A), task **A5 — Eval runner** reads every file in this folder, runs the real engine against each one, and reports pass rate, cost, duration, and hard-constraint violations (must be zero). Nothing in this folder changes when that happens — these are answers, not implementation, which is what makes them useful as a check on the engine rather than a description of it.
+
+**A4 is done and the first live run has happened:** scenario `01` reaches Container, its agreed answer, against `gemini-3.6-flash` — see [docs/decisions/matching-agent.md](../docs/decisions/matching-agent.md).
 
 An answer changes only the way #86's did: because it contradicted the rules in "How a scenario gets its correct answer", agreed by all three of us, and never because the engine disagreed with it.
