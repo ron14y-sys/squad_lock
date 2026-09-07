@@ -122,9 +122,11 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - `Invitation` is a separate model from `GroupMember`, keyed on email rather than userId — per the spec's own success criteria the invitee has no `User` row yet when the invite is sent, and only gets one at accept time (B2's sign-in).
   - The real email send is B8's job (Resend); accepting works off the invitation's token today whether or not that email exists yet.
   - ⚠️ API only — no screen calls any of these four routes yet (no "create group" or "invite" UI exists). Verifiable directly today only by calling the endpoints, not by clicking through the app.
-- [ ] **B5 — Meetings and responses**
-  - Acceptance: initiate with any subset of date/time/venue — **the all-blank case is the default path**. Three response kinds. **Both caps enforced server-side:** 3 open meetings per group, and **1 free amendment per participant per meeting** (spec §3.1).
-  - Verify: an all-blank meeting persists; a fourth open meeting is rejected by the API called directly; a second amendment by the same person costs a cycle
+- [x] **B5 — Meetings and responses** — initiate with any subset of date/time/venue/occasion (the all-blank case is the default path), and respond: approve, "I can't make it", "something doesn't work for me" (+ free text), or the amendment ("my situation tonight is different"). Two routes: `POST /api/groups/[id]/meetings`, `POST /api/meetings/[id]/respond`. Merged in #95, #96 (`lib/db/meetings.ts`, `lib/meetings/schema.ts`, `lib/types/participant-meeting-context-from-row.ts`).
+  - Both caps enforced server-side in `lib/db/meetings.ts`: 3 open meetings per group (`initiateMeeting`), and 1 free amendment per participant per meeting — the second and later amendments spend a cycle, same as `doesnt_suit` (`respondToMeeting`). Reaching the 3-cycle cap flips the meeting to `stuck` (spec §3.1).
+  - `currentDatetime` is deliberately left unset by `initiateMeeting` even when a full pinned date+time is given — see that function's own comment. Whichever task first reads it (the feed, most likely) is where the `APP_TIME_ZONE` conversion belongs.
+  - Re-weighing after a spent cycle (the batching window, the agent call) is B11's job, not this one's.
+  - ⚠️ API only — no screen calls either route yet.
 - [ ] **B5b — Cross-group conflict query**
   - Acceptance: for a user, every pair of their open meetings **on the same day less than 4 hours apart**, across all groups (spec §5.7). Honours `ConflictDismissal`. Pure query plus a pure overlap function, no LLM.
   - Verify: unit test with a user in three groups and two colliding meetings in different groups — both returned; a same-day pair 6 hours apart is not; a dismissed pair is not. Runs on the F4 index
