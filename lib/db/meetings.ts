@@ -1,16 +1,18 @@
-// Meeting domain logic (B5, spec §3, §3.1, §3.2, §5.3, issue #25) — this is
-// where meeting-related database work lives, parallel to lib/db/client.ts
-// and the not-yet-built lib/db/conflict-dismissal.ts (see that model's own
-// comment in prisma/schema.prisma). API routes call into here; they do not
-// touch prisma.meeting, prisma.response or prisma.participantMeetingContext
-// directly.
+// Meeting domain logic (B5, B5c, spec §3, §3.1, §3.2, §5.3, §5.7, issue #25)
+// — this is where meeting-related database work lives, parallel to
+// lib/db/client.ts and lib/db/conflict-dismissal.ts. API routes call into
+// here; they do not touch prisma.meeting, prisma.response or
+// prisma.participantMeetingContext directly.
 
 import { MeetingStatus, ResponseStatus } from "@/lib/generated/prisma/client";
 import { meetingFromRow } from "@/lib/types/meeting-from-row";
 import { participantMeetingContextFromRow } from "@/lib/types/participant-meeting-context-from-row";
 
+import { canonicalMeetingPair, meetingsConflict } from "./conflict-dismissal";
 import { getPrisma } from "./client";
 
+import type { Prisma } from "@/lib/generated/prisma/client";
+import type { MeetingModel } from "@/lib/generated/prisma/models";
 import type {
   InitiateMeetingInput,
   RespondToMeetingInput,
@@ -132,20 +134,100 @@ export async function initiateMeeting(
   return meetingFromRow(row);
 }
 
+/**
+ * Cancels every one of `userId`'s other open meetings that conflicts with
+ * the one they just approved (spec §5.7) — same transaction as the
+ * approval itself, so a mid-write failure leaves neither half-updated.
+ *
+ * A cancelled meeting is not deleted: it returns to `weighing`, and this
+ * user's Response on it is set to `cant_make_it` — they are the one whose
+ * approval elsewhere took the evening, so they are the one who drops out,
+ * exactly as if they had pressed "I can't make it" themselves. The agent
+ * proposing a new time to the others is downstream of that status change,
+ * not this function's job.
+ *
+ * `ConflictDismissal`ed pairs are left alone — the user already said these
+ * two don't clash.
+ */
+async function cancelConflictingMeetings(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  approvedMeeting: MeetingModel
+): Promise<MeetingModel[]> {
+  if (approvedMeeting.currentDatetime === null) return [];
+  const approvedDatetime = approvedMeeting.currentDatetime;
+
+  const otherResponses = await tx.response.findMany({
+    where: {
+      userId,
+      meetingId: { not: approvedMeeting.id },
+      meeting: {
+        status: { in: OPEN_MEETING_STATUSES },
+        currentDatetime: { not: null },
+      },
+    },
+    include: { meeting: true },
+  });
+
+  const dismissals = await tx.conflictDismissal.findMany({
+    where: { userId },
+    select: { meetingAId: true, meetingBId: true },
+  });
+  const dismissedPairs = new Set(
+    dismissals.map(
+      ({ meetingAId, meetingBId }) => `${meetingAId}:${meetingBId}`
+    )
+  );
+
+  const cancelled: MeetingModel[] = [];
+
+  for (const otherResponse of otherResponses) {
+    const otherMeeting = otherResponse.meeting;
+    // Guaranteed by the query's own `currentDatetime: { not: null }` filter.
+    const otherDatetime = otherMeeting.currentDatetime;
+    if (otherDatetime === null) continue;
+    if (!meetingsConflict(approvedDatetime, otherDatetime)) continue;
+
+    const [a, b] = canonicalMeetingPair(approvedMeeting.id, otherMeeting.id);
+    if (dismissedPairs.has(`${a}:${b}`)) continue;
+
+    await tx.response.update({
+      where: { id: otherResponse.id },
+      data: { status: ResponseStatus.cant_make_it, respondedAt: new Date() },
+    });
+    const cancelledMeeting = await tx.meeting.update({
+      where: { id: otherMeeting.id },
+      data: { status: MeetingStatus.weighing },
+    });
+    cancelled.push(cancelledMeeting);
+  }
+
+  return cancelled;
+}
+
 export type RespondToMeetingResult = {
   meeting: Meeting;
   /** Set for approve / cant_make_it / doesnt_suit, null for an amendment. */
   response: Response | null;
   /** Set for an amendment, null for the other three. */
   participantContext: ParticipantMeetingContext | null;
+  /**
+   * Other open meetings of this user's, in other groups, that were
+   * cancelled back to `weighing` because this approval conflicted with
+   * them (spec §5.7). Always empty unless `kind` was `approve`.
+   */
+  cancelledConflicts: Meeting[];
 };
 
 /**
  * Records one of the four things a participant can do to an open meeting
  * (spec §3.2):
  *
- * - `approve` / `cant_make_it` — updates this user's Response row. Neither
- *   spends a cycle.
+ * - `approve` — updates this user's Response row, and cancels any of their
+ *   other open meetings that conflict with this one (spec §5.7,
+ *   `cancelConflictingMeetings`). Does not spend a cycle.
+ * - `cant_make_it` — updates this user's Response row. Does not spend a
+ *   cycle.
  * - `doesnt_suit` — updates the Response row with the free-text reason and
  *   always spends a cycle: it rejects the *output*.
  * - `amendment` — appends a ParticipantMeetingContext row rather than
@@ -180,6 +262,7 @@ export async function respondToMeeting(
     let response: Response | null = null;
     let participantContext: ParticipantMeetingContext | null = null;
     let cycleSpent = false;
+    let cancelledConflicts: MeetingModel[] = [];
 
     switch (input.kind) {
       case "approve":
@@ -191,6 +274,11 @@ export async function respondToMeeting(
             respondedAt: new Date(),
           },
         });
+        cancelledConflicts = await cancelConflictingMeetings(
+          tx,
+          userId,
+          existingResponse.meeting
+        );
         break;
 
       case "cant_make_it":
@@ -252,12 +340,13 @@ export async function respondToMeeting(
       });
     }
 
-    return { meetingRow, response, participantContext };
+    return { meetingRow, response, participantContext, cancelledConflicts };
   });
 
   return {
     meeting: meetingFromRow(result.meetingRow),
     response: result.response,
     participantContext: result.participantContext,
+    cancelledConflicts: result.cancelledConflicts.map(meetingFromRow),
   };
 }
