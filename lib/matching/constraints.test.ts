@@ -3,16 +3,20 @@ import { describe, expect, it } from "vitest";
 import type {
   Candidate,
   LocalWindow,
+  MobilityMode,
   Participant,
   PreferenceProfile,
   TimeSlot,
 } from "@/lib/types";
 import {
   assertChosenPairAllowed,
+  availableModes,
   checkChosenPair,
   filterPairs,
   HardConstraintError,
   minutesOfDay,
+  REACH_BY_MODE,
+  reachCapKm,
   slotOverlapsWindow,
   viableSlotsByCandidate,
   windowsCoverSlot,
@@ -344,6 +348,7 @@ describe("the filter, before the agent", () => {
             window: { weekdays: ["friday"], from: "19:00", to: "23:59" },
           },
         ],
+        softPreferences: null,
         note: null,
         createdAt: new Date("2026-09-01T00:00:00.000Z"),
       },
@@ -380,6 +385,7 @@ describe("the filter, before the agent", () => {
             window: { weekdays: ["friday"], from: "18:00", to: "23:59" },
           },
         ],
+        softPreferences: null,
         note: "borrowed the car",
         createdAt: new Date("2026-09-01T00:00:00.000Z"),
       },
@@ -481,5 +487,103 @@ describe("the post-check, after the agent", () => {
         input()
       )
     ).not.toThrow();
+  });
+});
+
+describe("how far a way of travelling puts within reach", () => {
+  const noModes = (...modes: MobilityMode[]) =>
+    modes.map((mode) => ({
+      kind: "mode_unavailable" as const,
+      weekdays: ["friday" as const],
+      mode,
+    }));
+
+  it("does not cap anyone who still has a car", () => {
+    // A car reaches further than any tolerance anybody states, so it adds no
+    // limit the profile has not already set.
+    expect(reachCapKm(participant("u1", "Dana"), FRI_EVENING)).toBeNull();
+  });
+
+  it("does not cap anyone who still has public transport", () => {
+    // Decided on #89: a bus network reaches across a city.
+    const noCar = participant("u1", "Dana", {
+      profile: profile({ recurringMobilityRules: noModes("car") }),
+    });
+
+    expect(reachCapKm(noCar, FRI_EVENING)).toBeNull();
+  });
+
+  it("caps someone left on foot at a kilometre", () => {
+    // No car and no transport: walking is all that is left, and a person
+    // walks about a kilometre (#89).
+    const onFoot = participant("u1", "Dana", {
+      profile: profile({ recurringMobilityRules: noModes("car", "transit") }),
+    });
+
+    expect(reachCapKm(onFoot, FRI_EVENING)).toBe(1);
+  });
+
+  it("caps by the furthest mode left, not the nearest", () => {
+    // Losing the car while keeping the bus is not the same as losing both,
+    // and taking the smallest cap would say it was.
+    const onFoot = participant("u1", "Dana", {
+      profile: profile({ recurringMobilityRules: noModes("car", "transit") }),
+    });
+    const hasBus = participant("u2", "Yoav", {
+      profile: profile({ recurringMobilityRules: noModes("car") }),
+    });
+
+    expect(reachCapKm(onFoot, FRI_EVENING)).toBe(1);
+    expect(reachCapKm(hasBus, FRI_EVENING)).toBeNull();
+  });
+
+  it("caps only for the hours the restriction covers", () => {
+    // The whole point of the per-slot shape: the same person is capped at
+    // 19:00 and not at 21:00.
+    const carLater = participant("u1", "Dana", {
+      profile: profile({
+        recurringMobilityRules: [
+          ...noModes("transit"),
+          {
+            kind: "mode_unavailable",
+            weekdays: ["friday"],
+            mode: "car",
+            window: { weekdays: [], from: "18:00", to: "20:00" },
+          },
+        ],
+      }),
+    });
+
+    // Friday 11 Sep 2026: 19:00–19:30 and 21:00–21:30 local, UTC+3.
+    const early = slot("2026-09-11T16:00:00.000Z", "2026-09-11T16:30:00.000Z");
+    const late = slot("2026-09-11T18:00:00.000Z", "2026-09-11T18:30:00.000Z");
+
+    expect(reachCapKm(carLater, early)).toBe(1);
+    expect(reachCapKm(carLater, late)).toBeNull();
+  });
+
+  it("returns no cap for somebody with no way of travelling at all", () => {
+    // That state is `immobile`, and the filter drops the pair outright.
+    // Returning 0 here would instead make every burden infinite — the same
+    // answer said badly, and said by the wrong module.
+    const stranded = participant("u1", "Dana", {
+      profile: profile({
+        recurringMobilityRules: noModes("car", "transit", "walk"),
+      }),
+    });
+
+    expect(reachCapKm(stranded, FRI_EVENING)).toBeNull();
+    expect(availableModes(stranded, FRI_EVENING).size).toBe(0);
+  });
+
+  it("agrees with the modes the filter itself sees", () => {
+    // `reachCapKm` and the `immobile` check must read one source, or a
+    // participant could be capped by one and cleared by the other.
+    const onFoot = participant("u1", "Dana", {
+      profile: profile({ recurringMobilityRules: noModes("car", "transit") }),
+    });
+
+    expect([...availableModes(onFoot, FRI_EVENING)]).toEqual(["walk"]);
+    expect(REACH_BY_MODE.walk).toBe(1);
   });
 });

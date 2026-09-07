@@ -11,7 +11,7 @@
  * while every value is still a constant.
  */
 
-import type { PreferenceProfile } from "./profile";
+import type { PreferenceProfile, SoftPreferences } from "./profile";
 import type { ParticipantMeetingContext } from "./meeting";
 import type { Kilometres, LatLng, LocalWindow, TimeSlot } from "./primitives";
 
@@ -59,6 +59,31 @@ export type Participant = {
   /** Busy blocks from Google Calendar free/busy. Instants — a machine wrote them. */
   busy: TimeSlot[];
 };
+
+/**
+ * What a venue is like, on the same four axes a person answers (spec §5.1).
+ *
+ * **Passed beside a `Candidate`, never inside one** — the same arrangement as
+ * `VenueDietaryFacts` in `lib/matching/constraints.ts`, and for the same
+ * reason: price and atmosphere are not in the Places fields the funnel is
+ * committed to fetching. `places.priceLevel` is Enterprise-tier alongside
+ * `rating` and `regularOpeningHours` (spec §6.3, §13.6), so whether it is
+ * fetched at all is still open, and a `Candidate` that declares it would be
+ * asserting an answer to that question.
+ *
+ * **The vocabulary is deliberately identical to `SoftPreferences`.** A venue
+ * answers the same questions a person does, so "does this suit them?" is a
+ * field comparison rather than a translation between two invented word lists
+ * — which is what went wrong when an eval fixture described a venue as
+ * `"loud-bar"` and a rejection as `avoid: ["loud", "bar-like"]`, with nothing
+ * defining how the two compared
+ * ([#86](https://github.com/ron14y-sys/squad_lock/issues/86)).
+ *
+ * Every field is optional and an absent one means **not known**, exactly as
+ * in `VenueDietaryFacts`. Nothing deterministic branches on this; A4 weighs
+ * it, and B7 fills it in.
+ */
+export type VenueSoftFacts = Partial<SoftPreferences>;
 
 /**
  * How far one venue is from one person, at one time.

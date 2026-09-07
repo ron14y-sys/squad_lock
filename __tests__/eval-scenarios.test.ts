@@ -2,14 +2,21 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { windowsCoverSlot } from "@/lib/matching/constraints";
+import { REACH_BY_MODE, windowsCoverSlot } from "@/lib/matching/constraints";
 import {
   burdenValue,
   compareLeximin,
   straightLineKm,
 } from "@/lib/matching/distance";
 import { APP_TIME_ZONE } from "@/lib/types";
-import type { LatLng, LocalWindow, TimeSlot } from "@/lib/types";
+import type {
+  LatLng,
+  LocalWindow,
+  MobilityMode,
+  SoftPreferences,
+  TimeSlot,
+  VenueSoftFacts,
+} from "@/lib/types";
 
 /**
  * Guards issue #86: two eval scenarios whose written distances did not match
@@ -39,6 +46,13 @@ type Scenario = {
     coordinates: LatLng;
     hardConstraints: string[];
     toleranceKm: number;
+    /** The real `MobilityWindow` shape — mode, available, LocalWindow. */
+    mobilityWindows?: {
+      mode: MobilityMode;
+      available: boolean;
+      window: LocalWindow;
+    }[];
+    softPreferences?: SoftPreferences;
   }[];
   candidateVenues: {
     /** Not a real Places id — readable, so a failing assertion names a venue. */
@@ -47,6 +61,8 @@ type Scenario = {
     coordinates: LatLng;
     /** The engine's three states. A tag in neither is "not known" (A2). */
     dietary?: { satisfies?: string[]; violates?: string[] };
+    /** `VenueSoftFacts` — the same four axes a person answers. */
+    soft?: VenueSoftFacts;
     /** Weekday name to `"HH:MM-HH:MM"` spans, as Places reports them. */
     openingHours: Record<string, string[]>;
     rating?: number;
@@ -66,6 +82,13 @@ type Scenario = {
      */
     time?: { start: string; end: string };
     reasoning: string;
+  };
+  initialProposal?: { venue: string };
+  rejection?: { by: string; text: string };
+  /** Rejection-loop scenarios only — what A7 should extract. */
+  expectedConstraint?: {
+    participant: string;
+    softPreferences: SoftPreferences;
   };
 };
 
@@ -301,6 +324,91 @@ const trim = (scenario: Scenario, venueName: string): Trim => {
   return best;
 };
 
+/**
+ * The group's window narrowed by **both** of B6's intersections: the venue's
+ * opening hours, and whether every participant can actually reach it at that
+ * hour.
+ *
+ * The second half is the mobility rule from #89 — losing a mode does not
+ * forbid a venue, it shortens the reach, and on foot the reach is about a
+ * kilometre. A participant who cannot reach this venue during part of the
+ * evening removes that part from the slot, rather than the venue from the
+ * pool.
+ *
+ * This is a stand-in for B6, which owns the real one and does not exist yet.
+ * It is kept here rather than in `lib/matching/` for that reason, but it uses
+ * A2's own `REACH_BY_MODE` so the numbers cannot drift apart.
+ */
+const viableWindow = (scenario: Scenario, venueName: string): Trim | null => {
+  const open = trim(scenario, venueName);
+  if (!open) return null;
+
+  const free = scenario.availability[0]!;
+  const day = free.day.toLowerCase();
+  const venue = scenario.candidateVenues.find((v) => v.name === venueName)!;
+  const bounds = span(open.start, open.end);
+
+  const restrictions = scenario.participants.flatMap((p) =>
+    (p.mobilityWindows ?? [])
+      .filter((w) => w.window.weekdays.some((d) => d.toLowerCase() === day))
+      .map((w) => ({
+        participant: p,
+        ...w,
+        at: span(w.window.from, w.window.to),
+      }))
+  );
+
+  // Every minute where something changes. One sub-interval between each pair.
+  const edges = [
+    bounds.start,
+    bounds.end,
+    ...restrictions.flatMap((r) => [r.at.start, r.at.end]),
+  ]
+    .filter((m) => m >= bounds.start && m <= bounds.end)
+    .sort((a, b) => a - b);
+
+  const reachable: { start: number; end: number }[] = [];
+  for (let i = 0; i < edges.length - 1; i += 1) {
+    const from = edges[i]!;
+    const to = edges[i + 1]!;
+    if (to <= from) continue;
+    const mid = (from + to) / 2;
+
+    const everyoneCanGet = scenario.participants.every((p) => {
+      const modes = new Set<MobilityMode>(["car", "transit", "walk"]);
+      for (const r of restrictions) {
+        if (r.participant !== p) continue;
+        if (mid < r.at.start || mid >= r.at.end) continue;
+        if (r.available) modes.add(r.mode);
+        else modes.delete(r.mode);
+      }
+      // No mode at all is `immobile` — A2 drops the pair, not the hour.
+      if (modes.size === 0) return false;
+
+      let cap: number | null = null;
+      for (const mode of modes) {
+        const reach = REACH_BY_MODE[mode];
+        if (reach === null) return true;
+        if (cap === null || reach > cap) cap = reach;
+      }
+      return straightLineKm(p.coordinates, venue.coordinates) <= cap!;
+    });
+
+    if (!everyoneCanGet) continue;
+    const last = reachable[reachable.length - 1];
+    if (last && last.end === from) last.end = to;
+    else reachable.push({ start: from, end: to });
+  }
+
+  const best = reachable.sort((a, b) => b.end - b.start - (a.end - a.start))[0];
+  if (!best) return null;
+  return {
+    start: clock(best.start),
+    end: clock(best.end),
+    minutes: best.end - best.start,
+  };
+};
+
 describe("a venue need not be open for the whole evening", () => {
   it.each(scenarios.map((s) => [s.id, s] as const))(
     "%s leaves the expected venue some of the group's window",
@@ -312,23 +420,32 @@ describe("a venue need not be open for the whole evening", () => {
   );
 
   it.each(scenarios.map((s) => [s.id, s] as const))(
-    "%s states the trimmed slot wherever trimming happens",
+    "%s states the narrowed slot wherever anything narrows it",
     (_id, scenario) => {
-      const trimmed = trim(scenario, scenario.expected.venue)!;
+      // Narrowed by the venue's hours *and* by whether every participant can
+      // actually reach it at that hour — both of B6's intersections, not
+      // just the first. 03 passed this by being skipped until the mobility
+      // half was added.
+      const viable = viableWindow(scenario, scenario.expected.venue)!;
       const free = scenario.availability[0]!;
-      const whole = trimmed.start === free.start && trimmed.end === free.end;
+      const whole = viable.start === free.start && viable.end === free.end;
       const stated = scenario.expected.time;
 
-      if (whole) return; // Nothing was trimmed; `expected.time` is optional.
+      if (whole) {
+        // Nothing narrowed it, so `expected.time` is optional — but if the
+        // scenario states one anyway it still has to be true.
+        if (stated)
+          expect(stated).toEqual({ start: free.start, end: free.end });
+        return;
+      }
 
-      // Trimming makes the answer a (venue, time) pair rather than a venue,
+      // Narrowing makes the answer a (venue, time) pair rather than a venue,
       // so the scenario has to say which time.
       expect(
         stated,
-        `${scenario.id} trims but states no expected.time`
+        `${scenario.id} narrows to ${viable.start}-${viable.end} but states no expected.time`
       ).toBeDefined();
-      if (typeof stated === "string") return; // 03's old form — stage 2.
-      expect(stated).toEqual({ start: trimmed.start, end: trimmed.end });
+      expect(stated).toEqual({ start: viable.start, end: viable.end });
     }
   );
 
@@ -524,5 +641,126 @@ describe("the fixtures speak the engine's vocabulary", () => {
       scenario.candidateVenues.find((v) => v.name === scenario.expected.venue)!
         .rating ?? 0
     );
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The six answers from #86
+ * ---------------------------------------------------------------------- */
+
+describe("the six answers from #86", () => {
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s gives the group itself at least the minimum meeting length",
+    (_id, scenario) => {
+      // One number, both places: the group's own free window and the slot
+      // left after a venue's hours and everyone's reach have narrowed it.
+      // A window too short before any venue is considered is `stuck`, not a
+      // bad proposal (B6).
+      const free = scenario.availability[0]!;
+      const window = span(free.start, free.end);
+
+      expect(window.end - window.start).toBeGreaterThanOrEqual(
+        MINIMUM_MEETING_MINUTES
+      );
+    }
+  );
+
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s describes a venue on the same four axes a person answers",
+    (_id, scenario) => {
+      // The vocabularies are identical on purpose: matching a venue to a
+      // preference is a field comparison, not a translation between two
+      // invented word lists. That mismatch — `"loud-bar"` against
+      // `avoid: ["loud", "bar-like"]` — is what #86 found.
+      const allowed: Record<keyof SoftPreferences, string[]> = {
+        noiseLevel: ["lively", "quiet"],
+        activityStyle: ["outdoorsy", "cultural"],
+        budget: ["modest", "splurge"],
+        cuisine: ["familiar", "adventurous"],
+      };
+
+      for (const venue of scenario.candidateVenues) {
+        for (const [axis, value] of Object.entries(venue.soft ?? {})) {
+          expect(allowed[axis as keyof SoftPreferences]).toContain(value);
+        }
+      }
+      for (const p of scenario.participants) {
+        for (const [axis, value] of Object.entries(p.softPreferences ?? {})) {
+          expect(allowed[axis as keyof SoftPreferences]).toContain(value);
+        }
+      }
+    }
+  );
+
+  it.each(
+    scenarios.filter((s) => s.expectedConstraint).map((s) => [s.id, s] as const)
+  )("%s extracts a constraint that names its owner", (_id, scenario) => {
+    // A constraint with no owner cannot be weighed against anyone's
+    // tolerance. It belongs on a `ParticipantMeetingContext` row, which
+    // carries the `userId` and the meeting both.
+    const { participant, softPreferences } = scenario.expectedConstraint!;
+
+    expect(scenario.participants.map((p) => p.name)).toContain(participant);
+    expect(Object.keys(softPreferences).length).toBeGreaterThan(0);
+    expect(scenario.rejection?.by).toBe(participant);
+  });
+
+  it.each(
+    scenarios.filter((s) => s.expectedConstraint).map((s) => [s.id, s] as const)
+  )(
+    "%s answers the rejection with a venue that matches it",
+    (_id, scenario) => {
+      // The follow-up has to be visibly responsive, and now that both sides
+      // use one vocabulary, "responsive" is checkable rather than a judgement.
+      const wanted = scenario.expectedConstraint!.softPreferences;
+      const answer = scenario.candidateVenues.find(
+        (v) => v.name === scenario.expected.venue
+      )!;
+      const rejected = scenario.candidateVenues.find(
+        (v) => v.name === scenario.initialProposal?.venue
+      )!;
+
+      for (const [axis, value] of Object.entries(wanted)) {
+        expect(answer.soft?.[axis as keyof VenueSoftFacts]).toBe(value);
+        expect(rejected.soft?.[axis as keyof VenueSoftFacts]).not.toBe(value);
+      }
+    }
+  );
+
+  it("caps 03's walking-only participant at what she can walk to", () => {
+    const scenario = byId("mobility-window-trap");
+    const shira = scenario.participants.find((p) => p.name === "Shira")!;
+    const far = scenario.candidateVenues.find((v) => v.name === "Bicicletta")!;
+    const near = scenario.candidateVenues.find((v) => v.name === "Herzl 16")!;
+
+    // Before 20:00 she has neither a car nor transport, so walking is all
+    // that is left and it reaches about a kilometre (#89).
+    expect(REACH_BY_MODE.walk).toBe(1);
+    expect(straightLineKm(shira.coordinates, far.coordinates)).toBeGreaterThan(
+      REACH_BY_MODE.walk!
+    );
+    expect(
+      straightLineKm(shira.coordinates, near.coordinates)
+    ).toBeLessThanOrEqual(REACH_BY_MODE.walk!);
+  });
+
+  it("makes 03's answer a (venue, time) pair, which is what §9 asks for", () => {
+    const scenario = byId("mobility-window-trap");
+
+    // The fairest venue wins on leximin and is unreachable for part of the
+    // evening, so neither half of the answer is redundant. The two failures
+    // this catches: proposing Bicicletta at 18:00, which Shira cannot get
+    // to, and settling for Herzl 16, which drops the venue instead of the
+    // hours.
+    expect(leximinWinner(scenario)).toBe("Bicicletta");
+    expect(viableWindow(scenario, "Bicicletta")).toMatchObject({
+      start: "20:00",
+      end: "23:00",
+    });
+    expect(viableWindow(scenario, "Herzl 16")).toMatchObject({
+      start: "18:00",
+      end: "23:00",
+    });
+    expect(scenario.expected.time).toEqual({ start: "20:00", end: "23:00" });
   });
 });

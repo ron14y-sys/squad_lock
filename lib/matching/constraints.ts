@@ -46,6 +46,7 @@
 
 import type {
   Candidate,
+  Kilometres,
   LocalWeekday,
   LocalWindow,
   MobilityMode,
@@ -312,7 +313,7 @@ const MOBILITY_MODES: MobilityMode[] = ["car", "transit", "walk"];
  * rules in the profile, which outrank the default of "everything works". So
  * the profile's rules are applied first and the amendment's windows last.
  */
-function availableModes(
+export function availableModes(
   participant: Participant,
   slot: TimeSlot
 ): Set<MobilityMode> {
@@ -333,6 +334,62 @@ function availableModes(
   }
 
   return modes;
+}
+
+/**
+ * How far each way of travelling puts within reach, in kilometres.
+ * `null` is no cap at all — the person's own tolerance is the only limit.
+ *
+ * On foot is **about a kilometre**. Transit and a car are uncapped: a bus
+ * network reaches across a city, and a car reaches further than anyone's
+ * stated tolerance, so neither adds a limit the profile has not already set.
+ *
+ * Numbers to tune, not a design — the same footing as the four-hour conflict
+ * rule (spec §5.7) and the three-hour minimum meeting length. Agreed on
+ * [#89](https://github.com/ron14y-sys/squad_lock/issues/89).
+ */
+export const REACH_BY_MODE: Readonly<Record<MobilityMode, Kilometres | null>> =
+  Object.freeze({ car: null, transit: null, walk: 1 });
+
+/**
+ * The furthest this person could get at this hour, whatever their profile
+ * says. `null` when nothing caps them.
+ *
+ * **Why this is not a property of the venue.** The eval set used to mark a
+ * venue `reachableWithoutCar: false`, which is not a real thing — no
+ * restaurant is car-only, some *people* are car-less. Reachability belongs to
+ * the journey, so it belongs to the traveller and the hour, and what it
+ * changes is how far they can go, not which places exist (#89).
+ *
+ * This is the continuous half of spec §5.4's mobility rule. The binary half
+ * is already here: no mode at all is an `immobile` violation and the pair is
+ * dropped. Losing *some* modes is not a wall, it is a smaller denominator.
+ *
+ * **B6 or B7c compose this into a `SlotTolerance`** —
+ * `min(profile.toleranceKm, cap ?? Infinity)` — and it must be one of them
+ * rather than A12: the Context Resolver ships dark and falls back to the
+ * baseline on any failure (spec §4.3), so a Resolver-only implementation
+ * would hand a car-sized tolerance back to someone who cannot drive every
+ * time it was off. The Resolver may still widen on top; it may not be the
+ * only source.
+ */
+export function reachCapKm(
+  participant: Participant,
+  slot: TimeSlot
+): Kilometres | null {
+  let cap: Kilometres | null = null;
+
+  for (const mode of availableModes(participant, slot)) {
+    const reach = REACH_BY_MODE[mode];
+    // One uncapped mode is enough — you take the bus, not the walk.
+    if (reach === null) return null;
+    if (cap === null || reach > cap) cap = reach;
+  }
+
+  // No modes at all is `immobile`, which drops the pair outright. Returning
+  // 0 here would instead make every burden infinite, which is the same
+  // answer said badly.
+  return cap;
 }
 
 /**

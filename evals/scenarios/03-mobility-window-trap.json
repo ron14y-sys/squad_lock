@@ -1,35 +1,46 @@
 {
   "id": "mobility-window-trap",
   "trap": "mobility-window",
-  "description": "UNRESOLVED. This was the mobility-window trap: one participant had no car before 20:00, so the answer was a (venue, time) pair rather than a venue. The car element has been removed because the engine cannot express it — see `unresolved` below. What is left is mechanically correct but traps nothing.",
+  "description": "One participant has no car and no public transport for the first part of the evening, so until 20:00 she can only reach what she can walk to — about a kilometre. The fairest venue is further than that, so the answer is a (venue, time) pair: the right place at the hour she can actually get to it, not the nearer place she can always reach.",
   "participants": [
     {
       "name": "Shira",
       "neighborhood": "Ramat Aviv",
-      "coordinates": {
-        "lat": 32.1133,
-        "lng": 34.7975
-      },
+      "coordinates": { "lat": 32.1133, "lng": 34.7975 },
       "hardConstraints": [],
-      "toleranceKm": 3
+      "toleranceKm": 8,
+      "mobilityWindows": [
+        {
+          "mode": "car",
+          "available": false,
+          "window": {
+            "weekdays": ["wednesday"],
+            "from": "18:00",
+            "to": "20:00"
+          }
+        },
+        {
+          "mode": "transit",
+          "available": false,
+          "window": {
+            "weekdays": ["wednesday"],
+            "from": "18:00",
+            "to": "20:00"
+          }
+        }
+      ]
     },
     {
       "name": "Ben",
-      "neighborhood": "Ramat Aviv",
-      "coordinates": {
-        "lat": 32.1133,
-        "lng": 34.7975
-      },
+      "neighborhood": "Florentin",
+      "coordinates": { "lat": 32.0567, "lng": 34.7692 },
       "hardConstraints": [],
       "toleranceKm": 8
     },
     {
       "name": "Liat",
-      "neighborhood": "Ramat Aviv",
-      "coordinates": {
-        "lat": 32.1133,
-        "lng": 34.7975
-      },
+      "neighborhood": "Ramat Gan",
+      "coordinates": { "lat": 32.084, "lng": 34.8142 },
       "hardConstraints": [],
       "toleranceKm": 8
     }
@@ -39,7 +50,7 @@
       "day": "Wednesday",
       "date": "2026-09-09",
       "start": "18:00",
-      "end": "22:00"
+      "end": "23:00"
     }
   ],
   "candidateVenues": [
@@ -47,32 +58,24 @@
       "placeId": "place-03-herzl-16",
       "name": "Herzl 16",
       "neighborhood": "Ramat Aviv",
-      "coordinates": {
-        "lat": 32.1128,
-        "lng": 34.7969
-      },
-      "openingHours": {
-        "Wednesday": ["12:00-23:00"]
-      },
-      "rating": 3.9
+      "coordinates": { "lat": 32.1128, "lng": 34.7969 },
+      "openingHours": { "Wednesday": ["12:00-23:00"] },
+      "rating": 3.9,
+      "note": "80 m from Shira's door, so she can walk to it at any hour — but 6.76 km from Ben, whose burden of 0.845 is the worst any candidate imposes on anyone here."
     },
     {
-      "placeId": "place-03-container-park",
-      "name": "Container Park",
-      "neighborhood": "Jaffa Port",
-      "coordinates": {
-        "lat": 32.0517,
-        "lng": 34.7503
-      },
-      "openingHours": {
-        "Wednesday": ["12:00-01:00"]
-      },
-      "rating": 4.6
+      "placeId": "place-03-bicicletta",
+      "name": "Bicicletta",
+      "neighborhood": "Rothschild",
+      "coordinates": { "lat": 32.0648, "lng": 34.7749 },
+      "openingHours": { "Wednesday": ["17:00-01:00"] },
+      "rating": 4.6,
+      "note": "The fairest of the two and the better-rated — but 5.80 km from Shira, far beyond the kilometre she can walk before 20:00."
     }
   ],
   "expected": {
-    "venue": "Herzl 16",
-    "reasoning": "With the car element removed, nothing here is a trap. Neither venue breaks a hard constraint, both are open for the whole of the group's Wednesday 18:00-22:00 window, and leximin decides it outright: Herzl 16 is 80 metres from all three participants (worst burden 0.026) against Container Park's 8.17 km (worst burden 2.72, well over Shira's 3 km tolerance). Container Park is better-rated, and leximin has no exchange rate between kilometres and stars. Mechanically forced, not agreed."
-  },
-  "unresolved": "Two things had to go. `reachableWithoutCar` was a venue field with nowhere to live: `Candidate` has no such concept, and A2's `immobile` violation is not it — `availableModes` fires only when a person has NO mode at all, so a participant without a car still has transit and walk and the pair was never dropped. And the `mobilityWindows` here used a vocabulary that does not exist: `{start, end, mode: \"no-car\"}` against a real `{ mode: \"car\" | \"transit\" | \"walk\", available: boolean, window: LocalWindow }`. Separately, the old expected answer was the one leximin rejects hardest: Container Park is 8.17 km from the group (burden 2.72 against Shira's 3 km tolerance) while Herzl 16 is 80 metres away (0.026). B7c's gate on T would very likely have dropped it before any agent saw it. The answer below is now what the rules in README force, and it tests nothing that `lib/matching/distance.test.ts` does not already test better. But spec §9 and F5 REQUIRE one mobility-window trap, so deleting this file is not free either. The decision is tracked in #86: rewrite it around `immobile` — the one mobility concept A2 actually implements — so the answer is a genuine (venue, time) pair again."
+    "venue": "Bicicletta",
+    "time": { "start": "20:00", "end": "23:00" },
+    "reasoning": "Straight-line burdens, all tolerances 8 km: Bicicletta is [0.725 Shira, 0.534 Liat, 0.131 Ben] and Herzl 16 is [0.845 Ben, 0.449 Liat, 0.010 Shira]. Leximin compares the worst-off participant first, so Bicicletta wins on 0.725 against 0.845 — and it is the better-rated venue too, so nothing pulls the other way and the only question left is the hour. Between 18:00 and 20:00 Shira has neither a car nor public transport, which leaves walking, and walking reaches about a kilometre (#89). Bicicletta is 5.80 km away, so every slot before 20:00 is invalid for her there; from 20:00 she has both back and it is comfortably inside her 8 km tolerance. The answer is therefore a (venue, time) pair, 20:00-23:00 — exactly three hours, the minimum a meeting may be. Two wrong answers this is designed to catch: Bicicletta at 18:00, which ignores the mobility window and proposes something Shira cannot reach, and Herzl 16, which over-reacts by dropping the venue rather than the hours and settles for the less fair option. Note the burden is a straight line with a detour correction, never a routed journey or a travel time (spec §5.4)."
+  }
 }

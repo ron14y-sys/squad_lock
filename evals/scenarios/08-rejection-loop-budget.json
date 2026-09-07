@@ -51,7 +51,9 @@
         "lat": 32.112,
         "lng": 34.799
       },
-      "priceLevel": "high",
+      "soft": {
+        "budget": "splurge"
+      },
       "openingHours": {
         "Friday": ["12:00-16:00"]
       },
@@ -65,7 +67,9 @@
         "lat": 32.114,
         "lng": 34.7968
       },
-      "priceLevel": "low",
+      "soft": {
+        "budget": "modest"
+      },
       "openingHours": {
         "Friday": ["11:00-16:30"]
       },
@@ -81,13 +85,13 @@
     "text": "It's too expensive for me this time."
   },
   "expectedConstraint": {
-    "type": "venue_preference",
-    "category": "restaurant",
-    "avoid": ["high-price"],
-    "prefer": ["low-price", "mid-price"]
+    "participant": "Oren",
+    "softPreferences": {
+      "budget": "modest"
+    }
   },
   "expected": {
     "venue": "Tzafta",
-    "reasoning": "The objection names price specifically, not the venue in general. The follow-up must be visibly and materially cheaper, not merely a different pick — Tzafta is the only remaining candidate matching a low/mid price level while still fitting the group's shared availability."
+    "reasoning": "The objection names price specifically, not the venue in general, so A7 writes `budget: \"modest\"` as a correction on Oren's `ParticipantMeetingContext` for this meeting. \"Too expensive this time\" does not make him permanently thrifty, and a per-meeting row also records whose objection it was and which re-weighing it triggered. The follow-up must be visibly and materially cheaper, not merely a different pick — Tzafta is the only remaining candidate whose own `soft.budget` is \"modest\", and it is open for the whole of the group's Friday window."
   }
 }

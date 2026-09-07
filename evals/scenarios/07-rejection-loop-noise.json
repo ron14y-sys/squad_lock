@@ -51,7 +51,9 @@
         "lat": 32.056,
         "lng": 34.77
       },
-      "atmosphere": "loud-bar",
+      "soft": {
+        "noiseLevel": "lively"
+      },
       "openingHours": {
         "Saturday": ["19:00-02:00"]
       },
@@ -65,7 +67,9 @@
         "lat": 32.0572,
         "lng": 34.7685
       },
-      "atmosphere": "quiet-cafe",
+      "soft": {
+        "noiseLevel": "quiet"
+      },
       "openingHours": {
         "Saturday": ["18:00-00:00"]
       },
@@ -81,9 +85,10 @@
     "text": "It's too loud for me, I want somewhere quieter."
   },
   "expectedConstraint": {
-    "type": "venue_preference",
-    "category": "restaurant",
-    "avoid": ["loud", "bar-like"]
+    "participant": "Shani",
+    "softPreferences": {
+      "noiseLevel": "quiet"
+    }
   },
   "expected": {
     "venue": "Quiet Corner",
@@ -91,6 +96,6 @@
       "start": "21:00",
       "end": "00:00"
     },
-    "reasoning": "The rejection is not a blanket 'no' — it names atmosphere specifically. The next proposal must visibly respond to that: Quiet Corner is the only remaining candidate not tagged loud/bar-like, so it is the only materially different, on-topic follow-up, even though it's rated slightly lower than the rejected option. Quiet Corner shuts at midnight while the group is free until 01:00, so the evening ends at midnight — the slot is the intersection, 21:00–00:00. Beer Bazaar staying open until 02:00 buys it nothing here: the objection was about noise, not about closing time."
+    "reasoning": "The rejection is not a blanket 'no' — it names atmosphere specifically, so the Constraint Updater (A7) writes `noiseLevel: \"quiet\"` as a correction on Shani's `ParticipantMeetingContext` for this meeting, not as an edit to her profile: she has not become someone who always wants quiet, she wants quiet tonight. The next proposal must visibly respond to that. Quiet Corner is the only remaining candidate whose own `soft.noiseLevel` is \"quiet\", so it is the only materially different, on-topic follow-up, even though it is rated slightly lower than the rejected option. Quiet Corner shuts at midnight while the group is free until 01:00, so the evening ends at midnight — the slot is the intersection, 21:00-00:00, which is exactly the three-hour minimum. Beer Bazaar staying open until 02:00 buys it nothing here: the objection was about noise, not about closing time."
   }
 }
