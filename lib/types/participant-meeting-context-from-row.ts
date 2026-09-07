@@ -10,6 +10,11 @@
  * `respondToMeeting`) is the only writer and validates every write against
  * the same shape (`lib/meetings/schema.ts`'s `respondToMeetingSchema`)
  * before it reaches this table.
+ *
+ * `softPreferences` is always `null` here: the type's own comment says why
+ * — `participant_meeting_contexts` has no column for it yet, B11 adds the
+ * column and the migration together, and until then nothing reads it back
+ * from the database (issue #86).
  */
 
 import type { ParticipantMeetingContextModel } from "@/lib/generated/prisma/models";
@@ -29,6 +34,7 @@ export function participantMeetingContextFromRow(
         : null,
     originLabel: row.originLabel,
     mobilityWindows: row.mobilityWindows as MobilityWindow[],
+    softPreferences: null,
     note: row.note,
     createdAt: row.createdAt,
   };
