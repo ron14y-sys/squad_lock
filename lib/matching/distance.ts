@@ -83,6 +83,8 @@ import type {
   SlotTolerance,
   TimeSlot,
 } from "@/lib/types";
+import { slotId } from "./schemas";
+import { viableSlotsByCandidate, type FilterResult } from "./constraints";
 
 /* -------------------------------------------------------------------------
  * Failures
@@ -379,10 +381,6 @@ export function detourFactorBetween(
   return clampDetourFactor(directed ?? reversed);
 }
 
-/** Two slots are the same slot when they name the same two instants. */
-const slotKey = (slot: TimeSlot): string =>
-  `${slot.start.getTime()}-${slot.end.getTime()}`;
-
 /**
  * How far this person will travel, at this hour.
  *
@@ -400,10 +398,10 @@ export function toleranceKmFor(
   slot: TimeSlot,
   tolerances: readonly SlotTolerance[]
 ): Kilometres {
-  const key = slotKey(slot);
+  const key = slotId(slot);
   const resolved = tolerances.find(
     (entry) =>
-      entry.participantId === participant.userId && slotKey(entry.slot) === key
+      entry.participantId === participant.userId && slotId(entry.slot) === key
   );
 
   const toleranceKm = resolved?.toleranceKm ?? participant.profile.toleranceKm;
@@ -726,4 +724,36 @@ export function rankByLeximin(
   scores: readonly CandidateScore[]
 ): CandidateScore[] {
   return [...scores].sort(compareCandidatesByLeximin);
+}
+
+/**
+ * A2's survivors, scored and ranked — the four steps that always follow a
+ * `filterPairs` call, in the one order they are ever done in.
+ *
+ * Extracted because the sequence had been written out three times, in three
+ * spellings: the demo script filtered survivors on `viableSlots.get(id)`, the
+ * eval adapter and A4's tests on `viable.some(...)`. The survivors step is a
+ * real contract rather than a formality — `scoreCandidate` throws on a
+ * candidate with no viable slot, so a caller that skips it gets a
+ * `no_viable_slot` error instead of a ranking — and a contract stated three
+ * ways is a contract that will be restated wrongly a fourth time when B6 or
+ * A8 changes how a run is assembled.
+ */
+export function rankViable(
+  filtered: FilterResult,
+  candidates: readonly Candidate[],
+  participants: readonly Participant[],
+  options: BurdenOptions = {}
+): CandidateScore[] {
+  const viableSlots = viableSlotsByCandidate(filtered);
+  const survivors = candidates.filter(
+    (candidate) => (viableSlots.get(candidate.placeId)?.length ?? 0) > 0
+  );
+
+  return rankByLeximin(
+    scoreCandidates(
+      { candidates: survivors, participants: [...participants], viableSlots },
+      options
+    )
+  );
 }

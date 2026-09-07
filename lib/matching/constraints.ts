@@ -54,6 +54,7 @@ import type {
   TimeSlot,
 } from "@/lib/types";
 import { APP_TIME_ZONE } from "@/lib/types";
+import { slotId } from "./schemas";
 
 /* -------------------------------------------------------------------------
  * Local wall clock against instants
@@ -81,7 +82,7 @@ const WEEKDAY_INDEX: Record<LocalWeekday, number> = {
   saturday: 6,
 };
 
-const ALL_WEEKDAYS = Object.keys(WEEKDAY_INDEX) as LocalWeekday[];
+export const ALL_WEEKDAYS = Object.keys(WEEKDAY_INDEX) as LocalWeekday[];
 
 /** Built once. `Intl.DateTimeFormat` is expensive to construct, cheap to reuse. */
 const LOCAL_PARTS = new Intl.DateTimeFormat("en-US", {
@@ -508,15 +509,23 @@ function participantViolations(
  * violation's `detail`, which is what a failing test prints and what the
  * timeline shows — a UTC instant there is unreadable to everyone involved.
  */
-const SLOT_START = new Intl.DateTimeFormat("en-GB", {
-  timeZone: APP_TIME_ZONE,
-  weekday: "short",
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
+const slotStartFormat = (weekday: "short" | "long") =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: APP_TIME_ZONE,
+    weekday,
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+
+// Built once each. `Intl.DateTimeFormat` is expensive to construct, cheap to
+// reuse — the same reason `LOCAL_PARTS` above is module scope.
+const SLOT_START = {
+  short: slotStartFormat("short"),
+  long: slotStartFormat("long"),
+};
 
 const SLOT_END = new Intl.DateTimeFormat("en-GB", {
   timeZone: APP_TIME_ZONE,
@@ -525,9 +534,19 @@ const SLOT_END = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 
-/** "Mon 07 Sep, 19:00–21:00" — the two formatters above, joined. */
-function describeSlot(slot: TimeSlot): string {
-  return `${SLOT_START.format(slot.start)}–${SLOT_END.format(slot.end)}`;
+/**
+ * "Mon 07 Sep, 19:00–21:00" — the two formatters above, joined.
+ *
+ * Exported because A4 needs the same sentence with the weekday spelled out:
+ * a violation `detail` is read in a test or a log, while the matching agent's
+ * payload is read by a model writing prose about the evening. One formatter,
+ * two audiences — not two formatters that can drift on the timezone.
+ */
+export function describeSlot(
+  slot: TimeSlot,
+  weekday: "short" | "long" = "short"
+): string {
+  return `${SLOT_START[weekday].format(slot.start)}–${SLOT_END.format(slot.end)}`;
 }
 
 /** Same tag from six participants is one thing to verify, not six. */
@@ -678,11 +697,8 @@ export function checkChosenPair(
     ];
   }
 
-  const offered = input.slots.some(
-    (slot) =>
-      slot.start.getTime() === chosen.slot.start.getTime() &&
-      slot.end.getTime() === chosen.slot.end.getTime()
-  );
+  const chosenId = slotId(chosen.slot);
+  const offered = input.slots.some((slot) => slotId(slot) === chosenId);
 
   if (!offered) {
     return [
