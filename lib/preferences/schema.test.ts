@@ -44,6 +44,14 @@ describe("preferenceProfileInputSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts a partial soft-preference set — a declined question stores nothing for that field (#86)", () => {
+    const result = preferenceProfileInputSchema.safeParse({
+      softPreferences: { noiseLevel: "quiet", budget: "modest" },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("rejects a soft preference value outside the this-or-that game's four levers", () => {
     const result = preferenceProfileInputSchema.safeParse({
       softPreferences: {
