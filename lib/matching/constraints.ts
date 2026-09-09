@@ -259,6 +259,12 @@ export type ViolationKind =
   | "busy"
   /** No mobility mode at all at that hour — the binary half of §5.4. */
   | "immobile"
+  /**
+   * Open, and reachable at no hour of this window that is long enough to be
+   * worth proposing. The continuous half of §5.4, and the reason a pair can
+   * vanish without any single hour being illegal.
+   */
+  | "out_of_reach"
   | "dietary"
   | "allergy";
 
@@ -308,6 +314,24 @@ export class HardConstraintError extends Error {
 const MOBILITY_MODES: MobilityMode[] = ["car", "transit", "walk"];
 
 /**
+ * The window a recurring rule applies over.
+ *
+ * An absent `window` means the rule holds all day, written as `00:00` to
+ * `00:00` — which `windowIntervals` reads as a full 24 hours because a `to` at
+ * or before `from` wraps. Extracted so the trimming below splits on exactly
+ * the windows `availableModes` reads, rather than on a second opinion about
+ * what a rule covers.
+ */
+function mobilityRuleWindow(rule: {
+  weekdays: LocalWeekday[];
+  window?: { from: string; to: string };
+}): LocalWindow {
+  return rule.window
+    ? { ...rule.window, weekdays: rule.weekdays }
+    : { weekdays: rule.weekdays, from: "00:00", to: "00:00" };
+}
+
+/**
  * Which modes this person still has at this hour.
  *
  * Precedence is spec §5.7's: the meeting amendment outranks the recurring
@@ -322,10 +346,8 @@ export function availableModes(
 
   for (const rule of participant.profile.recurringMobilityRules) {
     if (rule.kind !== "mode_unavailable") continue;
-    const window: LocalWindow = rule.window
-      ? { ...rule.window, weekdays: rule.weekdays }
-      : { weekdays: rule.weekdays, from: "00:00", to: "00:00" };
-    if (slotOverlapsWindow(slot, window)) modes.delete(rule.mode);
+    if (slotOverlapsWindow(slot, mobilityRuleWindow(rule)))
+      modes.delete(rule.mode);
   }
 
   for (const window of participant.context?.mobilityWindows ?? []) {
@@ -732,4 +754,337 @@ export function assertChosenPairAllowed(
 ): void {
   const violations = checkChosenPair(chosen, input);
   if (violations.length > 0) throw new HardConstraintError(violations);
+}
+
+/* -------------------------------------------------------------------------
+ * Trimming — the meeting shortens to fit the venue
+ *
+ * A venue does not have to be open for the whole window the group is free.
+ * The slot is the **intersection** of the two, and the meeting shortens to
+ * fit: a venue that closes at 22:30 when the group is free until 23:00 is not
+ * eliminated, it is a venue where the evening ends at 22:30. Only an *empty*
+ * intersection drops the pair — which is eval scenario `02`, where the venue
+ * shuts at exactly the hour the group becomes free.
+ *
+ * **This runs before `windowsCoverSlot`, not instead of it.** Trimming decides
+ * how long the evening is; `windowsCoverSlot` then refuses a slot that spans
+ * the gap between lunch and dinner service. Every slot returned here sits
+ * inside a single opening window by construction, so the later check passes —
+ * that is the point of intersecting with each window separately rather than
+ * with their union.
+ *
+ * Defined before it was built, in four places that agree: `evals/README.md`
+ * ("The meeting shortens to fit the venue"), B6's acceptance in
+ * `tasks/todo.md`, the funnel in spec §5.4, and
+ * [#86](https://github.com/ron14y-sys/squad_lock/issues/86) for the
+ * three-hour minimum. **B6 does not have to write this** — it calls
+ * `trimPairToViableSlots` with the calendar-derived slots it produces.
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The shortest meeting worth proposing.
+ *
+ * One number, applied in **both** places it can be measured (#86, question 6):
+ * the group's own free window before any venue is considered — too short there
+ * is `stuck` with a reason, which is `meetsMinimumLength`'s job — and the slot
+ * left after a venue's hours and everyone's reach have narrowed it, where too
+ * short drops that one pair and nothing else.
+ *
+ * A number to tune, not a design — the same footing as `REACH_BY_MODE` and the
+ * four-hour conflict window.
+ */
+export const MINIMUM_MEETING_MINUTES = 180;
+
+/** Is this window long enough to be worth proposing at all? */
+export function meetsMinimumLength(
+  slot: TimeSlot,
+  minimumMinutes: number = MINIMUM_MEETING_MINUTES
+): boolean {
+  return slot.end.getTime() - slot.start.getTime() >= minimumMinutes * 60_000;
+}
+
+export type TrimInput = {
+  /** One window the group is free. B6 derives these from the calendars. */
+  slot: TimeSlot;
+  candidate: Candidate;
+  /** Confirmed participants. One person out of reach narrows the slot. */
+  participants: Participant[];
+  /**
+   * Straight-line kilometres from each participant to this candidate, by
+   * `userId`. A participant missing from the map is not narrowed on reach.
+   *
+   * **Passed in rather than computed.** Geometry is A3's, and this file stays
+   * free of it — the same separation that lets a failing eval scenario be
+   * attributed to a stage.
+   */
+  distanceKm: Readonly<Record<string, Kilometres>>;
+  minimumMinutes?: number;
+};
+
+/**
+ * Every viable `(venue, slot)` this pair still supports, after the venue's
+ * opening hours and everyone's reach have narrowed the group's free window.
+ *
+ * Empty means the pair is dropped. One or more means the meeting happens, at
+ * the hours returned — and **more than one is a real answer**, not a bug: a
+ * venue open for lunch and again for dinner across a group free all afternoon
+ * offers two distinct evenings, and choosing between them is the agent's job,
+ * not this function's.
+ *
+ * Two narrowings, in order:
+ *
+ * 1. **Opening hours.** Intersected with each window separately. Unknown hours
+ *    narrow nothing — the same rule `venueViolations` follows, where absent is
+ *    *not known* rather than "open around the clock", and the pair is marked
+ *    `unverified` for A4 to warn about.
+ * 2. **Reach.** How someone travels caps how far they can get: on foot about a
+ *    kilometre, transit and a car uncapped ([#89](https://github.com/ron14y-sys/squad_lock/issues/89)).
+ *    A participant who cannot reach this venue for part of the evening removes
+ *    *those hours*, not the venue — eval scenario `03`, where Shira has
+ *    neither a car nor transit until 20:00 and the answer is therefore a
+ *    `(venue, time)` pair.
+ *
+ * **Reach is not tolerance.** Being further away than someone is comfortable
+ * with is a burden, and leximin weighs it — scenario `06`'s agreed answer puts
+ * two people at 1.15 times their tolerance. Only the physical cap of how they
+ * are travelling narrows an hour. Applying `toleranceKm` here would silently
+ * turn a soft cost into a hard constraint and delete the fairness question.
+ */
+export function trimPairToViableSlots(input: TrimInput): TimeSlot[] {
+  const minimum = input.minimumMinutes ?? MINIMUM_MEETING_MINUTES;
+  const base = slotInterval(input.slot);
+  const hours = input.candidate.openingHours;
+
+  // Absent or empty hours are *not known*, so they narrow nothing.
+  const open =
+    hours === undefined || hours.length === 0
+      ? [base]
+      : dedupeIntervals(
+          hours
+            .flatMap(windowIntervals)
+            .map((window) => intersectIntervals(base, window))
+            .filter((piece): piece is WeekInterval => piece !== null)
+        );
+
+  return open
+    .flatMap((piece) => reachableRuns(piece, base, input))
+    .map((piece) => sliceOf(input.slot, base, piece))
+    .filter((slot) => meetsMinimumLength(slot, minimum));
+}
+
+/** The shared stretch, counting the wrap across Saturday midnight. */
+function intersectIntervals(
+  a: WeekInterval,
+  b: WeekInterval
+): WeekInterval | null {
+  for (const shift of WRAPS) {
+    const start = Math.max(a.start, b.start + shift);
+    const end = Math.min(a.end, b.end + shift);
+    if (start < end) return { start, end };
+  }
+  return null;
+}
+
+/** Two opening windows can land on one stretch of a slot. Keep it once. */
+function dedupeIntervals(intervals: WeekInterval[]): WeekInterval[] {
+  const seen = new Map<string, WeekInterval>();
+  for (const interval of intervals) {
+    seen.set(`${interval.start}-${interval.end}`, interval);
+  }
+  return [...seen.values()];
+}
+
+/**
+ * A week interval back to instants, measured from the slot it was cut out of.
+ *
+ * Offsets in real minutes from a real instant, so this is exact unless a DST
+ * transition falls *inside* the slot — the same assumption `slotInterval`
+ * already makes when it places one end on the axis and derives the other from
+ * the span. A three-hour evening containing a clock change is not a case this
+ * product has.
+ */
+function sliceOf(
+  slot: TimeSlot,
+  base: WeekInterval,
+  cut: WeekInterval
+): TimeSlot {
+  const at = (minute: number) =>
+    new Date(slot.start.getTime() + (minute - base.start) * 60_000);
+  return { start: at(cut.start), end: at(cut.end) };
+}
+
+/**
+ * The stretches of `piece` every participant can actually get to.
+ *
+ * Reach changes only where a mobility window opens or closes, so the piece is
+ * cut at exactly those edges and each segment is tested whole. Adjacent
+ * segments that both pass are merged back, because the meeting does not care
+ * that a rule expired in the middle of it.
+ */
+function reachableRuns(
+  piece: WeekInterval,
+  base: WeekInterval,
+  input: TrimInput
+): WeekInterval[] {
+  const edges = [
+    piece.start,
+    ...mobilityEdgesWithin(piece, input.participants),
+    piece.end,
+  ];
+
+  const runs: WeekInterval[] = [];
+  for (let i = 0; i + 1 < edges.length; i += 1) {
+    const segment = { start: edges[i], end: edges[i + 1] };
+    if (segment.start >= segment.end) continue;
+    if (!everyoneCanReach(sliceOf(input.slot, base, segment), input)) continue;
+
+    const last = runs[runs.length - 1];
+    if (last && last.end === segment.start) last.end = segment.end;
+    else runs.push({ ...segment });
+  }
+  return runs;
+}
+
+/** Every mobility-window edge strictly inside this stretch, sorted. */
+function mobilityEdgesWithin(
+  piece: WeekInterval,
+  participants: Participant[]
+): number[] {
+  const edges = new Set<number>();
+
+  for (const participant of participants) {
+    const windows: LocalWindow[] = [
+      ...participant.profile.recurringMobilityRules
+        .filter((rule) => rule.kind === "mode_unavailable")
+        .map(mobilityRuleWindow),
+      ...(participant.context?.mobilityWindows ?? []).map(
+        (window) => window.window
+      ),
+    ];
+
+    for (const window of windows) {
+      for (const interval of windowIntervals(window)) {
+        for (const shift of WRAPS) {
+          for (const edge of [interval.start + shift, interval.end + shift]) {
+            if (edge > piece.start && edge < piece.end) edges.add(edge);
+          }
+        }
+      }
+    }
+  }
+
+  return [...edges].sort((a, b) => a - b);
+}
+
+/**
+ * Can every participant physically get to this candidate for the whole of
+ * this segment?
+ *
+ * No mode at all is `immobile` and is checked separately, because
+ * `reachCapKm` returns `null` — meaning *uncapped* — for an empty mode set,
+ * and reading that as "can go anywhere" is exactly backwards.
+ */
+function everyoneCanReach(segment: TimeSlot, input: TrimInput): boolean {
+  return input.participants.every((participant) => {
+    if (availableModes(participant, segment).size === 0) return false;
+
+    const cap = reachCapKm(participant, segment);
+    if (cap === null) return true;
+
+    const distance = input.distanceKm[participant.userId];
+    return distance === undefined || distance <= cap;
+  });
+}
+
+/**
+ * Trim first, then filter — the whole of B6's `(venue, slot)` derivation.
+ *
+ * `filterPairs` asks whether a *given* slot is legal. This asks the question
+ * the pipeline actually has: given the group's free windows, which
+ * `(venue, slot)` pairs exist at all? Each candidate is narrowed to the hours
+ * it can host before it is judged, so a venue that closes early is offered at
+ * the hours it is open rather than dropped.
+ *
+ * **Per candidate, not once for everybody.** A slot trimmed to one venue's
+ * hours is not a slot another venue was ever offered at, so each candidate is
+ * filtered against its own trimmed windows. Running one merged slot list past
+ * every candidate would invent pairs nobody derived.
+ *
+ * A pair the trimming empties is reported as dropped with a real reason —
+ * `checkPair`'s own finding where there is one (`closed` when the venue is
+ * shut for the whole window), and `out_of_reach` when every hour was legal but
+ * nobody could get there, which is the case no single-slot check can see.
+ */
+export function filterTrimmedPairs(
+  input: ConstraintInput,
+  distanceKm: (candidate: Candidate) => Readonly<Record<string, Kilometres>>,
+  minimumMinutes: number = MINIMUM_MEETING_MINUTES
+): FilterResult {
+  const viable: ViablePair[] = [];
+  const dropped: PairCheck[] = [];
+
+  for (const candidate of input.candidates) {
+    const facts = input.venueFacts?.[candidate.placeId];
+    const distances = distanceKm(candidate);
+
+    for (const slot of input.slots) {
+      const trimmed = trimPairToViableSlots({
+        slot,
+        candidate,
+        participants: input.participants,
+        distanceKm: distances,
+        minimumMinutes,
+      });
+
+      if (trimmed.length === 0) {
+        dropped.push(
+          emptyTrimCheck(candidate, slot, input.participants, facts)
+        );
+        continue;
+      }
+
+      for (const piece of trimmed) {
+        const check = checkPair(candidate, piece, input.participants, facts);
+        if (check.violations.length > 0) dropped.push(check);
+        else {
+          viable.push({
+            candidatePlaceId: check.candidatePlaceId,
+            slot: check.slot,
+            unverified: check.unverified,
+          });
+        }
+      }
+    }
+  }
+
+  return { viable, dropped };
+}
+
+/**
+ * Why nothing survived the trimming.
+ *
+ * `checkPair` on the untrimmed window usually says it — a venue shut for the
+ * whole evening is `closed`. When it says nothing, the window was legal at
+ * every hour and the narrowing was reach: somebody could not get there, which
+ * is a fact about the pair and not about any one hour in it.
+ */
+function emptyTrimCheck(
+  candidate: Candidate,
+  slot: TimeSlot,
+  participants: Participant[],
+  facts: VenueDietaryFacts | undefined
+): PairCheck {
+  const check = checkPair(candidate, slot, participants, facts);
+  if (check.violations.length > 0) return check;
+
+  return {
+    ...check,
+    violations: [
+      {
+        kind: "out_of_reach",
+        candidatePlaceId: candidate.placeId,
+        detail: `no stretch of ${describeSlot(slot)} is long enough and within everyone's reach of ${candidate.name}`,
+      },
+    ],
+  };
 }

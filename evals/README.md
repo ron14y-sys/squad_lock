@@ -22,7 +22,7 @@ Steps 1–3 are mechanical — two people applying them by hand to the same scen
 
 **A venue does not have to be open for the whole window the group is free.** The slot is the **intersection** of the two, and the meeting shortens to fit. A venue that closes at 22:30 when the group is free until 23:00 is not eliminated — it is a venue where the evening ends at 22:30.
 
-This is [B6](../tasks/todo.md)'s job, and has been since F5: _"free slots common to all confirmed participants, **intersected with venue opening hours and mobility windows** to produce viable `(venue, time)` pairs (spec §5.4)"_. Only an **empty** intersection drops the pair — which is exactly the `02-closed-on-the-night-trap` scenario, where the best-rated venue shuts at 20:00 and the group is not free until then.
+**This is now built**, as `trimPairToViableSlots` in [`lib/matching/constraints.ts`](../lib/matching/constraints.ts) — carved out of [B6](../tasks/todo.md) because it needs no Google Calendar, only free windows, opening hours and reach caps ([docs/decisions/slot-trimming.md](../docs/decisions/slot-trimming.md)). It has been the rule since F5: _"free slots common to all confirmed participants, **intersected with venue opening hours and mobility windows** to produce viable `(venue, time)` pairs (spec §5.4)"_. Only an **empty** intersection drops the pair — which is exactly the `02-closed-on-the-night-trap` scenario, where the best-rated venue shuts at 20:00 and the group is not free until then.
 
 **Mobility narrows a slot the same way opening hours do.** How someone travels caps how far they can reach: on foot that is about a kilometre, while transit and a car add no limit their own tolerance has not already set ([#89](https://github.com/ron14y-sys/squad_lock/issues/89)). A participant who cannot reach a venue for part of the evening removes _those hours_, not the venue — which is `03-mobility-window-trap`, and the reason its answer is a `(venue, time)` pair. Losing every mode at once is the separate, binary case: that is A2's `immobile` violation, and it does drop the pair.
 
@@ -136,7 +136,7 @@ const input = scenarioAgentInput(loadScenario("hard-constraint-trap"));
 
 It performs only the _spellings_ in the table above; anything a scenario says that the engine cannot express is still a bug in the file. Two things it deliberately does not do:
 
-- **It does not trim a slot to a venue's opening hours.** That is [B6](../tasks/todo.md), which does not exist yet, so the slot is the group's whole free window and A2 drops any pair the venue cannot cover entirely. Right for `02`, wrong for `03`, `05` and `07`, where the meeting should shorten instead of vanishing. `needsTrim(scenario)` derives that from the fixture — a scenario states an `expected.time` narrower than the window the group was free for — so A5 can report those separately until B6 lands.
+- **It trims a slot to the venue's opening hours and everyone's reach**, through `filterTrimmedPairs` — so a venue that closes early is offered at the hours it is open rather than dropped. `needsTrim(scenario)` still derives which scenarios depend on that, and `__tests__/slot-trimming.test.ts` asserts each of them can now reach its expected pair. Before this, `05` and `07` had their agreed answer filtered out entirely while a _different_ venue survived and was proposed.
 - **It does not judge an answer.** A4 checks that an answer is legal; checking it is _right_ against `expected` is A5's, in [`evals/judge.ts`](judge.ts).
 
 ## What happens to these later
