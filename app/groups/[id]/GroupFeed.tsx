@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 import { APP_TIME_ZONE } from "@/lib/types/primitives";
 
@@ -176,7 +177,6 @@ function MeetingCardRow({ card }: { card: MeetingCard }) {
 export function GroupFeed({ groupId }: { groupId: string }) {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [feed, setFeed] = useState<Feed | null>(null);
-  const [initiateNote, setInitiateNote] = useState<string | null>(null);
   // Read by the polling effect without re-running it on every fetch.
   const feedRef = useRef<Feed | null>(null);
 
@@ -296,21 +296,28 @@ export function GroupFeed({ groupId }: { groupId: string }) {
         })}
       </div>
 
-      <button
-        type="button"
-        disabled={atCap}
-        onClick={() => setInitiateNote("פתיחת פגישה חדשה תתאפשר במשימה הבאה.")}
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
-      >
-        פתח פגישה חדשה
-      </button>
+      {atCap ? (
+        <button
+          type="button"
+          disabled
+          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
+        >
+          פתח פגישה חדשה
+        </button>
+      ) : (
+        <Link
+          href={`/groups/${groupId}/new`}
+          className="rounded-md bg-zinc-900 px-4 py-2 text-center text-sm font-medium text-white dark:bg-zinc-50 dark:text-black"
+        >
+          פתח פגישה חדשה
+        </Link>
+      )}
       {atCap && (
         <p className="text-xs text-zinc-500">
           אי אפשר לפתוח פגישה נוספת — יש כבר {OPEN_MEETING_CAP} פגישות פתוחות
           בקבוצה. סגור או השלם אחת מהן כדי לפתוח חדשה.
         </p>
       )}
-      {initiateNote && <p className="text-xs text-zinc-500">{initiateNote}</p>}
     </section>
   );
 }
