@@ -6,7 +6,36 @@
 import { auth } from "@/auth";
 import { getPrisma } from "@/lib/db/client";
 import { initiateMeeting, OpenMeetingCapReachedError } from "@/lib/db/meetings";
+import { listMeetingCardsForGroup } from "@/lib/db/meeting-cards";
 import { initiateMeetingSchema } from "@/lib/meetings/schema";
+
+// The group feed (C5, spec §5.6, issue #40): every meeting in the group, as
+// a card carrying the viewer's own status. B5 never added this — it only
+// needed to write meetings, not list them — so this is the read side C5
+// needs and nobody else has built yet.
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<Response> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return Response.json({ error: "Not signed in." }, { status: 401 });
+  }
+
+  const { id: groupId } = await params;
+  const prisma = getPrisma();
+
+  const membership = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+  });
+  if (!membership) {
+    return Response.json({ error: "Group not found." }, { status: 404 });
+  }
+
+  const feed = await listMeetingCardsForGroup(groupId, userId);
+  return Response.json(feed);
+}
 
 export async function POST(
   request: Request,

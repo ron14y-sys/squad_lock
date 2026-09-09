@@ -137,12 +137,22 @@ const input = scenarioAgentInput(loadScenario("hard-constraint-trap"));
 It performs only the _spellings_ in the table above; anything a scenario says that the engine cannot express is still a bug in the file. Two things it deliberately does not do:
 
 - **It does not trim a slot to a venue's opening hours** — not yet. `trimPairToViableSlots` now exists, but the adapter does not call it, so the slot is still the group's whole free window and A2 drops any pair the venue cannot cover entirely. Right for `02`, wrong for `03`, `05` and `07`, where the meeting should shorten instead of vanishing — and in `05` and `07` the agreed answer is filtered out while a _different_ venue survives and is proposed, which is the expensive kind of wrong. `needsTrim(scenario)` derives that from the fixture — a scenario states an `expected.time` narrower than the window the group was free for — so A5 can report those separately until the wiring lands.
-- **It does not judge an answer.** A4 checks that an answer is legal; checking it is _right_ against `expected` is A5's.
+- **It does not judge an answer.** A4 checks that an answer is legal; checking it is _right_ against `expected` is A5's, in [`evals/judge.ts`](judge.ts).
 
 ## What happens to these later
 
-Once the matching engine exists (Track A), task **A5 — Eval runner** reads every file in this folder, runs the real engine against each one, and reports pass rate, cost, duration, and hard-constraint violations (must be zero). Nothing in this folder changes when that happens — these are answers, not implementation, which is what makes them useful as a check on the engine rather than a description of it.
+**A5 is built.** `npm run eval` reads every file in this folder, runs the real engine against each one, and reports pass rate, cost, duration, cycles and hard-constraint violations. Nothing in this folder changed when that happened — these are answers, not implementation, which is what makes them useful as a check on the engine rather than a description of it.
 
-**A4 is done and the first live run has happened:** scenario `01` reaches Container, its agreed answer, against `gemini-3.6-flash` — see [docs/decisions/matching-agent.md](../docs/decisions/matching-agent.md).
+**The first live sweep, 9 Sep 2026: 3 scored, 3 passed, 0 hard-constraint violations.** Full table in [docs/decisions/eval-runner.md](../docs/decisions/eval-runner.md).
+
+**Five of the eight are waiting on a stage rather than on the model**, and the runner reports them as such rather than counting them as failures:
+
+| Scenario   | Waiting on               | Because                                               |
+| ---------- | ------------------------ | ----------------------------------------------------- |
+| `03`, `05` | **B6**                   | the meeting must shorten to fit the venue             |
+| `04`       | **A12** Context Resolver | leximin on a bare straight line picks the other venue |
+| `07`, `08` | **A7 + A8**              | `expected` is the proposal _after_ a rejection        |
+
+`04` is the one to know about, because it is the only one that produces a **legal, plausible, wrong** answer rather than an obviously missing one — which is exactly what its own `expected.reasoning` predicts: _"a naive straight-line-only implementation is expected to get this one wrong."_ It was reclassified, **not** rewritten. `classify` in [`judge.ts`](judge.ts) derives every one of these from `trap` and `needsTrim`, so a scenario becomes scored on its own when its stage lands, and a scenario added tomorrow is classified by rule.
 
 An answer changes only the way #86's did: because it contradicted the rules in "How a scenario gets its correct answer", agreed by all three of us, and never because the engine disagreed with it.
