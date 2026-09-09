@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { APP_TIME_ZONE } from "@/lib/types/primitives";
+import {
+  MEETING_CARD_STATUS_LABELS,
+  RESPONSE_STATUS_LABELS,
+} from "@/lib/format/hebrew-labels";
 
 type ResponseStatus = "pending" | "approved" | "cant_make_it" | "doesnt_suit";
 
@@ -40,22 +44,6 @@ type LoadState = "loading" | "ready" | "signed-out" | "not-found" | "error";
 
 const OPEN_MEETING_CAP = 3;
 
-const STATUS_LABEL: Record<MeetingCardStatus, string> = {
-  waiting_on_you: "ממתין לך",
-  waiting_on_others: "ממתין לאחרים",
-  reweighing: "משוקלל מחדש",
-  conflicting: "מתנגש עם פגישה אחרת",
-  stuck: "תקוע",
-  closed: "סגור",
-};
-
-const RESPONSE_LABEL: Record<ResponseStatus, string> = {
-  pending: "טרם הגיב",
-  approved: "אישר",
-  cant_make_it: "לא יכול להגיע",
-  doesnt_suit: "לא מתאים לו",
-};
-
 const DATE_FMT = new Intl.DateTimeFormat("he-IL", {
   timeZone: APP_TIME_ZONE,
   day: "2-digit",
@@ -86,7 +74,7 @@ function statusLabel(card: MeetingCard): string {
   if (card.status === "waiting_on_others" && card.waitingOn !== null) {
     return `ממתין לעוד ${card.waitingOn}`;
   }
-  return STATUS_LABEL[card.status];
+  return MEETING_CARD_STATUS_LABELS[card.status];
 }
 
 function summaryLine(card: MeetingCard): string {
@@ -119,7 +107,7 @@ function MeetingAvatars({
       {participants.map((p) => (
         <div
           key={p.userId}
-          title={`${p.name} — ${RESPONSE_LABEL[p.status]}`}
+          title={`${p.name} — ${RESPONSE_STATUS_LABELS[p.status]}`}
           className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${avatarClasses(
             p.status
           )}`}
@@ -135,7 +123,8 @@ function MeetingCardRow({ card }: { card: MeetingCard }) {
   const highlighted = card.status === "waiting_on_you";
 
   return (
-    <div
+    <Link
+      href={`/meetings/${card.id}`}
       className={`flex items-center gap-3 rounded-md border px-3 py-2 ${
         highlighted
           ? "border-indigo-600 dark:border-indigo-400"
@@ -170,7 +159,7 @@ function MeetingCardRow({ card }: { card: MeetingCard }) {
       </div>
 
       <MeetingAvatars participants={card.participants} />
-    </div>
+    </Link>
   );
 }
 

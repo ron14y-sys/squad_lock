@@ -4,6 +4,7 @@
 
 import type { LocalWeekday, MobilityMode } from "@/lib/types";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
+import type { MeetingCardStatus, ResponseStatus } from "@/lib/types/meeting";
 
 export const WEEKDAY_LABELS: Record<LocalWeekday, string> = {
   sunday: "א׳",
@@ -19,6 +20,23 @@ export const MOBILITY_MODE_LABELS: Record<MobilityMode, string> = {
   car: "רכב",
   transit: "תחבורה ציבורית",
   walk: "הליכה",
+};
+
+/** The feed and the meeting screen's own status vocabulary (spec §5.6). */
+export const MEETING_CARD_STATUS_LABELS: Record<MeetingCardStatus, string> = {
+  waiting_on_you: "ממתין לך",
+  waiting_on_others: "ממתין לאחרים",
+  reweighing: "משוקלל מחדש",
+  conflicting: "מתנגש עם פגישה אחרת",
+  stuck: "תקוע",
+  closed: "סגור",
+};
+
+export const RESPONSE_STATUS_LABELS: Record<ResponseStatus, string> = {
+  pending: "טרם הגיב",
+  approved: "אישר",
+  cant_make_it: "לא יכול להגיע",
+  doesnt_suit: "לא מתאים לו",
 };
 
 /**
