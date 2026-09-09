@@ -1,4 +1,5 @@
 import { GroupDetail } from "./GroupDetail";
+import { GroupFeed } from "./GroupFeed";
 
 export default async function GroupPage({
   params,
@@ -10,6 +11,7 @@ export default async function GroupPage({
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 dark:bg-black">
       <GroupDetail groupId={id} />
+      <GroupFeed groupId={id} />
     </div>
   );
 }
