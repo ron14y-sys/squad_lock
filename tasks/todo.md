@@ -184,17 +184,21 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 
 ### Milestone 1 (weeks 2–3)
 
-- [ ] **C1 — Mobile-first shell and navigation** — designed for a phone, not a shrunk desktop layout.
+- [x] **C1 — Mobile-first shell and navigation** — designed for a phone, not a shrunk desktop layout. Merged in #74 (`app/layout.tsx`, `app/_components/AppHeader.tsx`, `app/manifest.ts`, safe-area CSS in `app/globals.css`).
 - [ ] **C2 — Preference game** — this-or-that questions producing a soft-preference set in **under 60 seconds**, timed on someone who has not seen it.
   - **Every question can be declined**, and declining stores nothing for that field rather than a default. `SoftPreferences` fields are all optional and an absent one changes nothing downstream; forcing four answers manufactures opinions nobody holds ([#86](https://github.com/ron14y-sys/squad_lock/issues/86)).
-- [ ] **C3 — Hard constraints screen** — kosher, allergies, fixed unavailable hours. Explicit, never inferred.
-- [ ] **C3b — Home location, travel tolerance and recurring mobility**
+- [x] **C3 — Hard constraints screen** — kosher, allergies, fixed unavailable hours. Explicit, never inferred. Merged in #83 (`app/profile/HardConstraintsForm.tsx`), calling B3's `PATCH /api/preferences` directly.
+- [x] **C3b — Home location, travel tolerance and recurring mobility**
   - Acceptance: home at **neighbourhood granularity, not a street address**, with the privacy framing visible. Tolerance as a **labelled slider** ("on foot · the neighbourhood · half the city · anywhere") **storing kilometres**. Recurring rules — "no car on Fridays" — set here, because most of what varies is predictable and belongs in the profile rather than in a correction (spec §5.1).
   - Verify: reload persists; the stored location is not a precise address; the stored tolerance is a number in km
-- [ ] **C4 — Group creation and invite**
-- [ ] **C5 — Group feed**
+  - Merged in #84 (`app/profile/location/LocationForm.tsx`). No device-location permission dialog — home is typed at neighbourhood granularity, never read from the device (see `docs/onboarding-flow.md`).
+- [x] **C4 — Group creation and invite** — merged in #94 (`app/groups/GroupsList.tsx`, `app/groups/[id]/GroupDetail.tsx`). Also added the `GET` side B4 hadn't needed yet (`GET /api/groups/[id]/invitations`) and the invitation-acceptance page that was otherwise entirely missing (`app/invitations/[token]/AcceptInvitation.tsx`, calling B4's `POST /api/invitations/[token]/accept`).
+- [x] **C5 — Group feed**
   - Acceptance: cards **sorted by date, nearest first**, past below a divider; date block, status label, mini avatars, one-line summary. A row awaiting the viewer is findable while scanning mid-list. Initiate button disabled at the cap **with an explanation**. **Adaptive polling: ~3s while a meeting on screen is re-weighing, ~30s otherwise, off in the background** (spec §5.6). The same poll closes the amendment batching window.
   - Verify: with 3 open meetings, someone who has not seen the app names which one needs them **without opening anything**
+  - Merged in #107 (`app/groups/[id]/GroupFeed.tsx`, `lib/db/meeting-cards.ts`). Also added the `GET` side B5 hadn't needed yet (`GET /api/groups/[id]/meetings`) and `deriveMeetingCardStatus`, the per-viewer status derivation `lib/types/meeting.ts`'s `MeetingCardStatusInput` contract described but nobody had written yet.
+  - **"The same poll closes the amendment batching window" is not wired up yet** — that half needs B11's `runMatchingAgent`/`persistMatchRun` to exist first. Whoever ships B11 calls it from this same `GET` handler; nothing here does it today.
+  - Cards show the proposed instant (`currentDatetime`), not a time range: nothing in the schema stores a meeting's end time until B11 sets `currentDatetime` for real (see B11's own note above) and B6 exists to reason about duration. No duration was invented to fill the gap.
 - [ ] **C5b — Initiate a meeting** — one button; optional date/time/venue and an **occasion note**, but the all-blank case is the default path, not a degraded one.
 - [ ] **C6 — Meeting screen: the three blocks**
   - Acceptance: (1) the proposal with an expandable **"why this suits you"** written for the viewer — **and no comparative cost line** (spec §5.6); (2) **"where it stands"** — progress, one-line summary, every participant with state and timestamp, including those who dropped out; (3) **"what happened so far"** — proposals, rejections and reasons, **which amendment triggered a re-weighing**, and what was passed over.
