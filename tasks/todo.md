@@ -200,9 +200,10 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - **"The same poll closes the amendment batching window" is not wired up yet** — that half needs B11's `runMatchingAgent`/`persistMatchRun` to exist first. Whoever ships B11 calls it from this same `GET` handler; nothing here does it today.
   - Cards show the proposed instant (`currentDatetime`), not a time range: nothing in the schema stores a meeting's end time until B11 sets `currentDatetime` for real (see B11's own note above) and B6 exists to reason about duration. No duration was invented to fill the gap.
 - [x] **C5b — Initiate a meeting** — one button; optional date/time/venue and an **occasion note**, but the all-blank case is the default path, not a degraded one. Merged in #111 (`app/groups/[id]/new/NewMeeting.tsx`). The initiator's own per-meeting context (origin override, mobility windows) mentioned in #41's rationale is deliberately deferred to C7, which builds that control once for every participant.
-- [ ] **C6 — Meeting screen: the three blocks**
+- [x] **C6 — Meeting screen: the three blocks**
   - Acceptance: (1) the proposal with an expandable **"why this suits you"** written for the viewer — **and no comparative cost line** (spec §5.6); (2) **"where it stands"** — progress, one-line summary, every participant with state and timestamp, including those who dropped out; (3) **"what happened so far"** — proposals, rejections and reasons, **which amendment triggered a re-weighing**, and what was passed over.
   - Verify: two accounts see two different personal justifications; neither is told what the proposal cost them relative to an alternative; the dropped-out participant is still listed
+  - Merged in #113 (`app/meetings/[id]/MeetingDetail.tsx`, `lib/db/meeting-detail.ts`, `GET /api/meetings/[id]`). No meeting has a real `MatchRun` yet (B11 hasn't shipped) — the proposal block shows "no proposal yet" until then.
 - [ ] **C7 — The three response controls**
   - Acceptance: approve · "I can't make it" · "something here doesn't work for me" · **"my situation tonight is different"**. The third opens free text and shows the remaining cycle count; the fourth opens the per-meeting context form.
   - Verify: **only "something doesn't work" decrements the cycle counter** — neither "I can't make it" nor an amendment does
