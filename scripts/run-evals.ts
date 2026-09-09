@@ -38,7 +38,7 @@ import {
   checkChosenPair,
   type ConstraintInput,
 } from "@/lib/matching/constraints";
-import { isRateLimited, retryDelayMs } from "@/lib/llm/client";
+import { isOverloaded, isRateLimited, retryDelayMs } from "@/lib/llm/client";
 import { describeTotal, totalCost, type Cost } from "@/lib/llm/cost";
 
 /* -------------------------------------------------------------------------
@@ -116,6 +116,32 @@ function countViolations(input: MatchAgentInput, draft: MatchRunDraft): number {
 /** Set on a rate limit, which ends the sweep — a partial table beats a crash. */
 let stopped: string | null = null;
 
+/**
+ * Milliseconds between calls. The free tier limits requests per *minute* as
+ * well as per day (spec §6.4), and a sweep that fires five in a row trips the
+ * first without going near the second — which is how the second run lost three
+ * scenarios to "high demand" before hitting a real quota wall.
+ */
+const PACE_MS = Number(process.env.EVAL_PACE_MS ?? 20_000);
+
+/** How many times a transient refusal is worth retrying before giving up. */
+const RETRIES = 3;
+
+/**
+ * The longest wait worth sitting through.
+ *
+ * A rate limit comes in two sizes and the API distinguishes them for us: the
+ * per-*minute* window says "retry in 16s" and is simply the pace this tier
+ * runs at, while the per-*day* cap either gives no delay or gives one measured
+ * in hours. Waiting out the first is how a free-tier sweep completes at all;
+ * waiting out the second means blocking until tomorrow, so the sweep stops and
+ * says so instead.
+ */
+const MAX_WAIT_MS = 90_000;
+
+const pause = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 const outDir =
   replayDir ??
   join("evals", "runs", new Date().toISOString().replace(/[:.]/g, "-"));
@@ -144,6 +170,43 @@ async function answerFor(
   return { draft, cost: call.cost, ms: call.ms };
 }
 
+/**
+ * Retry a transient refusal, never a quota.
+ *
+ * "The model is busy" clears in seconds; "you are out of allowance" does not,
+ * and retrying it burns the very window it is asking us to wait for. So an
+ * overload is waited out and tried again, and a rate limit is raised at once
+ * for `run` to end the sweep on.
+ */
+async function withRetries<T>(attempt: () => Promise<T>): Promise<T> {
+  for (let tries = 0; ; tries += 1) {
+    try {
+      return await attempt();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const busy = isOverloaded(message);
+      const asked = retryDelayMs(message);
+
+      // An overload clears on its own; a short rate-limit delay is the tier's
+      // own pace, and the API has just told us what it is. Anything else — a
+      // daily cap, or a limit with no delay attached — is not a wait, it is a
+      // stop, and `run` reports it as one.
+      const delay = busy
+        ? (asked ?? (tries + 1) * PACE_MS)
+        : isRateLimited(message) && asked !== null && asked <= MAX_WAIT_MS
+          ? asked + 2_000
+          : null;
+
+      if (delay === null || tries >= RETRIES) throw error;
+
+      console.log(
+        `  … ${busy ? "busy" : "pacing"}, waiting ${Math.round(delay / 1000)}s (attempt ${tries + 2} of ${RETRIES + 1})`
+      );
+      await pause(delay);
+    }
+  }
+}
+
 async function run(scenario: Scenario): Promise<Row> {
   const classification = classify(scenario);
   if (classification !== "scored" && !includeBlocked) {
@@ -169,7 +232,9 @@ async function run(scenario: Scenario): Promise<Row> {
   const input = scenarioAgentInput(scenario);
 
   try {
-    const { draft, cost, ms } = await answerFor(scenario, input);
+    const { draft, cost, ms } = await withRetries(() =>
+      answerFor(scenario, input)
+    );
     const verdict: Verdict = judge(scenario, draft);
     return {
       scenario,
@@ -188,8 +253,8 @@ async function run(scenario: Scenario): Promise<Row> {
       error instanceof Error && error.name === "HardConstraintError" ? 1 : 0;
 
     if (isRateLimited(message)) {
-      const wait = retryDelayMs(message);
-      stopped = `rate limited${wait ? ` — the API asked for ${Math.round(wait / 1000)}s` : ""}`;
+      const asked = retryDelayMs(message);
+      stopped = `rate limited${asked ? ` — the API asked for ${Math.round(asked / 1000)}s` : ""}`;
     }
     return {
       scenario,
@@ -239,9 +304,13 @@ function print(rows: Row[]): void {
     );
   }
 
-  const scored = rows.filter(
-    (row) => row.cost !== undefined || row.state === "error"
-  );
+  // Scored means an answer came back and was judged. A call that never
+  // returned one was not measured, and folding it into the denominator would
+  // report the model as wrong when the API had simply said "later".
+  const scored = rows.filter((row) => row.cost !== undefined);
+  const unreached = rows.filter(
+    (row) => row.state === "error" && row.cost === undefined
+  ).length;
   const passed = rows.filter((row) => row.state === "pass").length;
   const rate = scored.length ? Math.round((passed / scored.length) * 100) : 0;
   const violations = rows.reduce((sum, row) => sum + row.violations, 0);
@@ -257,8 +326,9 @@ function print(rows: Row[]): void {
   // when four cannot run would be a number that means nothing.
   console.log(
     `\n${scored.length} scored · ${passed} passed (${rate}%)` +
-      aside("blocked", replayDir ? "not scored" : "blocked (B6, A12)") +
-      aside("deferred", "deferred (A7/A8)")
+      aside("blocked", replayDir ? "not scored" : "blocked (A12)") +
+      aside("deferred", "deferred (A7/A8)") +
+      (unreached ? ` · ${unreached} no answer` : "")
   );
   console.log(
     `${costs.length ? describeTotal(totalCost(costs)) : "no cost"} · ${(ms / 1000).toFixed(1)}s · ${violations} hard-constraint violations\n`
@@ -296,7 +366,10 @@ async function main() {
       });
       continue;
     }
-    rows.push(await run(scenario));
+    const row = await run(scenario);
+    rows.push(row);
+    // Only a real call needs pacing, and only if another one follows.
+    if (!replayDir && row.ms !== undefined && !stopped) await pause(PACE_MS);
   }
 
   print(rows);

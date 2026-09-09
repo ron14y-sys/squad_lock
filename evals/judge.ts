@@ -11,7 +11,7 @@
  * why it is a separate file from the runner.
  */
 
-import { needsTrim, type Scenario } from "./adapter";
+import { type Scenario } from "./adapter";
 import type { MatchRunDraft } from "@/lib/matching/agent";
 import { APP_TIME_ZONE } from "@/lib/types";
 
@@ -24,33 +24,34 @@ import { APP_TIME_ZONE } from "@/lib/types";
  * depends on has not been built, so a wrong answer here measures the gap and
  * not the model.
  *
- * Three scenarios are waiting on three different stages:
+ * | Scenario   | Waiting on           | Because                                            |
+ * | ---------- | -------------------- | -------------------------------------------------- |
+ * | `04`       | A12 Context Resolver | leximin on a bare straight line picks the other venue |
+ * | `07`, `08` | A7 + A8              | `expected` is the proposal *after* a rejection     |
  *
- * | Scenario                 | Waiting on          | Because                                            |
- * | ------------------------ | ------------------- | -------------------------------------------------- |
- * | `03`, `05`               | B6                  | the meeting must shorten to fit the venue          |
- * | `04`                     | A12 Context Resolver | leximin on a bare straight line picks the other venue |
- * | `07`, `08`               | A7 + A8             | `expected` is the proposal *after* a rejection     |
+ * **`03` and `05` used to be here too**, waiting on the trimming. The adapter
+ * now trims, so they are scored — and `05` is the one that mattered most: its
+ * agreed answer was being filtered out entirely while a *different* venue
+ * survived and was proposed. A missing stage reported as a bad model is the
+ * expensive kind of wrong.
  *
- * `04` is the one that is easy to get wrong, because it produces a legal,
- * plausible, **wrong** answer rather than an obviously missing one. Its own
- * `expected.reasoning` says so outright: _"a naive straight-line-only
+ * `04` is the one that is still easy to get wrong, because it produces a
+ * legal, plausible, **wrong** answer rather than an obviously missing one. Its
+ * own `expected.reasoning` says so outright: _"a naive straight-line-only
  * implementation is expected to get this one wrong; that gap is exactly what
- * this scenario measures."_ Counting it as a model failure would report a
- * missing stage as a bad model — the expensive kind of wrong `needsTrim`'s
- * comment already warns about.
+ * this scenario measures."_
  *
- * **Derived, never listed.** `trap` names the stage a scenario exercises and
- * `needsTrim` reads the fixture's own numbers, so a scenario added tomorrow is
- * classified by rule. When a stage lands, its scenarios become `scored` with
- * no edit here.
+ * **Derived, never listed.** `trap` names the stage a scenario exercises, so a
+ * scenario added tomorrow is classified by rule. When a stage lands, its
+ * scenarios become `scored` with no edit here — which is exactly what just
+ * happened to `03` and `05`.
  */
 export type Classification = "scored" | "blocked" | "deferred";
 
 export function classify(scenario: Scenario): Classification {
   if (scenario.trap === "rejection-loop") return "deferred";
   if (scenario.trap === "semantic-geography") return "blocked";
-  return needsTrim(scenario) ? "blocked" : "scored";
+  return "scored";
 }
 
 /** Which missing stage, in the words the table prints. */

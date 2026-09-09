@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { instantOf, loadScenario, scenarioAgentInput } from "@/evals/adapter";
+import {
+  instantOf,
+  loadScenario,
+  loadScenarios,
+  needsTrim,
+  scenarioAgentInput,
+} from "@/evals/adapter";
+import { expectedPlaceId } from "@/evals/judge";
 import {
   MINIMUM_MEETING_MINUTES,
   meetsMinimumLength,
@@ -199,5 +206,50 @@ describe("hours that are not known", () => {
         .map(reads)
         .sort()
     ).toEqual(["12:00–16:00", "18:00–23:00"]);
+  });
+});
+
+describe("the adapter now trims, so the pipeline offers the agreed hours", () => {
+  /**
+   * The end-to-end guard, with no model and no request.
+   *
+   * `needsTrim` is true for exactly the scenarios whose agreed answer states a
+   * window narrower than the one the group was free for. Before the wiring
+   * those were unreachable — and in `05` and `07` the agreed venue was
+   * filtered out altogether while a *different* one survived and was proposed,
+   * which is a missing stage arriving as a confident wrong answer.
+   *
+   * This asserts the fixture's own `expected` is now on the table: the right
+   * venue, at the right hours, among the pairs the agent is offered.
+   */
+  it("every scenario that needs trimming can now reach its expected pair", () => {
+    const trimmed = loadScenarios().filter(needsTrim);
+    expect(trimmed.map((s) => s.id)).toEqual([
+      "mobility-window-trap",
+      "no-perfect-solution-diet-conflict",
+      "rejection-loop-noise",
+    ]);
+
+    for (const scenario of trimmed) {
+      const offered = scenarioAgentInput(scenario).viable.filter(
+        (pair) => pair.candidatePlaceId === expectedPlaceId(scenario)
+      );
+
+      expect(
+        offered.map((pair) => reads(pair.slot)),
+        `${scenario.id} must offer ${scenario.expected.venue}`
+      ).toContain(
+        `${scenario.expected.time!.start}–${scenario.expected.time!.end}`
+      );
+    }
+  });
+
+  it("02 is still dropped, which is what stops trimming meaning 'never drop'", () => {
+    const offered = scenarioAgentInput(
+      loadScenario("closed-on-the-night-trap")
+    ).viable.map((pair) => pair.candidatePlaceId);
+
+    expect(offered).not.toContain("place-02-anna-loulou");
+    expect(offered).toContain("place-02-port-said");
   });
 });
