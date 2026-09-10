@@ -139,4 +139,10 @@ The demo is not a test and nothing in the app imports it. It needs `tsx`, which 
 - **No dedupe and no shortlist assembly.** B7c owns the funnel; A2 is one stage inside it.
 - **No opinion on `stuck`.** When nothing survives, `filterPairs` returns an empty `viable` and a full `dropped` with every reason. Turning that into a status is A8's.
 
+## Added later: the trimming lives here too
+
+`trimPairToViableSlots` was added to this file after A5's first sweep showed the missing stage was silently proposing wrong venues. It is in `constraints.ts` rather than a file of its own because it needs the same weekly-axis conversion `windowsCoverSlot` does, and putting it anywhere else would have meant exporting that machinery or writing a second copy of it.
+
+It does not change anything above. Trimming decides how long an evening is; `checkPair` then rules on whether that evening is legal, `windowsCoverSlot` included — the order matters and there is a test for it. See [slot-trimming.md](slot-trimming.md).
+
 `dropped` is kept rather than discarded because a run is persisted in full ([§4.1d](../spec.md)), and because "nothing survived" has to be explainable to a person rather than shown as an empty list.
