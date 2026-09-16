@@ -1,7 +1,7 @@
 # A5 — Eval runner
 
 **Task:** A5 ([tasks/todo.md](../../tasks/todo.md)) · **Plan:** [tasks/a5-plan.md](../../tasks/a5-plan.md) · **Inherits:** A4
-**Status:** complete. `evals/judge.ts`, `scripts/run-evals.ts`, `__tests__/eval-judge.test.ts`. 8 new tests, plus one live sweep against a real model.
+**Status:** complete. `evals/judge.ts`, `evals/sweep.ts`, `scripts/run-evals.ts`, `__tests__/eval-judge.test.ts`, `__tests__/eval-sweep.test.ts`. The judge, the classification, the violation count, the pass rate, the cost total and the exit code are all tested with no key, plus live runs against a real model: every scenario that can be scored today has been measured, **5 of 5 passed**.
 
 ---
 
@@ -18,41 +18,52 @@ npm run eval -- --replay <dir>   # re-judge a recorded sweep. No key, no quota
 npm run eval -- --include-blocked
 ```
 
-## The sweeps, 9 Sep 2026
+## The sweeps
 
-**Before the trimming landed** — three scored, three passed, zero violations,
-$0.0092, 12–23s per scenario. Five scenarios waited on a stage.
+**9 Sep 2026, before the trimming landed** — three scored, three passed, zero
+violations, $0.0092, 12–23s per scenario. Five scenarios waited on a stage.
 
-**After the trimming landed**, `03` and `05` became scorable, and the free tier
-ran out before they could be measured:
+**9 Sep 2026, after the trimming landed**, `03` and `05` became scorable, and
+the free tier ran out before they could be measured. **16 Sep 2026** measured
+exactly those two — two requests, no retries — and nothing else:
 
-| Scenario                               | Verdict      | Cost      | Time  |
-| -------------------------------------- | ------------ | --------- | ----- |
-| `01-hard-constraint-trap`              | **PASS**     | $0.002900 | 6.9s  |
-| `02-closed-on-the-night-trap`          | **PASS**     | $0.002099 | 6.0s  |
-| `03-mobility-window-trap`              | _pending_    | —         | —     |
-| `04-semantic-geography-trap`           | BLOCKED, A12 | —         | —     |
-| `05-no-perfect-solution-diet-conflict` | _pending_    | —         | —     |
-| `06-no-perfect-solution-dispersed`     | **PASS**     | $0.005055 | 22.9s |
-| `07`, `08`                             | DEFERRED     | —         | —     |
+| Scenario                               | Verdict      | Cost      | Time  | Measured |
+| -------------------------------------- | ------------ | --------- | ----- | -------- |
+| `01-hard-constraint-trap`              | **PASS**     | $0.002900 | 6.9s  | 9 Sep    |
+| `02-closed-on-the-night-trap`          | **PASS**     | $0.002099 | 6.0s  | 9 Sep    |
+| `03-mobility-window-trap`              | **PASS**     | $0.005292 | 8.1s  | 16 Sep   |
+| `04-semantic-geography-trap`           | BLOCKED, A12 | —         | —     | —        |
+| `05-no-perfect-solution-diet-conflict` | **PASS**     | $0.005666 | 11.9s | 16 Sep   |
+| `06-no-perfect-solution-dispersed`     | **PASS**     | $0.005055 | 22.9s | 9 Sep    |
+| `07`, `08`                             | DEFERRED     | —         | —     | —        |
 
-**Four scored, three passed, zero hard-constraint violations.** `06`'s figure is
-from the earlier sweep and still counts: replaying that recording under the
-trimmed code re-validates the answer, which proves the model saw an identical
-input. `03` and `05` are the only two the trimming actually changed, and they
-are exactly the two the quota kept us from.
+**Five scored, five passed, zero hard-constraint violations. $0.021 in all.**
 
-**What is already known about the two pending ones**, from the deterministic
-column alone: both now offer the agreed answer, ranked **first** by leximin —
-`03` Bicicletta at 20:00–23:00, `05` HaKosem Kerem at 19:30–22:30. Before the
-trimming, `05`'s agreed answer was not on the list at all. What is untested is
-whether the model overrules leximin, and both now carry a real temptation to:
-the wrong option is the **longer evening** in both cases, and in `05` it is
-better rated as well (4.4 against 3.7).
+Not one sweep, and it does not need to be. `01` and `02` ran under the trimmed
+code on 9 Sep. `06`'s figure is from the first sweep and still counts: replaying
+that recording under the trimmed code re-validates the answer, which proves the
+model saw an identical input. Re-running any of the three would have spent
+quota to learn nothing new.
 
-**Durations, against spec §12's 20-second target:** 6.0s, 6.9s, 22.9s, and
-12.2s/16.1s from the first sweep. A4's single earlier sample was ~45s, which now
-looks like the tail rather than the middle.
+**What `03` and `05` settled.** Before the run, the deterministic column already
+showed both offering the agreed answer ranked **first** by leximin — `03`
+Bicicletta at 20:00–23:00, `05` HaKosem Kerem at 19:30–22:30. Before the
+trimming, `05`'s agreed answer was not on the list at all. What was untested is
+whether the model would overrule leximin, and both carried a real temptation
+to: the wrong option is the **longer evening** in both cases (`03` Herzl 16 at
+18:00–23:00, `05` Nanuchka Kosher at 19:30–23:00), and in `05` it is better
+rated as well (4.4 against 3.7). **It did not.** Both answers are the agreed
+venue at the agreed hours, with the longer evening as rank 2 — the judge checks
+the hours as well as the venue, so this is not a venue match alone.
+
+**Durations, against spec §12's 20-second target:** 6.0s, 6.9s, 8.1s, 11.9s,
+22.9s, and 12.2s/16.1s from the first sweep. One of seven samples is over. A4's
+single earlier sample was ~45s, which now looks like the tail rather than the
+middle.
+
+**Five samples is still a thin measurement** — one run per scenario, with no
+second run to show whether an answer is stable. It is what the free tier buys,
+and it is stated here rather than rounded up into §12's "≥ 80%".
 
 ## What the sweeps taught the runner
 
@@ -78,7 +89,7 @@ evidence for §13 item 17 rather than an opinion about it.
 
 ## The decisions
 
-### 1. Five scenarios are not failures, and one of them is not obvious
+### 1. Scenarios waiting on a stage are not failures, and one of them is not obvious
 
 A wrong answer means one of two things — the model chose badly, or a stage that
 would have made the right answer reachable does not exist. Reporting the second
@@ -87,12 +98,14 @@ the pipeline.
 
 | Scenario   | Waiting on               | Because                                               |
 | ---------- | ------------------------ | ----------------------------------------------------- |
-| `03`, `05` | **B6**                   | the meeting must shorten to fit the venue             |
 | `04`       | **A12** Context Resolver | leximin on a bare straight line picks the other venue |
 | `07`, `08` | **A7 + A8**              | `expected` is the proposal _after_ a rejection        |
 
+There were five. `03` and `05` waited on the trimming — the meeting must shorten
+to fit the venue — and became scored when it landed; both passed on 16 Sep.
+
 `04` is the one worth naming, because it does not look like a missing stage.
-The other four produce an obviously absent or filtered answer; `04` produces a
+The others produce an obviously absent or filtered answer; `04` produces a
 **legal, plausible, wrong** one — Shapira Social, which is both nearer the
 worst-off participant on a straight line and the better-rated venue. Its own
 `expected.reasoning` says so outright: _"a naive straight-line-only
@@ -108,8 +121,8 @@ and it is the one this task could most easily have broken.
 
 `classify` reads `trap` and `needsTrim`, both of which are fixture data. A
 hardcoded set of ids would be wrong the moment a scenario is added or a stage
-lands — which is exactly the mistake `needsTrim`'s own comment records. When B6
-ships, `03` and `05` become scored with no edit to A5. So does `04` when A12
+lands — which is exactly the mistake `needsTrim`'s own comment records. When the
+trimming landed, `03` and `05` became scored the same way; `04` does when A12
 does.
 
 ### 3. The runner re-checks the constraints itself
@@ -167,13 +180,15 @@ quietly drop a criterion.
 - **It does not persist a run.** `persistMatchRun` needs a `Meeting` row, and
   no database exists in dev or CI (see A4's ⚠️). The eval path is deliberately
   database-free.
-- **It does not retry a rate limit more than the API asks for.** On
-  `isRateLimited` it takes `retryDelayMs` at face value once, then stops the
-  sweep and prints the partial table. Burning the rest of the day's quota on
-  retries helps nobody.
+- **It does not wait out a daily quota.** A rate limit quoting a short delay
+  (up to 90s) is the per-minute window and is waited out, as is an overload —
+  at most three retries per scenario. One quoting hours, or no delay at all, is
+  the daily cap: the sweep stops and prints the partial table. Burning the rest
+  of the day's quota on retries helps nobody.
 
 ## What the next stage inherits
 
-When B6, A12 or A8 lands, the only work in A5 is deleting a line from
-`classify` — and for A7/A8, teaching the runner to run a second cycle. The
+When A12 lands, the only work in A5 is deleting the `semantic-geography` line
+from `classify`. When A7/A8 land, it is deleting the `rejection-loop` line and
+teaching the runner to run a second cycle. The
 judge, the table, the recording and the violation count are stage-agnostic.

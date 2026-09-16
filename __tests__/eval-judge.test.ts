@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { instantOf, loadScenario, loadScenarios } from "@/evals/adapter";
 import {
+  blockedReason,
   classify,
   expectedPlaceId,
   judge,
@@ -72,6 +73,23 @@ describe("classify", () => {
       "rejection-loop-noise": "deferred",
       "rejection-loop-budget": "deferred",
     });
+  });
+});
+
+describe("blockedReason", () => {
+  it("names the missing stage for every scenario that is not scored", () => {
+    expect(blockedReason(loadScenario("semantic-geography-trap"))).toBe(
+      "needs A12"
+    );
+    expect(blockedReason(loadScenario("rejection-loop-noise"))).toBe(
+      "needs A7/A8"
+    );
+  });
+
+  it("raises on a scored scenario rather than inventing a stage", () => {
+    expect(() => blockedReason(loadScenario("mobility-window-trap"))).toThrow(
+      /is scored, not blocked/
+    );
   });
 });
 
