@@ -1,7 +1,7 @@
 # A6 — Per-participant justification quality: plan
 
 **Task:** A6 ([tasks/todo.md](todo.md)) · **Depends on:** A4 (done) · **Hands over to:** B11 (decides who is "confirmed"), C6 (shows the justification)
-**Status:** built. Part 2 first, then part 1.
+**Status:** built, in [PR #120](https://github.com/ron14y-sys/squad_lock/pull/120). Part 2 first, then part 1. Decisions: [docs/decisions/justification-quality.md](../docs/decisions/justification-quality.md).
 
 Two decisions were taken before this plan was written (16 Sep 2026):
 
