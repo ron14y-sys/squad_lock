@@ -259,6 +259,12 @@ export type ViolationKind =
   | "busy"
   /** No mobility mode at all at that hour — the binary half of §5.4. */
   | "immobile"
+  /**
+   * Open, and reachable at no hour of this window that is long enough to be
+   * worth proposing. The continuous half of §5.4, and the reason a pair can
+   * vanish without any single hour being illegal.
+   */
+  | "out_of_reach"
   | "dietary"
   | "allergy";
 
@@ -988,4 +994,97 @@ function everyoneCanReach(segment: TimeSlot, input: TrimInput): boolean {
     const distance = input.distanceKm[participant.userId];
     return distance === undefined || distance <= cap;
   });
+}
+
+/**
+ * Trim first, then filter — the whole of B6's `(venue, slot)` derivation.
+ *
+ * `filterPairs` asks whether a *given* slot is legal. This asks the question
+ * the pipeline actually has: given the group's free windows, which
+ * `(venue, slot)` pairs exist at all? Each candidate is narrowed to the hours
+ * it can host before it is judged, so a venue that closes early is offered at
+ * the hours it is open rather than dropped.
+ *
+ * **Per candidate, not once for everybody.** A slot trimmed to one venue's
+ * hours is not a slot another venue was ever offered at, so each candidate is
+ * filtered against its own trimmed windows. Running one merged slot list past
+ * every candidate would invent pairs nobody derived.
+ *
+ * A pair the trimming empties is reported as dropped with a real reason —
+ * `checkPair`'s own finding where there is one (`closed` when the venue is
+ * shut for the whole window), and `out_of_reach` when every hour was legal but
+ * nobody could get there, which is the case no single-slot check can see.
+ */
+export function filterTrimmedPairs(
+  input: ConstraintInput,
+  distanceKm: (candidate: Candidate) => Readonly<Record<string, Kilometres>>,
+  minimumMinutes: number = MINIMUM_MEETING_MINUTES
+): FilterResult {
+  const viable: ViablePair[] = [];
+  const dropped: PairCheck[] = [];
+
+  for (const candidate of input.candidates) {
+    const facts = input.venueFacts?.[candidate.placeId];
+    const distances = distanceKm(candidate);
+
+    for (const slot of input.slots) {
+      const trimmed = trimPairToViableSlots({
+        slot,
+        candidate,
+        participants: input.participants,
+        distanceKm: distances,
+        minimumMinutes,
+      });
+
+      if (trimmed.length === 0) {
+        dropped.push(
+          emptyTrimCheck(candidate, slot, input.participants, facts)
+        );
+        continue;
+      }
+
+      for (const piece of trimmed) {
+        const check = checkPair(candidate, piece, input.participants, facts);
+        if (check.violations.length > 0) dropped.push(check);
+        else {
+          viable.push({
+            candidatePlaceId: check.candidatePlaceId,
+            slot: check.slot,
+            unverified: check.unverified,
+          });
+        }
+      }
+    }
+  }
+
+  return { viable, dropped };
+}
+
+/**
+ * Why nothing survived the trimming.
+ *
+ * `checkPair` on the untrimmed window usually says it — a venue shut for the
+ * whole evening is `closed`. When it says nothing, the window was legal at
+ * every hour and the narrowing was reach: somebody could not get there, which
+ * is a fact about the pair and not about any one hour in it.
+ */
+function emptyTrimCheck(
+  candidate: Candidate,
+  slot: TimeSlot,
+  participants: Participant[],
+  facts: VenueDietaryFacts | undefined
+): PairCheck {
+  const check = checkPair(candidate, slot, participants, facts);
+  if (check.violations.length > 0) return check;
+
+  return {
+    ...check,
+    violations: [
+      {
+        kind: "out_of_reach",
+        candidatePlaceId: candidate.placeId,
+        detail: `no stretch of ${describeSlot(slot)} is long enough and within everyone's reach of ${candidate.name}`,
+      },
+    ],
+  };
 }

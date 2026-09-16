@@ -58,16 +58,16 @@ describe("classify", () => {
       loadScenarios().map((scenario) => [scenario.id, classify(scenario)])
     ) as Record<string, Classification>;
 
-    // 02 is scored despite being a closing-hours trap: an *empty* intersection
-    // is what it asserts, and A2 already produces that without B6. 04 is
-    // blocked despite needing no trimming: its own reasoning says a
-    // straight-line-only engine is expected to pick the other venue.
+    // 03 and 05 became scored the moment the adapter started trimming — the
+    // rule reads `trap`, so no edit was needed here. 04 stays blocked despite
+    // needing no trimming: its own reasoning says a straight-line-only engine
+    // is expected to pick the other venue.
     expect(actual).toEqual({
       "hard-constraint-trap": "scored",
       "closed-on-the-night-trap": "scored",
-      "mobility-window-trap": "blocked",
+      "mobility-window-trap": "scored",
       "semantic-geography-trap": "blocked",
-      "no-perfect-solution-diet-conflict": "blocked",
+      "no-perfect-solution-diet-conflict": "scored",
       "no-perfect-solution-dispersed-group": "scored",
       "rejection-loop-noise": "deferred",
       "rejection-loop-budget": "deferred",

@@ -35,9 +35,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ALL_WEEKDAYS, filterPairs } from "@/lib/matching/constraints";
+import { ALL_WEEKDAYS, filterTrimmedPairs } from "@/lib/matching/constraints";
 import type { VenueDietaryFacts } from "@/lib/matching/constraints";
-import { rankViable } from "@/lib/matching/distance";
+import { originOf, rankViable, straightLineKm } from "@/lib/matching/distance";
 import type { MatchAgentInput } from "@/lib/matching/agent";
 import { APP_TIME_ZONE } from "@/lib/types";
 import type {
@@ -347,7 +347,20 @@ export function scenarioAgentInput(
   const slots = slotsOf(scenario);
   const venueFacts = venueFactsOf(scenario);
 
-  const filtered = filterPairs({ candidates, participants, slots, venueFacts });
+  // Trim first: each candidate is narrowed to the hours it can actually host
+  // before it is judged, so a venue that closes early is offered at the hours
+  // it is open rather than dropped. This is the call B6 will make from the
+  // calendar side; the adapter makes it from the fixture side.
+  const filtered = filterTrimmedPairs(
+    { candidates, participants, slots, venueFacts },
+    (candidate) =>
+      Object.fromEntries(
+        participants.map((participant) => [
+          participant.userId,
+          straightLineKm(originOf(participant), candidate.location),
+        ])
+      )
+  );
 
   return {
     meetingId: `eval-${scenario.id}`,

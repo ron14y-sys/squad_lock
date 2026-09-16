@@ -18,32 +18,63 @@ npm run eval -- --replay <dir>   # re-judge a recorded sweep. No key, no quota
 npm run eval -- --include-blocked
 ```
 
-## The first live sweep, 9 Sep 2026
+## The sweeps, 9 Sep 2026
 
-```
-scenario                             verdict   cost        dur      cycles  viol
-hard-constraint-trap                 PASS      $0.002326   16.1s    1       0
-closed-on-the-night-trap             PASS      $0.001866   12.2s    1       0
-mobility-window-trap                 BLOCKED   —           —        —       0     needs B6
-semantic-geography-trap              BLOCKED   —           —        —       0     needs A12
-no-perfect-solution-diet-conflict    BLOCKED   —           —        —       0     needs B6
-no-perfect-solution-dispersed-group  PASS      $0.005055   22.9s    1       0
-rejection-loop-noise                 DEFERRED  —           —        —       0     needs A7/A8
-rejection-loop-budget                DEFERRED  —           —        —       0     needs A7/A8
+**Before the trimming landed** — three scored, three passed, zero violations,
+$0.0092, 12–23s per scenario. Five scenarios waited on a stage.
 
-3 scored · 3 passed (100%) · 3 blocked (B6, A12) · 2 deferred (A7/A8)
-$0.009247 · 51.2s · 0 hard-constraint violations
-```
+**After the trimming landed**, `03` and `05` became scorable, and the free tier
+ran out before they could be measured:
 
-**Read the denominator, not the percentage.** Three of eight scenarios can be
-scored today, and 100% of three is a thin measurement. It is also the first
-real one there has been. Spec §12's target — ≥ 80% with zero violations — is
-met on what can be measured, and five scenarios are waiting on three stages.
+| Scenario                               | Verdict      | Cost      | Time  |
+| -------------------------------------- | ------------ | --------- | ----- |
+| `01-hard-constraint-trap`              | **PASS**     | $0.002900 | 6.9s  |
+| `02-closed-on-the-night-trap`          | **PASS**     | $0.002099 | 6.0s  |
+| `03-mobility-window-trap`              | _pending_    | —         | —     |
+| `04-semantic-geography-trap`           | BLOCKED, A12 | —         | —     |
+| `05-no-perfect-solution-diet-conflict` | _pending_    | —         | —     |
+| `06-no-perfect-solution-dispersed`     | **PASS**     | $0.005055 | 22.9s |
+| `07`, `08`                             | DEFERRED     | —         | —     |
 
-**Durations, against spec §12's 20-second target:** 12.2s, 16.1s, 22.9s. A4's
-single sample was ~45s, which now looks like the tail rather than the middle.
-Three samples do not settle it either, but F2's spread is starting to have
-company.
+**Four scored, three passed, zero hard-constraint violations.** `06`'s figure is
+from the earlier sweep and still counts: replaying that recording under the
+trimmed code re-validates the answer, which proves the model saw an identical
+input. `03` and `05` are the only two the trimming actually changed, and they
+are exactly the two the quota kept us from.
+
+**What is already known about the two pending ones**, from the deterministic
+column alone: both now offer the agreed answer, ranked **first** by leximin —
+`03` Bicicletta at 20:00–23:00, `05` HaKosem Kerem at 19:30–22:30. Before the
+trimming, `05`'s agreed answer was not on the list at all. What is untested is
+whether the model overrules leximin, and both now carry a real temptation to:
+the wrong option is the **longer evening** in both cases, and in `05` it is
+better rated as well (4.4 against 3.7).
+
+**Durations, against spec §12's 20-second target:** 6.0s, 6.9s, 22.9s, and
+12.2s/16.1s from the first sweep. A4's single earlier sample was ~45s, which now
+looks like the tail rather than the middle.
+
+## What the sweeps taught the runner
+
+Two defects in this file, both found by running it rather than by reading it:
+
+1. **A transient overload was recorded as a model failure.** `isRateLimited`
+   matches `quota|RESOURCE_EXHAUSTED|429`; the model's "currently experiencing
+   high demand" contains none of them, so three scenarios were marked ERROR
+   when the API had simply said "later". `isOverloaded` now sits beside it in
+   `lib/llm/client.ts`, and `withRetries` waits an overload out.
+2. **The pass rate counted scenarios that never produced an answer.** One run
+   printed "4 scored · 1 passed (25%)" when 1 of 1 _attempted_ had passed. The
+   denominator is now scenarios where an answer came back; the rest report as
+   "no answer" and are named separately.
+
+**And the binding limit is not the one the spec names.** §6.4 says 20 requests
+a day; what actually stops a sweep is the **per-minute** window, well inside the
+daily cap. The runner now paces calls (`EVAL_PACE_MS`, 20s) and waits out short
+delays the API itself names — a rate limit that quotes a retry of 16s is this
+tier's pace, while one quoting hours, or none at all, is a stop. That
+distinction is what makes a free-tier sweep completable at all, and it is
+evidence for §13 item 17 rather than an opinion about it.
 
 ## The decisions
 

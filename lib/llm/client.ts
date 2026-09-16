@@ -454,6 +454,20 @@ export function isRateLimited(message: string): boolean {
 }
 
 /**
+ * A transient server-side refusal — the model is busy, not our allowance.
+ *
+ * Distinct from `isRateLimited` because the answer is different: a quota is
+ * spent and waiting only helps at the window roll-over, while an overload
+ * clears on its own in seconds. Reading the second as the first abandons a
+ * sweep that would have succeeded on the next try, which is exactly what
+ * happened to A5's second run — three scenarios recorded as failures when the
+ * model had simply said "later".
+ */
+export function isOverloaded(message: string): boolean {
+  return /high demand|overloaded|UNAVAILABLE|\b503\b|\b500\b/i.test(message);
+}
+
+/**
  * How long the API asked us to wait, in ms, if it said so. Its own number beats
  * any backoff we invent — it knows when the window rolls over.
  */

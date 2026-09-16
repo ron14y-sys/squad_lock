@@ -136,7 +136,7 @@ const input = scenarioAgentInput(loadScenario("hard-constraint-trap"));
 
 It performs only the _spellings_ in the table above; anything a scenario says that the engine cannot express is still a bug in the file. Two things it deliberately does not do:
 
-- **It does not trim a slot to a venue's opening hours** — not yet. `trimPairToViableSlots` now exists, but the adapter does not call it, so the slot is still the group's whole free window and A2 drops any pair the venue cannot cover entirely. Right for `02`, wrong for `03`, `05` and `07`, where the meeting should shorten instead of vanishing — and in `05` and `07` the agreed answer is filtered out while a _different_ venue survives and is proposed, which is the expensive kind of wrong. `needsTrim(scenario)` derives that from the fixture — a scenario states an `expected.time` narrower than the window the group was free for — so A5 can report those separately until the wiring lands.
+- **It trims a slot to the venue's opening hours and everyone's reach**, through `filterTrimmedPairs` — so a venue that closes early is offered at the hours it is open rather than dropped. `needsTrim(scenario)` still derives which scenarios depend on that, and `__tests__/slot-trimming.test.ts` asserts each of them can now reach its expected pair. Before this, `05` and `07` had their agreed answer filtered out entirely while a _different_ venue survived and was proposed.
 - **It does not judge an answer.** A4 checks that an answer is legal; checking it is _right_ against `expected` is A5's, in [`evals/judge.ts`](judge.ts).
 
 ## What happens to these later

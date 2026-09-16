@@ -117,13 +117,17 @@ places that consult it.
 - **The slot left after narrowing** — inside `trimPairToViableSlots`. Too short
   there drops that one pair and nothing else.
 
-## What is still not wired
+## Wired
 
-**`evals/adapter.ts` does not call this yet.** It still hands over the group's
-whole free window, so the eval runner still classifies `03`, `05` and `07` as
-blocked. Wiring it is a small change and a fresh live sweep — deliberately left
-as its own step so the trimming lands on its own evidence, and so the eval
-numbers move in a commit whose only subject is that they moved.
+`evals/adapter.ts` calls it, through `filterTrimmedPairs` — trim each candidate
+to the hours it can host, then filter. `03` and `05` moved from blocked to
+scored the moment it did, with no edit to `classify`, because that rule reads
+`trap` rather than a list.
 
-The pipeline wiring — calendar free/busy in, `(venue, slot)` pairs out — remains
-B6's.
+`__tests__/slot-trimming.test.ts` closes the loop without a model: for every
+scenario `needsTrim` flags, the pipeline now offers the expected venue at the
+expected hours — and `02` is still dropped, which is what stops "the meeting
+shortens" from quietly becoming "we never drop anything".
+
+The pipeline wiring — calendar free/busy in, `(venue, slot)` pairs out —
+remains B6's. It is the same call.
