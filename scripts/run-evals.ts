@@ -8,10 +8,10 @@
  *   npm run eval -- --include-blocked
  *
  * **Quota is the scarcest thing here.** `gemini-3.6-flash` allows 20 requests
- * a day on the free tier (spec §6.4), and four scenarios can be scored today,
- * so a full sweep is four of them. Everything else this file does — judging,
- * counting violations, the table — is built and debugged in `--replay`, which
- * costs nothing.
+ * a day on the free tier (spec §6.4), and five scenarios can be scored today,
+ * so a full sweep is five of them. Everything else — judging (`evals/judge.ts`),
+ * counting violations and totals (`evals/sweep.ts`), the table — is tested
+ * without a key and debugged in `--replay`, which costs nothing.
  *
  * **Not a CI gate.** It spends real requests, and a model's judgement is not a
  * thing to block a pull request on. Spec §12's "≥ 80% of scenarios" is a
@@ -28,16 +28,13 @@ import {
   type Scenario,
 } from "@/evals/adapter";
 import { blockedReason, classify, judge, type Verdict } from "@/evals/judge";
+import { countViolations, exitCode, summarize, type Row } from "@/evals/sweep";
 import {
   interpretAnswer,
   runMatchingAgent,
   type MatchAgentInput,
   type MatchRunDraft,
 } from "@/lib/matching/agent";
-import {
-  checkChosenPair,
-  type ConstraintInput,
-} from "@/lib/matching/constraints";
 import { isOverloaded, isRateLimited, retryDelayMs } from "@/lib/llm/client";
 import { describeTotal, totalCost, type Cost } from "@/lib/llm/cost";
 
@@ -57,57 +54,6 @@ const filters = argv.filter(
 
 const replayDir = value("--replay");
 const includeBlocked = flag("--include-blocked");
-
-/* -------------------------------------------------------------------------
- * One row of the table
- * ---------------------------------------------------------------------- */
-
-type Row = {
-  scenario: Scenario;
-  state: "pass" | "fail" | "error" | "blocked" | "deferred";
-  detail: string;
-  cost?: Cost;
-  ms?: number;
-  violations: number;
-};
-
-/**
- * The post-check, run again by the runner rather than trusted.
- *
- * `runMatchingAgent` already calls `assertChosenPairAllowed` on all three
- * options — but a check that only ever runs inside the thing it is checking is
- * not a check, and this is the one column spec §12 says must be zero. It costs
- * nothing: A2 is pure.
- */
-function countViolations(input: MatchAgentInput, draft: MatchRunDraft): number {
-  const slots = new Map(
-    input.viable.map((pair) => [
-      `${pair.slot.start.toISOString()}/${pair.slot.end.toISOString()}`,
-      pair.slot,
-    ])
-  );
-  const constraintInput: ConstraintInput = {
-    candidates: input.candidates,
-    participants: input.participants,
-    slots: [...slots.values()],
-    venueFacts: input.venueFacts,
-  };
-
-  return draft.options.reduce(
-    (found, option) =>
-      found +
-      checkChosenPair(
-        {
-          // Null cannot be a candidate, so A2 reports it as one — which is
-          // the right answer, not a crash.
-          candidatePlaceId: option.venue.placeId ?? "",
-          slot: { start: option.proposedDatetime, end: option.proposedEnd },
-        },
-        constraintInput
-      ).length,
-    0
-  );
-}
 
 /* -------------------------------------------------------------------------
  * The sweep
@@ -304,37 +250,22 @@ function print(rows: Row[]): void {
     );
   }
 
-  // Scored means an answer came back and was judged. A call that never
-  // returned one was not measured, and folding it into the denominator would
-  // report the model as wrong when the API had simply said "later".
-  const scored = rows.filter((row) => row.cost !== undefined);
-  const unreached = rows.filter(
-    (row) => row.state === "error" && row.cost === undefined
-  ).length;
-  const passed = rows.filter((row) => row.state === "pass").length;
-  const rate = scored.length ? Math.round((passed / scored.length) * 100) : 0;
-  const violations = rows.reduce((sum, row) => sum + row.violations, 0);
-  const costs = rows.flatMap((row) => (row.cost ? [row.cost] : []));
-  const ms = rows.reduce((sum, row) => sum + (row.ms ?? 0), 0);
-
-  const aside = (state: Row["state"], label: string) => {
-    const count = rows.filter((row) => row.state === state).length;
-    return count ? ` · ${count} ${label}` : "";
-  };
+  const total = summarize(rows);
+  const aside = (count: number, label: string) =>
+    count ? ` · ${count} ${label}` : "";
 
   // The denominator is scored scenarios, and it says so. Dividing by eight
-  // when four cannot run would be a number that means nothing.
+  // when three cannot run would be a number that means nothing.
   console.log(
-    `\n${scored.length} scored · ${passed} passed (${rate}%)` +
-      aside("blocked", replayDir ? "not scored" : "blocked (A12)") +
-      aside("deferred", "deferred (A7/A8)") +
-      (unreached ? ` · ${unreached} no answer` : "")
+    `\n${total.scored} scored · ${total.passed} passed (${total.rate}%)` +
+      aside(total.blocked, replayDir ? "not scored" : "blocked (A12)") +
+      aside(total.deferred, "deferred (A7/A8)") +
+      aside(total.unreached, "no answer")
   );
   console.log(
-    `${costs.length ? describeTotal(totalCost(costs)) : "no cost"} · ${(ms / 1000).toFixed(1)}s · ${violations} hard-constraint violations\n`
+    `${total.cost ? describeTotal(total.cost) : "no cost"} · ${(total.ms / 1000).toFixed(1)}s · ${total.violations} hard-constraint violations\n`
   );
-  if (!replayDir && costs.length)
-    console.log(`answers recorded in ${outDir}\n`);
+  if (!replayDir && total.cost) console.log(`answers recorded in ${outDir}\n`);
   if (stopped) console.log(`sweep stopped: ${stopped}\n`);
 }
 
@@ -373,10 +304,7 @@ async function main() {
   }
 
   print(rows);
-
-  const violations = rows.reduce((sum, row) => sum + row.violations, 0);
-  const errored = rows.some((row) => row.state === "error");
-  process.exit(violations > 0 || errored ? 1 : 0);
+  process.exit(exitCode(rows));
 }
 
 main().catch((error) => {

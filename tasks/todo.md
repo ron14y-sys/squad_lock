@@ -96,7 +96,7 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - **`--replay <dir>` re-judges a recorded sweep with no call.** 20 requests a day is the binding constraint on this task, so everything except the measurement was built against a recording. Answers land in `evals/runs/` (gitignored).
   - **Not a CI gate**, deliberately: it spends real quota and a model's judgement is not a thing to block a PR on. The exit code enforces the one hard invariant — non-zero on a violation or an error, never on the pass rate.
   - `cycles` prints 1 for every row until A8 spends one. Spec §12 asks for the column, so it is printed rather than omitted.
-  - Files: `evals/judge.ts`, `scripts/run-evals.ts`, `__tests__/eval-judge.test.ts`
+  - Files: `evals/judge.ts`, `evals/sweep.ts`, `scripts/run-evals.ts`, `__tests__/eval-judge.test.ts`, `__tests__/eval-sweep.test.ts`
 
 - [ ] **A6 — Per-participant justification quality**
   - A4 left this space deliberately empty. It already rejects a justification addressed to somebody **not** in the meeting — only an answer can get that wrong — and leaves the mirror case, a participant left out, entirely to A6 along with its test. The validation hook is `validateOptions` in `lib/matching/agent.ts`.

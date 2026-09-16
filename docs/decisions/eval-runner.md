@@ -1,7 +1,7 @@
 # A5 — Eval runner
 
 **Task:** A5 ([tasks/todo.md](../../tasks/todo.md)) · **Plan:** [tasks/a5-plan.md](../../tasks/a5-plan.md) · **Inherits:** A4
-**Status:** complete. `evals/judge.ts`, `scripts/run-evals.ts`, `__tests__/eval-judge.test.ts`. 8 new tests, plus live runs against a real model: every scenario that can be scored today has been measured, **5 of 5 passed**.
+**Status:** complete. `evals/judge.ts`, `evals/sweep.ts`, `scripts/run-evals.ts`, `__tests__/eval-judge.test.ts`, `__tests__/eval-sweep.test.ts`. The judge, the classification, the violation count, the pass rate, the cost total and the exit code are all tested with no key, plus live runs against a real model: every scenario that can be scored today has been measured, **5 of 5 passed**.
 
 ---
 

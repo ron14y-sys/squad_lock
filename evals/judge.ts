@@ -54,11 +54,21 @@ export function classify(scenario: Scenario): Classification {
   return "scored";
 }
 
-/** Which missing stage, in the words the table prints. */
+/**
+ * Which missing stage, in the words the table prints.
+ *
+ * **Raises on a scored scenario** rather than naming a stage. It used to fall
+ * back to "needs B6", which stayed in place after the trimming landed and
+ * nothing was blocked on B6 any more — a fallback that is never reached is
+ * also never noticed going stale. Asking why a scorable scenario is blocked is
+ * a bug in the caller.
+ */
 export function blockedReason(scenario: Scenario): string {
   if (scenario.trap === "rejection-loop") return "needs A7/A8";
   if (scenario.trap === "semantic-geography") return "needs A12";
-  return "needs B6";
+  throw new Error(
+    `judge: "${scenario.id}" is scored, not blocked — it has no missing stage`
+  );
 }
 
 /* -------------------------------------------------------------------------

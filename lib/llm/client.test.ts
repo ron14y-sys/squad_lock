@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatCallRecord,
   isKnownThinkingLevel,
+  isOverloaded,
   isRateLimited,
   LlmTruncatedError,
   MAX_OUTPUT_TOKENS,
@@ -132,6 +133,27 @@ describe("isRateLimited", () => {
   it("does not mistake an ordinary failure for one", () => {
     expect(isRateLimited("socket hang up")).toBe(false);
     expect(isRateLimited("500 internal error")).toBe(false);
+  });
+});
+
+describe("isOverloaded", () => {
+  // The message A5's second sweep recorded as three model failures. It names
+  // no quota and no 429, so `isRateLimited` alone read it as a real error.
+  const highDemand =
+    "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.";
+
+  it("recognises a busy model as a wait, not a failure", () => {
+    expect(isOverloaded(highDemand)).toBe(true);
+    expect(isOverloaded("503 UNAVAILABLE: The model is overloaded")).toBe(true);
+  });
+
+  it("is a different answer from a rate limit", () => {
+    expect(isRateLimited(highDemand)).toBe(false);
+    expect(isOverloaded("429 RESOURCE_EXHAUSTED: quota exceeded")).toBe(false);
+  });
+
+  it("does not mistake an ordinary failure for one", () => {
+    expect(isOverloaded("socket hang up")).toBe(false);
   });
 });
 
