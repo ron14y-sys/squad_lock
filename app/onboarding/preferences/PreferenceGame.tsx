@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { SoftPreferences } from "@/lib/types";
 
 type Question<K extends keyof SoftPreferences = keyof SoftPreferences> = {
@@ -46,21 +46,34 @@ const BODY_FONT = "var(--font-work-sans)";
 
 export function PreferenceGame({
   onComplete,
+  doneFooter,
 }: {
   onComplete?: (preferences: SoftPreferences) => void;
+  /** Rendered under the closing screen — e.g. a save-status line. */
+  doneFooter?: ReactNode;
 }) {
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Partial<SoftPreferences>>({});
 
   const done = index >= QUESTIONS.length;
 
-  function choose(q: Question, value: SoftPreferences[keyof SoftPreferences]) {
-    const next = { ...answers, [q.key]: value };
+  function advance(next: Partial<SoftPreferences>) {
     setAnswers(next);
     if (index + 1 >= QUESTIONS.length) {
       onComplete?.(next as SoftPreferences);
     }
     setIndex(index + 1);
+  }
+
+  function choose(q: Question, value: SoftPreferences[keyof SoftPreferences]) {
+    advance({ ...answers, [q.key]: value });
+  }
+
+  // Forcing an answer manufactures an opinion nobody holds (#86) — declining
+  // stores nothing for this field rather than a default, so `answers` is
+  // simply left as it was.
+  function skip() {
+    advance(answers);
   }
 
   if (done) {
@@ -81,6 +94,7 @@ export function PreferenceGame({
         >
           נשתמש בזה כדי למצוא מקומות שכל הקבוצה שלך באמת תרצה ללכת אליהם.
         </p>
+        {doneFooter}
       </div>
     );
   }
@@ -170,12 +184,22 @@ export function PreferenceGame({
         </div>
       </div>
 
-      <p
-        style={{ fontFamily: BODY_FONT, color: "rgba(20,22,28,0.55)" }}
-        className="px-7 pb-10 text-center text-[13px]"
-      >
-        לחצו על כרטיס — {QUESTIONS.length} שאלות, פחות מדקה.
-      </p>
+      <div className="flex flex-col items-center gap-2 px-7 pb-10">
+        <p
+          style={{ fontFamily: BODY_FONT, color: "rgba(20,22,28,0.55)" }}
+          className="text-center text-[13px]"
+        >
+          לחצו על כרטיס — {QUESTIONS.length} שאלות, פחות מדקה.
+        </p>
+        <button
+          type="button"
+          onClick={skip}
+          style={{ fontFamily: BODY_FONT, color: "rgba(20,22,28,0.55)" }}
+          className="cursor-pointer text-[13px] underline underline-offset-2"
+        >
+          זה לא משנה לי — דלג
+        </button>
+      </div>
     </div>
   );
 }
