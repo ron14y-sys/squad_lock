@@ -1,5 +1,5 @@
 import { Unbounded, Work_Sans } from "next/font/google";
-import { PreferenceGame } from "./PreferenceGame";
+import { PreferenceGameContainer } from "./PreferenceGameContainer";
 
 const unbounded = Unbounded({
   variable: "--font-unbounded",
@@ -16,7 +16,7 @@ const workSans = Work_Sans({
 export default function PreferencesPage() {
   return (
     <div className={`${unbounded.variable} ${workSans.variable} flex flex-1`}>
-      <PreferenceGame />
+      <PreferenceGameContainer />
     </div>
   );
 }

@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 import { APP_TIME_ZONE } from "@/lib/types/primitives";
+import {
+  MEETING_CARD_STATUS_LABELS,
+  RESPONSE_STATUS_LABELS,
+} from "@/lib/format/hebrew-labels";
 
 type ResponseStatus = "pending" | "approved" | "cant_make_it" | "doesnt_suit";
 
@@ -39,22 +44,6 @@ type LoadState = "loading" | "ready" | "signed-out" | "not-found" | "error";
 
 const OPEN_MEETING_CAP = 3;
 
-const STATUS_LABEL: Record<MeetingCardStatus, string> = {
-  waiting_on_you: "ממתין לך",
-  waiting_on_others: "ממתין לאחרים",
-  reweighing: "משוקלל מחדש",
-  conflicting: "מתנגש עם פגישה אחרת",
-  stuck: "תקוע",
-  closed: "סגור",
-};
-
-const RESPONSE_LABEL: Record<ResponseStatus, string> = {
-  pending: "טרם הגיב",
-  approved: "אישר",
-  cant_make_it: "לא יכול להגיע",
-  doesnt_suit: "לא מתאים לו",
-};
-
 const DATE_FMT = new Intl.DateTimeFormat("he-IL", {
   timeZone: APP_TIME_ZONE,
   day: "2-digit",
@@ -85,7 +74,7 @@ function statusLabel(card: MeetingCard): string {
   if (card.status === "waiting_on_others" && card.waitingOn !== null) {
     return `ממתין לעוד ${card.waitingOn}`;
   }
-  return STATUS_LABEL[card.status];
+  return MEETING_CARD_STATUS_LABELS[card.status];
 }
 
 function summaryLine(card: MeetingCard): string {
@@ -118,7 +107,7 @@ function MeetingAvatars({
       {participants.map((p) => (
         <div
           key={p.userId}
-          title={`${p.name} — ${RESPONSE_LABEL[p.status]}`}
+          title={`${p.name} — ${RESPONSE_STATUS_LABELS[p.status]}`}
           className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${avatarClasses(
             p.status
           )}`}
@@ -134,7 +123,8 @@ function MeetingCardRow({ card }: { card: MeetingCard }) {
   const highlighted = card.status === "waiting_on_you";
 
   return (
-    <div
+    <Link
+      href={`/meetings/${card.id}`}
       className={`flex items-center gap-3 rounded-md border px-3 py-2 ${
         highlighted
           ? "border-indigo-600 dark:border-indigo-400"
@@ -169,14 +159,13 @@ function MeetingCardRow({ card }: { card: MeetingCard }) {
       </div>
 
       <MeetingAvatars participants={card.participants} />
-    </div>
+    </Link>
   );
 }
 
 export function GroupFeed({ groupId }: { groupId: string }) {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [feed, setFeed] = useState<Feed | null>(null);
-  const [initiateNote, setInitiateNote] = useState<string | null>(null);
   // Read by the polling effect without re-running it on every fetch.
   const feedRef = useRef<Feed | null>(null);
 
@@ -296,21 +285,28 @@ export function GroupFeed({ groupId }: { groupId: string }) {
         })}
       </div>
 
-      <button
-        type="button"
-        disabled={atCap}
-        onClick={() => setInitiateNote("פתיחת פגישה חדשה תתאפשר במשימה הבאה.")}
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
-      >
-        פתח פגישה חדשה
-      </button>
+      {atCap ? (
+        <button
+          type="button"
+          disabled
+          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
+        >
+          פתח פגישה חדשה
+        </button>
+      ) : (
+        <Link
+          href={`/groups/${groupId}/new`}
+          className="rounded-md bg-zinc-900 px-4 py-2 text-center text-sm font-medium text-white dark:bg-zinc-50 dark:text-black"
+        >
+          פתח פגישה חדשה
+        </Link>
+      )}
       {atCap && (
         <p className="text-xs text-zinc-500">
           אי אפשר לפתוח פגישה נוספת — יש כבר {OPEN_MEETING_CAP} פגישות פתוחות
           בקבוצה. סגור או השלם אחת מהן כדי לפתוח חדשה.
         </p>
       )}
-      {initiateNote && <p className="text-xs text-zinc-500">{initiateNote}</p>}
     </section>
   );
 }

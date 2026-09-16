@@ -105,7 +105,7 @@ test("disables the initiate button and explains why at the 3-meeting cap", async
   expect(screen.getByText(/אי אפשר לפתוח פגישה נוספת/)).toBeInTheDocument();
 });
 
-test("leaves the initiate button enabled under the cap", async () => {
+test("links the initiate button to the new-meeting page under the cap", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(() =>
@@ -115,8 +115,8 @@ test("leaves the initiate button enabled under the cap", async () => {
 
   render(<GroupFeed groupId="group-1" />);
 
-  const button = await screen.findByRole("button", { name: "פתח פגישה חדשה" });
-  expect(button).not.toBeDisabled();
+  const link = await screen.findByRole("link", { name: "פתח פגישה חדשה" });
+  expect(link).toHaveAttribute("href", "/groups/group-1/new");
 });
 
 test("renders a divider before past meetings", async () => {

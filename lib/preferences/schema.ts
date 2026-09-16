@@ -46,12 +46,18 @@ const hardConstraintsSchema = z.object({
   unavailable: z.array(localWindowSchema),
 });
 
-const softPreferencesSchema = z.object({
-  noiseLevel: z.enum(["lively", "quiet"]),
-  activityStyle: z.enum(["outdoorsy", "cultural"]),
-  budget: z.enum(["modest", "splurge"]),
-  cuisine: z.enum(["familiar", "adventurous"]),
-});
+// Every field optional, mirroring `SoftPreferences` in lib/types/profile.ts
+// (#86): a declined this-or-that question stores nothing for that field
+// rather than a default, so a partial answer set must parse just as cleanly
+// as a full one.
+const softPreferencesSchema = z
+  .object({
+    noiseLevel: z.enum(["lively", "quiet"]),
+    activityStyle: z.enum(["outdoorsy", "cultural"]),
+    budget: z.enum(["modest", "splurge"]),
+    cuisine: z.enum(["familiar", "adventurous"]),
+  })
+  .partial();
 
 /** Neighbourhood granularity, never a street address (spec §5.4). */
 const latLngSchema = z.object({
