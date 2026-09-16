@@ -143,13 +143,12 @@ It performs only the _spellings_ in the table above; anything a scenario says th
 
 **A5 is built.** `npm run eval` reads every file in this folder, runs the real engine against each one, and reports pass rate, cost, duration, cycles and hard-constraint violations. Nothing in this folder changed when that happened — these are answers, not implementation, which is what makes them useful as a check on the engine rather than a description of it.
 
-**The first live sweep, 9 Sep 2026: 3 scored, 3 passed, 0 hard-constraint violations.** Full table in [docs/decisions/eval-runner.md](../docs/decisions/eval-runner.md).
+**Measured as of 16 Sep 2026: 5 scored, 5 passed, 0 hard-constraint violations** — `01`, `02`, `03`, `05`, `06`, one live run each. Full table in [docs/decisions/eval-runner.md](../docs/decisions/eval-runner.md).
 
-**Five of the eight are waiting on a stage rather than on the model**, and the runner reports them as such rather than counting them as failures:
+**Three of the eight are waiting on a stage rather than on the model**, and the runner reports them as such rather than counting them as failures. There were five: `03` and `05` waited on the meeting shortening to fit the venue, and became scored when the trimming landed.
 
 | Scenario   | Waiting on               | Because                                               |
 | ---------- | ------------------------ | ----------------------------------------------------- |
-| `03`, `05` | **B6**                   | the meeting must shorten to fit the venue             |
 | `04`       | **A12** Context Resolver | leximin on a bare straight line picks the other venue |
 | `07`, `08` | **A7 + A8**              | `expected` is the proposal _after_ a rejection        |
 

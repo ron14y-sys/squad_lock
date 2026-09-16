@@ -1,7 +1,15 @@
 # A5 — Eval runner: plan
 
-**Task:** A5 ([tasks/todo.md](todo.md)) · **Depends on:** A4 (done) · **Waiting on:** B6, A7/A8
-**Status:** built. See [docs/decisions/eval-runner.md](../docs/decisions/eval-runner.md).
+**Task:** A5 ([tasks/todo.md](todo.md)) · **Depends on:** A4 (done) · **Waiting on:** A12, A7/A8
+**Status:** built and measured. See [docs/decisions/eval-runner.md](../docs/decisions/eval-runner.md).
+
+> **Changed after building, 16 Sep 2026 — `03` and `05` are scored, and passed.**
+> The trimming (#105) landed and the eval adapter calls it (#106), so both left
+> "blocked" with no edit to their fixtures. Measured with two requests: `03`
+> Bicicletta 20:00–23:00, `05` HaKosem Kerem 19:30–22:30, both as agreed.
+> **Five scored, five passed.** The table and "Known, and accepted" below are
+> the plan as written, kept for the record; the current numbers are in the
+> decisions doc.
 
 > **Changed while building, 9 Sep 2026 — scenario `04` is blocked too.**
 > The plan called it scored. The first live sweep failed it, and the scenario's
