@@ -365,7 +365,8 @@ export function scenarioAgentInput(
   return {
     meetingId: `eval-${scenario.id}`,
     cycleNumber: 1,
-    occasion: scenario.description,
+    // No occasion. `description` explains the trap to us, so passing it here
+    // handed the model its answer key on every run until A6 (tasks/a6-plan.md).
     participants,
     candidates,
     viable: filtered.viable,

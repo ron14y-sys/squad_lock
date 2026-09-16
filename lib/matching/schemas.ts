@@ -101,13 +101,9 @@ const matchAgentOptionSchema = z.object({
   /** Must name a slot that was offered — the `slot_not_offered` check. */
   slot_id: z.string().min(1),
   /**
-   * One entry per participant, addressed to that person.
-   *
-   * `min(1)` is all that is enforced here. **Full coverage — every confirmed
-   * participant named on every option — is [A6](../../tasks/todo.md)**, which
-   * owns both the check and the "5 of 6 is a failed run" test. A4 enforces the
-   * half only an answer can get wrong: a justification addressed to somebody
-   * who is not in this meeting at all.
+   * One entry per participant, addressed to that person. Full coverage, no
+   * strangers and Hebrew are checked against the run's input in
+   * `validateOptions` (A4, A6).
    */
   justifications: z
     .array(

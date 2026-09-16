@@ -51,6 +51,8 @@ F2 lost an afternoon to the first two being indistinguishable. They are now thre
 
 A justification addressed to somebody not in the meeting is rejected here — only an answer can get that wrong, and it is the same class of mistake as `not_a_candidate`. **Full coverage — every confirmed participant named on every option — is [A6](../../tasks/todo.md)**, along with its "5 of 6 is a failed run" test. A4 leaves that space deliberately empty rather than half-implementing it.
 
+> **Done in A6, 16 Sep 2026.** `validateOptions` rejects an option that leaves anybody out, on any rank, and a reason that is not Hebrew. See [tasks/a6-plan.md](../../tasks/a6-plan.md).
+
 ### 6. The prompt lives in one place
 
 `scripts/demo-matching.ts` used to carry its own copy of the system prompt and the JSON Schema. It now calls `runMatchingAgent`. Two prompts meant to be one prompt drift the moment somebody edits the wrong file.
@@ -196,7 +198,7 @@ The first version of that check _was_ a hardcoded list, and it named only two of
 
 **3. No rejection history in the payload.** A7 extracts a constraint from a rejection and A8 loops; neither exists. Rather than adding an optional field nothing fills — _a build step nothing exercises yet is not working, it is merely untested_ (AGENTS.md) — A4 leaves it out entirely. A7 adds it to `MatchAgentInput` and to the prompt together.
 
-**4. A6's coverage check is not written.** See decision 5.
+**4. ~~A6's coverage check is not written.~~** Written in A6. See decision 5.
 
 ## How A4 was verified
 

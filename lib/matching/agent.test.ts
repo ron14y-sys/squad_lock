@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
+
+import type { ProposalDTO } from "@/lib/db/meeting-detail";
 
 import type {
   Candidate,
@@ -148,6 +150,7 @@ function answer(
     venue: string;
     slot?: string;
     people?: string[];
+    reason?: string;
     traded?: string;
   }[]
 ): string {
@@ -158,13 +161,28 @@ function answer(
       slot_id: option.slot ?? slotId(THURSDAY),
       justifications: (option.people ?? ["u-dana", "u-yoav"]).map((id) => ({
         participant_id: id,
-        reason:
-          "A ten-minute walk for you, and they take the allergy seriously.",
+        reason: option.reason ?? "קרוב לרוטשילד, והמקום מקפיד על האלרגיה.",
       })),
       traded_away:
         option.traded ?? "Yoav walks a little further than he would to Near.",
     })),
   });
+}
+
+/**
+ * The payload's people and pairs, parsed. Each JSON block sits under a heading
+ * line between blank lines, and `JSON.stringify` never writes a blank line.
+ */
+function parsePayload(payload: string) {
+  type Row = Record<string, unknown>;
+  const [people, pairs] = payload
+    .split("\n\n")
+    .slice(1, 3)
+    .map((block) => JSON.parse(block.slice(block.indexOf("\n") + 1)) as Row[]);
+  return {
+    people: Object.fromEntries(people.map((person) => [person.name, person])),
+    pairs,
+  };
 }
 
 /* ------------------------------------------------------------- the happy path */
@@ -273,6 +291,9 @@ describe("a well-formed answer", () => {
     expect(draft.options[0].tradeoffs).toEqual({
       tradedAway: "Yoav's journey, for the quiet.",
     });
+    // A6: and never reaches the meeting screen. Checked by `tsc`.
+    expectTypeOf<ProposalDTO>().not.toHaveProperty("tradeoffs");
+    expectTypeOf<ProposalDTO>().not.toHaveProperty("tradedAway");
   });
 
   it("keeps the shortlist that went in, so the run is persisted in full", () => {
@@ -380,6 +401,30 @@ describe("an answer that is not the right shape", () => {
     );
   });
 
+  it("accepts a Hebrew justification that names a venue in Latin letters", () => {
+    const venue = candidate("place-long", "The Norman Rooftop Bar", ROTHSCHILD);
+    const reason = "The Norman Rooftop Bar, קרוב לבית.";
+
+    expect(() =>
+      interpretAnswer(
+        answer([{ rank: 1, venue: "place-long", reason }]),
+        inputFor([venue])
+      )
+    ).not.toThrow();
+  });
+
+  it("rejects an answer covering 5 of 6 participants", () => {
+    const six = [1, 2, 3, 4, 5, 6].map((n) => participant(`u-${n}`, `P${n}`));
+    const five = six.slice(0, 5).map((p) => p.userId);
+
+    expect(() =>
+      interpretAnswer(
+        answer([{ rank: 1, venue: "place-near", people: five }]),
+        inputFor([NEAR], six)
+      )
+    ).toThrow(/no justification for u-6/);
+  });
+
   it("accepts one option when only one pair was allowed", () => {
     // Demanding three from a shortlist of one would fail a run whose answer
     // was correct — which is exactly eval scenario 01.
@@ -459,6 +504,41 @@ describe("an answer that is not the right shape", () => {
       options: [{ rank: 1, venue: "place-near", people: ["u-dana", "u-dana"] }],
       pool: [NEAR],
       throws: /the same person twice/,
+    },
+    {
+      rule: "a participant left out of rank 3 only",
+      options: [
+        { rank: 1, venue: "place-near" },
+        { rank: 2, venue: "place-middle" },
+        { rank: 3, venue: "place-far", people: ["u-dana"] },
+      ],
+      pool: [NEAR, MIDDLE, FAR],
+      throws: /rank 3 has no justification/,
+    },
+    {
+      // A6: every reason is read on a Hebrew screen.
+      rule: "a justification written in English",
+      options: [
+        {
+          rank: 1,
+          venue: "place-near",
+          reason: "A short trip from Rothschild, and the place is kosher.",
+        },
+      ],
+      pool: [NEAR],
+      throws: /other than Hebrew/,
+    },
+    {
+      rule: "an English sentence that only borrows a Hebrew word",
+      options: [
+        {
+          rank: 1,
+          venue: "place-near",
+          reason: "Close to home, and the place is כשר.",
+        },
+      ],
+      pool: [NEAR],
+      throws: /other than Hebrew/,
     },
   ])("rejects $rule", ({ options, pool, throws }) => {
     expect(() => interpretAnswer(answer(options), inputFor(pool))).toThrow(
@@ -566,13 +646,23 @@ describe("what the model is shown", () => {
     });
     const payload = buildPayload(inputFor([NEAR], [DANA, silent]));
 
-    const people = JSON.parse(
-      payload.slice(payload.indexOf("["), payload.indexOf("]") + 1)
-    ) as { name: string; stated_preferences: Record<string, unknown> }[];
-    const noa = people.find((person) => person.name === "Noa");
-
-    expect(noa?.stated_preferences).toEqual({});
+    expect(parsePayload(payload).people.Noa.stated_preferences).toEqual({});
     expect(payload).not.toContain("no preference");
+  });
+
+  it("gives the model each person's needs and lost travel modes to name (A6)", () => {
+    const adi = participant("u-adi", "Adi", ROTHSCHILD, {
+      hardConstraints: { dietary: ["kosher"], allergies: [], unavailable: [] },
+      recurringMobilityRules: [
+        { kind: "mode_unavailable", weekdays: ["thursday"], mode: "car" },
+      ],
+    });
+    const { people, pairs } = parsePayload(
+      buildPayload(inputFor([NEAR], [adi, YOAV]))
+    );
+
+    expect(people.Adi.dietary_needs).toEqual(["kosher"]);
+    expect(pairs[0].modes_unavailable_during_slot).toEqual({ Adi: ["car"] });
   });
 
   it("tells the model to copy the ids back rather than tidy them", () => {

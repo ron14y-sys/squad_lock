@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { loadScenario, scenarioAgentInput } from "@/evals/adapter";
-import { countViolations, exitCode, summarize, type Row } from "@/evals/sweep";
+import {
+  countViolations,
+  distinctJustifications,
+  exitCode,
+  summarize,
+  type Row,
+} from "@/evals/sweep";
 import type { MatchOptionDraft, MatchRunDraft } from "@/lib/matching/agent";
 import type { Cost } from "@/lib/llm/cost";
 
@@ -71,6 +77,20 @@ describe("countViolations", () => {
 
   it("counts a venue that was never a candidate", () => {
     expect(countViolations(input, answerOf("place-nowhere"))).toBe(1);
+  });
+});
+
+/* --------------------------------------------------- distinct explanations */
+
+describe("distinctJustifications", () => {
+  it("counts rank 1's different explanations over its people", () => {
+    const draft = answerOf("place-01-container");
+    draft.options[0].participantJustifications = {
+      Noa: "א",
+      Itai: "א",
+      Roni: "ב",
+    };
+    expect(distinctJustifications(draft)).toBe("2/3");
   });
 });
 

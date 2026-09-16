@@ -311,7 +311,7 @@ export class HardConstraintError extends Error {
  * The rules
  * ---------------------------------------------------------------------- */
 
-const MOBILITY_MODES: MobilityMode[] = ["car", "transit", "walk"];
+export const MOBILITY_MODES: MobilityMode[] = ["car", "transit", "walk"];
 
 /**
  * The window a recurring rule applies over.
