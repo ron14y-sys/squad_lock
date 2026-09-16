@@ -111,7 +111,7 @@ describe("the hard-constraint trap, before any model is involved", () => {
           slot_id: slotId(INPUT.viable[0].slot),
           justifications: INPUT.participants.map((person) => ({
             participant_id: person.userId,
-            reason: "Highest rated and closest to all three of you.",
+            reason: "המקום עם הדירוג הגבוה ביותר, והכי קרוב.",
           })),
           traded_away: "",
         },

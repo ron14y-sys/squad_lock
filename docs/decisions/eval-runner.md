@@ -39,6 +39,14 @@ exactly those two — two requests, no retries — and nothing else:
 
 **Five scored, five passed, zero hard-constraint violations. $0.021 in all.**
 
+> ⚠️ **Measured with a hint, found 16 Sep 2026 (A6).** Every run above gave the
+> model the scenario's `description` as its occasion, and that description
+> explains the trap. Removed in [tasks/a6-plan.md](../../tasks/a6-plan.md).
+> Re-measured without it the same day, where the hint could change the venue:
+> **`03` PASS (11.7s), `05` PASS (10.2s), `06` PASS (12.1s), 0 violations,
+> $0.016.** `01` and `02` each leave one legal pair, so no prompt can change
+> their venue; they were not re-run.
+
 Not one sweep, and it does not need to be. `01` and `02` ran under the trimmed
 code on 9 Sep. `06`'s figure is from the first sweep and still counts: replaying
 that recording under the trimmed code re-validates the answer, which proves the

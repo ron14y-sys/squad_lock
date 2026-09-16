@@ -48,6 +48,7 @@
 import { generate, type LlmResult } from "@/lib/llm/client";
 import {
   assertChosenPairAllowed,
+  availableModes,
   describeSlot,
   type ConstraintInput,
   type UnverifiedFact,
@@ -67,6 +68,7 @@ import type {
   Candidate,
   MatchOption,
   MatchRun,
+  MobilityMode,
   Participant,
   VenueSoftFacts,
 } from "@/lib/types";
@@ -168,8 +170,8 @@ export type MatchAgentInput = {
  * The standing instruction. Stable across every call, which is what makes it
  * the part worth caching later.
  *
- * Four of these rules are not stylistic — each one is a decision recorded
- * somewhere else, and deleting a line silently un-decides it:
+ * These rules are not stylistic — each one is a decision recorded somewhere
+ * else, and deleting a line silently un-decides it:
  *
  * - **"Do not second-guess the filter"** — §4.1b. The agent is not the place
  *   where an allergy is weighed.
@@ -184,6 +186,9 @@ export type MatchAgentInput = {
  * - **"Never tell a person what an option cost them"** — §5.6. Naming a
  *   constraint is a fact; naming a comparison manufactures a grievance that
  *   did not exist.
+ * - **Hebrew, gender-neutral, only given facts, needs stay private** — A6.
+ *   Recorded runs invented reasons ("arterial roads") where the payload was
+ *   thin. See [tasks/a6-plan.md](../../tasks/a6-plan.md).
  */
 export const SYSTEM_PROMPT = `You are the Group Matching Agent for a system that arranges get-togethers among friends.
 
@@ -202,12 +207,19 @@ HOW TO CHOOSE
 
 HOW TO WRITE THE JUSTIFICATIONS
 - Write one for EVERY participant on EVERY option, addressed to that person, in their own terms. Never omit anyone, and never justify to somebody who is not in the list.
-- Name a constraint, never a comparison. "A twenty-minute ride for you, and they take the allergy seriously" is right. "Twenty minutes worse for you than the fairest option" is forbidden — the person never sees what an option cost them.
+- Write every "reason" in Hebrew. Names may stay as they are written above.
+- You do not know anyone's gender, so describe the place and the trip rather than the person ("קרוב לפלורנטין, והמקום כשר", not "תגיע בקלות").
+- Use only facts given above. Never invent a route, a road, a travel time, a transport schedule, or anything about a venue. When there is little to say about someone, say little.
+- Every pair meets every dietary need and allergy, but never say so of a pair marked "verified": false.
+- A person's dietary needs, allergies and unavailable travel modes are private: mention them only in that person's own justification.
+- Name a constraint, never a comparison. "קרוב לפלורנטין, והמקום כשר" is right. "רחוק יותר מהאפשרות ההוגנת ביותר" is forbidden — the person never sees what an option cost them.
 - "traded_away" is the opposite: it is internal, nobody is shown it, and it is where the honest cost of the choice belongs. Say what was given up and for whom. Leave it empty only when the option genuinely gives nothing up.`;
 
 /* -------------------------------------------------------------------------
  * The payload
  * ---------------------------------------------------------------------- */
+
+const TRAVEL_MODES: MobilityMode[] = ["car", "transit", "walk"];
 
 /**
  * The per-call input: who is coming, and what they may be offered.
@@ -237,6 +249,9 @@ export function buildPayload(input: MatchAgentInput): string {
     // Absent fields are absent here too. Filling them with "no preference"
     // would hand the model a value to reason about where there is none (#86).
     stated_preferences: person.profile.softPreferences,
+    // Already enforced by A2 — here only so a justification can name them (A6).
+    dietary_needs: person.profile.hardConstraints.dietary,
+    allergies: person.profile.hardConstraints.allergies,
   }));
 
   // A3's order, applied to A2's survivors. `Infinity` parks anything the
@@ -281,6 +296,15 @@ export function buildPayload(input: MatchAgentInput): string {
             person.name,
             burdenByCell.get(`${key}|${person.userId}`)?.toFixed(2) ?? null,
           ])
+        ),
+        // Who cannot use a way of travelling during this slot — the fact A2
+        // trimmed on, so the model explains a late start instead of guessing.
+        modes_unavailable_during_slot: Object.fromEntries(
+          participants.flatMap((person) => {
+            const available = availableModes(person, pair.slot);
+            const lost = TRAVEL_MODES.filter((mode) => !available.has(mode));
+            return lost.length ? [[person.name, lost]] : [];
+          })
         ),
       };
     });
@@ -493,11 +517,23 @@ function validateOptions(
   // A justification addressed to somebody who is not in this meeting. The
   // mirror case — a participant left out — is A6's, along with its test.
   const roster = new Set(input.participants.map((person) => person.userId));
+  // Names the model may copy as written, which Places often gives in Latin
+  // letters. They are left out of the Hebrew count below.
+  const names = [
+    ...input.candidates.flatMap((c) => [c.name, c.neighbourhood]),
+    ...input.participants.flatMap((p) => [p.name, p.profile.homeNeighbourhood]),
+  ].filter((name): name is string => Boolean(name));
   for (const option of options) {
     for (const justification of option.justifications) {
       if (!roster.has(justification.participant_id)) {
         throw new AgentAnswerError(
           `rank ${option.rank} justifies to "${justification.participant_id}", who is not in this meeting`
+        );
+      }
+      // A6: every reason is read on a Hebrew screen.
+      if (!isHebrew(justification.reason, names)) {
+        throw new AgentAnswerError(
+          `rank ${option.rank} justifies to "${justification.participant_id}" in a language other than Hebrew`
         );
       }
     }
@@ -510,6 +546,16 @@ function validateOptions(
   }
 
   return options;
+}
+
+/**
+ * More Hebrew letters than Latin ones, names aside. A count rather than "any
+ * Hebrew", or an English sentence naming a Hebrew venue would pass.
+ */
+function isHebrew(text: string, names: string[]): boolean {
+  const prose = names.reduce((rest, name) => rest.replaceAll(name, ""), text);
+  const count = (letters: RegExp) => prose.match(letters)?.length ?? 0;
+  return count(/[א-ת]/g) > count(/[A-Za-z]/g);
 }
 
 /** Pairs, not rows: the same venue at two hours is two choices, not one. */

@@ -25,6 +25,8 @@ export type Row = {
   cost?: Cost;
   ms?: number;
   violations: number;
+  /** See `distinctJustifications`. */
+  distinct?: string;
 };
 
 /**
@@ -66,6 +68,16 @@ export function countViolations(
       ).length,
     0
   );
+}
+
+/**
+ * Rank 1's different explanations over its people — `2/4`. Information, never
+ * a verdict (A6): identical people honestly get one sentence, as in `02`.
+ */
+export function distinctJustifications(draft: MatchRunDraft): string {
+  const top = draft.options.find((option) => option.rank === 1);
+  const reasons = Object.values(top?.participantJustifications ?? {});
+  return `${new Set(reasons).size}/${reasons.length}`;
 }
 
 export type Summary = {

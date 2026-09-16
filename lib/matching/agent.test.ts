@@ -148,6 +148,7 @@ function answer(
     venue: string;
     slot?: string;
     people?: string[];
+    reason?: string;
     traded?: string;
   }[]
 ): string {
@@ -158,13 +159,28 @@ function answer(
       slot_id: option.slot ?? slotId(THURSDAY),
       justifications: (option.people ?? ["u-dana", "u-yoav"]).map((id) => ({
         participant_id: id,
-        reason:
-          "A ten-minute walk for you, and they take the allergy seriously.",
+        reason: option.reason ?? "קרוב לרוטשילד, והמקום מקפיד על האלרגיה.",
       })),
       traded_away:
         option.traded ?? "Yoav walks a little further than he would to Near.",
     })),
   });
+}
+
+/**
+ * The payload's people and pairs, parsed. Each JSON block sits under a heading
+ * line between blank lines, and `JSON.stringify` never writes a blank line.
+ */
+function parsePayload(payload: string) {
+  type Row = Record<string, unknown>;
+  const [people, pairs] = payload
+    .split("\n\n")
+    .slice(1, 3)
+    .map((block) => JSON.parse(block.slice(block.indexOf("\n") + 1)) as Row[]);
+  return {
+    people: Object.fromEntries(people.map((person) => [person.name, person])),
+    pairs,
+  };
 }
 
 /* ------------------------------------------------------------- the happy path */
@@ -380,6 +396,18 @@ describe("an answer that is not the right shape", () => {
     );
   });
 
+  it("accepts a Hebrew justification that names a venue in Latin letters", () => {
+    const venue = candidate("place-long", "The Norman Rooftop Bar", ROTHSCHILD);
+    const reason = "The Norman Rooftop Bar, קרוב לבית.";
+
+    expect(() =>
+      interpretAnswer(
+        answer([{ rank: 1, venue: "place-long", reason }]),
+        inputFor([venue])
+      )
+    ).not.toThrow();
+  });
+
   it("accepts one option when only one pair was allowed", () => {
     // Demanding three from a shortlist of one would fail a run whose answer
     // was correct — which is exactly eval scenario 01.
@@ -459,6 +487,31 @@ describe("an answer that is not the right shape", () => {
       options: [{ rank: 1, venue: "place-near", people: ["u-dana", "u-dana"] }],
       pool: [NEAR],
       throws: /the same person twice/,
+    },
+    {
+      // A6: every reason is read on a Hebrew screen.
+      rule: "a justification written in English",
+      options: [
+        {
+          rank: 1,
+          venue: "place-near",
+          reason: "A short trip from Rothschild, and the place is kosher.",
+        },
+      ],
+      pool: [NEAR],
+      throws: /other than Hebrew/,
+    },
+    {
+      rule: "an English sentence that only borrows a Hebrew word",
+      options: [
+        {
+          rank: 1,
+          venue: "place-near",
+          reason: "Close to home, and the place is כשר.",
+        },
+      ],
+      pool: [NEAR],
+      throws: /other than Hebrew/,
     },
   ])("rejects $rule", ({ options, pool, throws }) => {
     expect(() => interpretAnswer(answer(options), inputFor(pool))).toThrow(
@@ -566,13 +619,23 @@ describe("what the model is shown", () => {
     });
     const payload = buildPayload(inputFor([NEAR], [DANA, silent]));
 
-    const people = JSON.parse(
-      payload.slice(payload.indexOf("["), payload.indexOf("]") + 1)
-    ) as { name: string; stated_preferences: Record<string, unknown> }[];
-    const noa = people.find((person) => person.name === "Noa");
-
-    expect(noa?.stated_preferences).toEqual({});
+    expect(parsePayload(payload).people.Noa.stated_preferences).toEqual({});
     expect(payload).not.toContain("no preference");
+  });
+
+  it("gives the model each person's needs and lost travel modes to name (A6)", () => {
+    const adi = participant("u-adi", "Adi", ROTHSCHILD, {
+      hardConstraints: { dietary: ["kosher"], allergies: [], unavailable: [] },
+      recurringMobilityRules: [
+        { kind: "mode_unavailable", weekdays: ["thursday"], mode: "car" },
+      ],
+    });
+    const { people, pairs } = parsePayload(
+      buildPayload(inputFor([NEAR], [adi, YOAV]))
+    );
+
+    expect(people.Adi.dietary_needs).toEqual(["kosher"]);
+    expect(pairs[0].modes_unavailable_during_slot).toEqual({ Adi: ["car"] });
   });
 
   it("tells the model to copy the ids back rather than tidy them", () => {

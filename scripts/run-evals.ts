@@ -28,7 +28,13 @@ import {
   type Scenario,
 } from "@/evals/adapter";
 import { blockedReason, classify, judge, type Verdict } from "@/evals/judge";
-import { countViolations, exitCode, summarize, type Row } from "@/evals/sweep";
+import {
+  countViolations,
+  distinctJustifications,
+  exitCode,
+  summarize,
+  type Row,
+} from "@/evals/sweep";
 import {
   interpretAnswer,
   runMatchingAgent,
@@ -189,6 +195,7 @@ async function run(scenario: Scenario): Promise<Row> {
       cost,
       ms,
       violations: countViolations(input, draft),
+      distinct: distinctJustifications(draft),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -228,7 +235,7 @@ function print(rows: Row[]): void {
   const dash = (text?: string) => text ?? "—";
 
   console.log(
-    `\n${"scenario".padEnd(width)}  ${"verdict".padEnd(8)}  ${"cost".padEnd(10)}  ${"dur".padEnd(7)}  cycles  viol  detail`
+    `\n${"scenario".padEnd(width)}  ${"verdict".padEnd(8)}  ${"cost".padEnd(10)}  ${"dur".padEnd(7)}  cycles  viol  just  detail`
   );
   for (const row of rows) {
     console.log(
@@ -245,6 +252,7 @@ function print(rows: Row[]): void {
         // column, and it stays 1 until A8 spends a cycle.
         dash(row.ms !== undefined ? "1" : undefined).padEnd(6),
         String(row.violations).padEnd(4),
+        dash(row.distinct).padEnd(4),
         row.detail,
       ].join("  ")
     );
