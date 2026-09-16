@@ -413,20 +413,16 @@ describe("an answer that is not the right shape", () => {
     ).not.toThrow();
   });
 
-  it("rejects an answer covering 5 of 6 participants, and accepts all 6", () => {
-    const six = ["1", "2", "3", "4", "5", "6"].map((n) =>
-      participant(`u-${n}`, `P${n}`)
-    );
-    const covering = (people: string[]) =>
-      answer([{ rank: 1, venue: "place-near", people }]);
-    const ids = six.map((p) => p.userId);
+  it("rejects an answer covering 5 of 6 participants", () => {
+    const six = [1, 2, 3, 4, 5, 6].map((n) => participant(`u-${n}`, `P${n}`));
+    const five = six.slice(0, 5).map((p) => p.userId);
 
     expect(() =>
-      interpretAnswer(covering(ids.slice(0, 5)), inputFor([NEAR], six))
+      interpretAnswer(
+        answer([{ rank: 1, venue: "place-near", people: five }]),
+        inputFor([NEAR], six)
+      )
     ).toThrow(/no justification for u-6/);
-    expect(() =>
-      interpretAnswer(covering(ids), inputFor([NEAR], six))
-    ).not.toThrow();
   });
 
   it("accepts one option when only one pair was allowed", () => {
@@ -508,12 +504,6 @@ describe("an answer that is not the right shape", () => {
       options: [{ rank: 1, venue: "place-near", people: ["u-dana", "u-dana"] }],
       pool: [NEAR],
       throws: /the same person twice/,
-    },
-    {
-      rule: "a participant left out",
-      options: [{ rank: 1, venue: "place-near", people: ["u-dana"] }],
-      pool: [NEAR],
-      throws: /no justification for u-yoav/,
     },
     {
       rule: "a participant left out of rank 3 only",

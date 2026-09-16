@@ -50,6 +50,7 @@ import {
   assertChosenPairAllowed,
   availableModes,
   describeSlot,
+  MOBILITY_MODES,
   type ConstraintInput,
   type UnverifiedFact,
   type ViablePair,
@@ -68,7 +69,6 @@ import type {
   Candidate,
   MatchOption,
   MatchRun,
-  MobilityMode,
   Participant,
   VenueSoftFacts,
 } from "@/lib/types";
@@ -219,8 +219,6 @@ HOW TO WRITE THE JUSTIFICATIONS
  * The payload
  * ---------------------------------------------------------------------- */
 
-const TRAVEL_MODES: MobilityMode[] = ["car", "transit", "walk"];
-
 /**
  * The per-call input: who is coming, and what they may be offered.
  *
@@ -302,7 +300,7 @@ export function buildPayload(input: MatchAgentInput): string {
         modes_unavailable_during_slot: Object.fromEntries(
           participants.flatMap((person) => {
             const available = availableModes(person, pair.slot);
-            const lost = TRAVEL_MODES.filter((mode) => !available.has(mode));
+            const lost = MOBILITY_MODES.filter((mode) => !available.has(mode));
             return lost.length ? [[person.name, lost]] : [];
           })
         ),

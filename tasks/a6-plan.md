@@ -45,6 +45,10 @@ In [lib/matching/agent.test.ts](../lib/matching/agent.test.ts):
 - **A person missing only on rank 3 is still rejected.**
 - **All six covered is accepted.** This keeps the check from being too strict.
 
+> **Trimmed after review, 16 Sep 2026.** The two-person "one missing" row and
+> "all six accepted" were dropped: the first repeats the 5-of-6 test, and every
+> existing well-formed-answer test already accepts full coverage.
+
 ### 3. The trade-off never reaches the screen
 
 `traded_away` is saved to `MatchOption.tradeoffs`, and no screen reads it
