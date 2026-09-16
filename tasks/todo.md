@@ -99,10 +99,11 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - `cycles` prints 1 for every row until A8 spends one. Spec §12 asks for the column, so it is printed rather than omitted.
   - Files: `evals/judge.ts`, `evals/sweep.ts`, `scripts/run-evals.ts`, `__tests__/eval-judge.test.ts`, `__tests__/eval-sweep.test.ts`
 
-- [ ] **A6 — Per-participant justification quality**
+- [x] **A6 — Per-participant justification quality**
   - A4 left this space deliberately empty. It already rejects a justification addressed to somebody **not** in the meeting — only an answer can get that wrong — and leaves the mirror case, a participant left out, entirely to A6 along with its test. The validation hook is `validateOptions` in `lib/matching/agent.ts`.
   - Acceptance: every option names every confirmed participant; a run omitting someone fails validation. **Justifications carry no comparative cost line** (spec §5.6) — an option's trade-off data is persisted for the timeline and the report, never rendered to the person who bore it.
   - Verify: an agent response covering 5 of 6 participants is rejected
+  - **Done 16 Sep 2026.** `validateOptions` rejects an option missing anybody, on any rank; a type test fails if a trade-off field reaches `ProposalDTO`, the meeting screen's data.
   - **Added 16 Sep 2026 — every justification is in Hebrew, and states only facts it was given.** Recorded runs showed identical sentences for people the model could not tell apart, and invented reasons ("arterial roads") where it had no data. The model is now told each person's dietary needs, allergies, tonight's starting point and lost travel modes, so it can name them; the prompt forbids invented facts and asks for gender-neutral Hebrew; code rejects a reason that is not Hebrew; `npm run eval` counts distinct explanations. Plan and research: [tasks/a6-plan.md](a6-plan.md).
 
 ### Milestone 2 (weeks 4–6)

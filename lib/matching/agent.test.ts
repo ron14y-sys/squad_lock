@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
+
+import type { ProposalDTO } from "@/lib/db/meeting-detail";
 
 import type {
   Candidate,
@@ -289,6 +291,9 @@ describe("a well-formed answer", () => {
     expect(draft.options[0].tradeoffs).toEqual({
       tradedAway: "Yoav's journey, for the quiet.",
     });
+    // A6: and never reaches the meeting screen. Checked by `tsc`.
+    expectTypeOf<ProposalDTO>().not.toHaveProperty("tradeoffs");
+    expectTypeOf<ProposalDTO>().not.toHaveProperty("tradedAway");
   });
 
   it("keeps the shortlist that went in, so the run is persisted in full", () => {
@@ -408,6 +413,22 @@ describe("an answer that is not the right shape", () => {
     ).not.toThrow();
   });
 
+  it("rejects an answer covering 5 of 6 participants, and accepts all 6", () => {
+    const six = ["1", "2", "3", "4", "5", "6"].map((n) =>
+      participant(`u-${n}`, `P${n}`)
+    );
+    const covering = (people: string[]) =>
+      answer([{ rank: 1, venue: "place-near", people }]);
+    const ids = six.map((p) => p.userId);
+
+    expect(() =>
+      interpretAnswer(covering(ids.slice(0, 5)), inputFor([NEAR], six))
+    ).toThrow(/no justification for u-6/);
+    expect(() =>
+      interpretAnswer(covering(ids), inputFor([NEAR], six))
+    ).not.toThrow();
+  });
+
   it("accepts one option when only one pair was allowed", () => {
     // Demanding three from a shortlist of one would fail a run whose answer
     // was correct — which is exactly eval scenario 01.
@@ -487,6 +508,22 @@ describe("an answer that is not the right shape", () => {
       options: [{ rank: 1, venue: "place-near", people: ["u-dana", "u-dana"] }],
       pool: [NEAR],
       throws: /the same person twice/,
+    },
+    {
+      rule: "a participant left out",
+      options: [{ rank: 1, venue: "place-near", people: ["u-dana"] }],
+      pool: [NEAR],
+      throws: /no justification for u-yoav/,
+    },
+    {
+      rule: "a participant left out of rank 3 only",
+      options: [
+        { rank: 1, venue: "place-near" },
+        { rank: 2, venue: "place-middle" },
+        { rank: 3, venue: "place-far", people: ["u-dana"] },
+      ],
+      pool: [NEAR, MIDDLE, FAR],
+      throws: /rank 3 has no justification/,
     },
     {
       // A6: every reason is read on a Hebrew screen.

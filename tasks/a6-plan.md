@@ -1,7 +1,7 @@
 # A6 — Per-participant justification quality: plan
 
 **Task:** A6 ([tasks/todo.md](todo.md)) · **Depends on:** A4 (done) · **Hands over to:** B11 (decides who is "confirmed"), C6 (shows the justification)
-**Status:** part 2 (the research follow-up) is being built first; part 1 after it.
+**Status:** built. Part 2 first, then part 1.
 
 Two decisions were taken before this plan was written (16 Sep 2026):
 

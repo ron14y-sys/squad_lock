@@ -514,8 +514,7 @@ function validateOptions(
     seen.add(key);
   }
 
-  // A justification addressed to somebody who is not in this meeting. The
-  // mirror case — a participant left out — is A6's, along with its test.
+  // A justification addressed to somebody who is not in this meeting.
   const roster = new Set(input.participants.map((person) => person.userId));
   // Names the model may copy as written, which Places often gives in Latin
   // letters. They are left out of the Hebrew count below.
@@ -541,6 +540,13 @@ function validateOptions(
     if (new Set(ids).size !== ids.length) {
       throw new AgentAnswerError(
         `rank ${option.rank} justifies to the same person twice`
+      );
+    }
+    // A6: nobody is left out, on any rank.
+    const missing = [...roster].filter((id) => !ids.includes(id));
+    if (missing.length) {
+      throw new AgentAnswerError(
+        `rank ${option.rank} has no justification for ${missing.join(", ")}`
       );
     }
   }
