@@ -43,7 +43,7 @@ export const OPEN_MEETING_STATUSES: MeetingStatus[] = [
  * the same person spends one too (the first is free) — see
  * `respondToMeeting`.
  */
-const CYCLE_CAP = 3;
+export const CYCLE_CAP = 3;
 
 /** Statuses a meeting can no longer be responded to in. */
 const CLOSED_MEETING_STATUSES: MeetingStatus[] = [

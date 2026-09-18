@@ -9,6 +9,7 @@ import { meetingFromRow } from "@/lib/types/meeting-from-row";
 
 import { deriveMeetingCardStatus } from "./meeting-cards";
 import { findConflictingMeetings } from "./conflict-dismissal";
+import { CYCLE_CAP } from "./meetings";
 import { getPrisma } from "./client";
 
 import type { UnverifiedFact } from "@/lib/matching/constraints";
@@ -58,6 +59,10 @@ export type MeetingDetailDTO = {
   id: string;
   groupId: string;
   status: MeetingCardStatus;
+  /** So the client can find its own row in `participants` without a session hook. */
+  viewerId: string;
+  /** Cycles left before the meeting goes `stuck` — shown before "something doesn't work" spends one. */
+  remainingCycles: number;
   initiatorName: string;
   pinnedVenue: string | null;
   occasion: string | null;
@@ -203,6 +208,8 @@ export async function getMeetingDetail(
     id: meeting.id,
     groupId: meeting.groupId,
     status,
+    viewerId,
+    remainingCycles: Math.max(0, CYCLE_CAP - meeting.cycleCount),
     initiatorName: row.initiator.name,
     pinnedVenue: meeting.pinnedVenue,
     occasion: meeting.occasion,
