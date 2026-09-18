@@ -9,6 +9,7 @@ import {
   RESPONSE_STATUS_LABELS,
   unverifiedNote,
 } from "@/lib/format/hebrew-labels";
+import { ResponseControls } from "./respond/ResponseControls";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
 
 type MeetingCardStatus =
@@ -59,6 +60,8 @@ type MeetingDetail = {
   id: string;
   groupId: string;
   status: MeetingCardStatus;
+  viewerId: string;
+  remainingCycles: number;
   initiatorName: string;
   pinnedVenue: string | null;
   occasion: string | null;
@@ -224,39 +227,50 @@ function TimelineBlock({ timeline }: { timeline: TimelineEvent[] }) {
   );
 }
 
+function loadDetail(
+  meetingId: string,
+  cancelledRef: { current: boolean },
+  setLoadState: (s: LoadState) => void,
+  setDetail: (d: MeetingDetail) => void
+) {
+  fetch(`/api/meetings/${meetingId}`)
+    .then((res) => {
+      if (res.status === 401) {
+        if (!cancelledRef.current) setLoadState("signed-out");
+        return null;
+      }
+      if (res.status === 404) {
+        if (!cancelledRef.current) setLoadState("not-found");
+        return null;
+      }
+      if (!res.ok) throw new Error(`GET meeting: ${res.status}`);
+      return res.json();
+    })
+    .then((body) => {
+      if (cancelledRef.current || !body) return;
+      setDetail(body);
+      setLoadState("ready");
+    })
+    .catch(() => {
+      if (!cancelledRef.current) setLoadState("error");
+    });
+}
+
 export function MeetingDetail({ meetingId }: { meetingId: string }) {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [detail, setDetail] = useState<MeetingDetail | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    fetch(`/api/meetings/${meetingId}`)
-      .then((res) => {
-        if (res.status === 401) {
-          if (!cancelled) setLoadState("signed-out");
-          return null;
-        }
-        if (res.status === 404) {
-          if (!cancelled) setLoadState("not-found");
-          return null;
-        }
-        if (!res.ok) throw new Error(`GET meeting: ${res.status}`);
-        return res.json();
-      })
-      .then((body) => {
-        if (cancelled || !body) return;
-        setDetail(body);
-        setLoadState("ready");
-      })
-      .catch(() => {
-        if (!cancelled) setLoadState("error");
-      });
-
+    const cancelledRef = { current: false };
+    loadDetail(meetingId, cancelledRef, setLoadState, setDetail);
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
   }, [meetingId]);
+
+  function refresh() {
+    loadDetail(meetingId, { current: false }, setLoadState, setDetail);
+  }
 
   if (loadState === "loading") {
     return <p className="p-6 text-sm text-zinc-500">טוען את הפגישה…</p>;
@@ -298,6 +312,16 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
       </div>
 
       <ProposalBlock proposal={detail.proposal} />
+      <ResponseControls
+        meetingId={detail.id}
+        myStatus={
+          detail.participants.find((p) => p.userId === detail.viewerId)
+            ?.status ?? "pending"
+        }
+        remainingCycles={detail.remainingCycles}
+        disabled={detail.status === "closed"}
+        onResponded={refresh}
+      />
       <StatusBlock detail={detail} />
       <TimelineBlock timeline={detail.timeline} />
     </div>

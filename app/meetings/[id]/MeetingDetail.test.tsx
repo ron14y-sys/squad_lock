@@ -16,6 +16,8 @@ function detail(overrides: Record<string, unknown> = {}) {
     id: "meeting-1",
     groupId: "group-1",
     status: "waiting_on_you",
+    viewerId: "u2",
+    remainingCycles: 3,
     initiatorName: "אלדד",
     pinnedVenue: null,
     occasion: null,
