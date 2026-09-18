@@ -218,9 +218,10 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
   - Acceptance: (1) the proposal with an expandable **"why this suits you"** written for the viewer — **and no comparative cost line** (spec §5.6); (2) **"where it stands"** — progress, one-line summary, every participant with state and timestamp, including those who dropped out; (3) **"what happened so far"** — proposals, rejections and reasons, **which amendment triggered a re-weighing**, and what was passed over.
   - Verify: two accounts see two different personal justifications; neither is told what the proposal cost them relative to an alternative; the dropped-out participant is still listed
   - Merged in #113 (`app/meetings/[id]/MeetingDetail.tsx`, `lib/db/meeting-detail.ts`, `GET /api/meetings/[id]`). No meeting has a real `MatchRun` yet (B11 hasn't shipped) — the proposal block shows "no proposal yet" until then.
-- [ ] **C7 — The three response controls**
+- [x] **C7 — The three response controls**
   - Acceptance: approve · "I can't make it" · "something here doesn't work for me" · **"my situation tonight is different"**. The third opens free text and shows the remaining cycle count; the fourth opens the per-meeting context form.
   - Verify: **only "something doesn't work" decrements the cycle counter** — neither "I can't make it" nor an amendment does
+  - Merged in #122 (`app/meetings/[id]/respond/ResponseControls.tsx`). The context form is deliberately minimal — origin label, one mobility mode marked unavailable, free note — since it's scoped to one meeting and never needs a recurring weekday/time editor.
 
 ### Milestone 2 (weeks 4–6)
 
