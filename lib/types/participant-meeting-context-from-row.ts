@@ -11,13 +11,15 @@
  * the same shape (`lib/meetings/schema.ts`'s `respondToMeetingSchema`)
  * before it reaches this table.
  *
- * `softPreferences` is always `null` here: the type's own comment says why
- * — `participant_meeting_contexts` has no column for it yet, B11 adds the
- * column and the migration together, and until then nothing reads it back
- * from the database (issue #86).
+ * `softPreferences` is the same kind of cast, and is safe on the same terms:
+ * A7's Constraint Updater is its only writer, and it validates against its
+ * own schema before the value reaches this table. `null` means no correction
+ * — the state every amendment row is in (issue #86).
  */
 
 import type { ParticipantMeetingContextModel } from "@/lib/generated/prisma/models";
+
+import type { SoftPreferences } from "./profile";
 
 import type { MobilityWindow, ParticipantMeetingContext } from "./meeting";
 
@@ -34,7 +36,7 @@ export function participantMeetingContextFromRow(
         : null,
     originLabel: row.originLabel,
     mobilityWindows: row.mobilityWindows as MobilityWindow[],
-    softPreferences: null,
+    softPreferences: row.softPreferences as SoftPreferences | null,
     note: row.note,
     createdAt: row.createdAt,
   };

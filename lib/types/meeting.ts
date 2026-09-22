@@ -144,10 +144,9 @@ export type ParticipantMeetingContext = {
    * Outranks the profile's `softPreferences`, field by field, on the same
    * precedence as `origin` above.
    *
-   * ⚠️ **Not persisted yet.** `participant_meeting_contexts` has no column
-   * for it — B11 owns this table's persistence and adds the column and the
-   * migration together. Until then this field exists for A7's schema and for
-   * the eval set, and nothing reads it back from the database.
+   * `null` means no correction, which is what every amendment row carries.
+   * `{}` is not a state anyone can be in, and the column is nullable with no
+   * default so that the two cannot be confused (A7's migration).
    */
   softPreferences: SoftPreferences | null;
 
