@@ -173,6 +173,25 @@ on by its extraction alone. Cost is two matching calls.
 
 **If it is dropped**, step 6 is the whole measurement and the plan is otherwise unchanged.
 
+> **Built 22 Sep 2026, with two decisions taken:**
+>
+> - **`--followup` on `npm run eval`, printing its own table.** `07` and `08`
+>   stay `deferred` in the main sweep: "the follow-up is right" is a claim
+>   about a loop that does not exist yet, and §12.5's pass rate may only carry
+>   the claim the product can make today. Folding them in would have bought a
+>   better-looking number by describing A8 as done.
+> - **The constraint comes from a live A7 call, with `--agreed` as the
+>   fallback.** The chain is what criterion 4 measures, and attribution costs
+>   nothing because step 6's table already says whether A7 was right. The
+>   fallback is not a convenience: this model had whole afternoons of 503 this
+>   week, and it stood in on `08`'s first run.
+>
+> `scenarioFollowupInput` makes the three changes A8 will make for real — the
+> correction on the rejecting participant's context, the rejected venue gone,
+> and the person's words carried — and nothing else. A scenario names a venue
+> and no time in `initialProposal`, so the harness blocks the venue where A8b
+> blocks the pair: the stricter of the two, so a pass here would pass there.
+
 ### Step 8 — docs
 
 - Correct "Haiku 4.5" to `gemini-3.5-flash-lite` in [todo.md](todo.md) and in issue #15 — both
@@ -268,6 +287,27 @@ The rest did not answer at all, and the reason is not A7:
 
 A repeat sweep, on a day the model is not under load, is what turns this into
 a pass rate.
+
+### Measured, 22 Sep 2026 — the corrected cycle, end to end
+
+**Both rejection scenarios now produce the follow-up we agreed on.** This is
+success criterion 4 demonstrated — a free-text rejection producing a materially
+different next proposal — and it is the first time the chain has run at all.
+
+| Scenario    | Constraint from                                        | Follow-up                     | Cost    | Duration |
+| ----------- | ------------------------------------------------------ | ----------------------------- | ------- | -------- |
+| `07` noise  | **live** — A7 read "too loud" as `noiseLevel: "quiet"` | **Quiet Corner**, 21:00–00:00 | $0.0031 | 81.5s    |
+| `08` budget | agreed — the extraction timed out                      | **Tzafta**                    | $0.0031 | 15.3s    |
+
+`07` is the whole chain: A7 extracted the constraint from the sentence, and the
+agent moved off the better-rated venue it had proposed a cycle earlier and onto
+the one that answers the objection — at 21:00–00:00, the three hours Quiet
+Corner's midnight closing leaves, which the judge checks as well as the venue.
+
+`08` is the fallback earning its place on its first outing. The extraction hit
+A1's 60-second deadline, the run said so in one line and carried on with the
+constraint the fixture states, and the agent still answered correctly. A
+measurement that degrades is worth more than one that stops.
 
 ## Verifying against a real database
 

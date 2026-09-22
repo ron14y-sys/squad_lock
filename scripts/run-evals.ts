@@ -6,6 +6,8 @@
  *   npm run eval -- 01 04            # just those, by id or by number
  *   npm run eval -- --replay <dir>   # re-judge a recorded sweep. No key, no quota
  *   npm run eval -- --include-blocked
+ *   npm run eval -- --followup       # and A7's corrected cycle, in its own table
+ *   npm run eval -- --followup 07    # just that one: 1 extraction + 1 matching call
  *
  * **Quota is the scarcest thing here.** `gemini-3.6-flash` allows 20 requests
  * a day on the free tier (spec §6.4), and five scenarios can be scored today,
@@ -24,10 +26,13 @@ import { join } from "node:path";
 
 import {
   loadScenarios,
+  rejectionCases,
   scenarioAgentInput,
+  scenarioFollowupInput,
   type Scenario,
 } from "@/evals/adapter";
 import { blockedReason, classify, judge, type Verdict } from "@/evals/judge";
+import { runConstraintUpdater } from "@/lib/extraction/constraint-updater";
 import {
   countViolations,
   distinctJustifications,
@@ -61,6 +66,10 @@ const filters = argv.filter(
 
 const replayDir = value("--replay");
 const includeBlocked = flag("--include-blocked");
+/** A7 + A4, one cycle later. See `followUp` below. */
+const followup = flag("--followup");
+/** Skip the live extraction and feed the agreed constraint instead. */
+const agreed = flag("--agreed");
 
 /* -------------------------------------------------------------------------
  * The sweep
@@ -168,6 +177,132 @@ async function run(scenario: Scenario): Promise<Row> {
 }
 
 /* -------------------------------------------------------------------------
+ * A7 + A8's shadow — one corrected cycle
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The rejection loop, minus the loop: extract the constraint from what
+ * somebody wrote, hand it back to the agent with the rejected venue gone, and
+ * ask whether the follow-up is the proposal we agreed on.
+ *
+ * **This is the only thing that shows success criterion 4 before A8 exists** —
+ * "a free-text rejection produces a materially different next proposal that
+ * visibly addresses the stated reason". There is no cap here, nothing is
+ * persisted, and no cycle is spent; A8 owns all three, and this goes away when
+ * it lands.
+ *
+ * **Its own table, deliberately.** `07` and `08` stay `deferred` in the sweep
+ * above, because "the follow-up is right" is a claim about a loop that does
+ * not exist yet, and spec §12.5's pass rate may only carry the claim the
+ * product can actually make today.
+ *
+ * The constraint comes from a **live** A7 call, so what is measured is the
+ * chain rather than half of it. When that call cannot be made — the free tier
+ * is a shared resource and this model has whole afternoons of 503 — `--agreed`
+ * feeds the constraint the fixture already states, which measures the agent
+ * alone and still produces a number. Attribution is free either way: the
+ * constraint table in `npm run eval:constraints` is what says whether A7 was
+ * right.
+ */
+type FollowupRow = {
+  id: string;
+  from: "live" | "agreed" | "—";
+  state: "pass" | "fail" | "error";
+  detail: string;
+  cost?: Cost;
+  ms?: number;
+};
+
+async function followUp(scenario: Scenario): Promise<FollowupRow> {
+  const one = rejectionCases().find(
+    (rejection) => rejection.id === scenario.id
+  );
+  if (!one || !scenario.expectedConstraint) {
+    return {
+      id: scenario.id,
+      from: "—",
+      state: "error",
+      detail: "no rejection",
+    };
+  }
+
+  let correction = scenario.expectedConstraint.softPreferences;
+  let from: FollowupRow["from"] = "agreed";
+  let ms = 0;
+
+  if (!agreed) {
+    try {
+      const { update, call } = await withRetries(
+        () =>
+          runConstraintUpdater({
+            reasonText: one.text,
+            rejected: one.rejected,
+          }),
+        { paceMs: PACE_MS }
+      );
+      correction = update.softPreferences;
+      from = "live";
+      ms += call.ms;
+    } catch (error) {
+      // Not a failure of the follow-up. The chain could not be run, so the
+      // agreed constraint stands in and the table says so.
+      console.log(
+        `  … ${scenario.id}: extraction unavailable (${(error instanceof Error ? error.message : String(error)).split("\n")[0]}), using the agreed constraint`
+      );
+    }
+  }
+
+  const input = scenarioFollowupInput(scenario, correction, one.text);
+
+  try {
+    const { draft, call } = await withRetries(() => runMatchingAgent(input), {
+      paceMs: PACE_MS,
+    });
+    const verdict = judge(scenario, draft);
+    return {
+      id: scenario.id,
+      from,
+      state: verdict.pass ? "pass" : "fail",
+      detail: verdict.reason ?? draft.options[0].venue.name,
+      cost: call.cost,
+      ms: ms + call.ms,
+    };
+  } catch (error) {
+    return {
+      id: scenario.id,
+      from,
+      state: "error",
+      detail: (error instanceof Error ? error.message : String(error)).split(
+        "\n"
+      )[0],
+      ms,
+    };
+  }
+}
+
+function printFollowups(rows: FollowupRow[]): void {
+  const width = Math.max(...rows.map((row) => row.id.length));
+  console.log(
+    `\nafter one rejection\n${"scenario".padEnd(width)}  ${"from".padEnd(6)}  ${"verdict".padEnd(7)}  ${"cost".padEnd(10)}  ${"dur".padEnd(7)}  detail`
+  );
+  for (const row of rows) {
+    console.log(
+      [
+        row.id.padEnd(width),
+        row.from.padEnd(6),
+        row.state.toUpperCase().padEnd(7),
+        (row.cost ? describeTotal(totalCost([row.cost])) : "—").padEnd(10),
+        (row.ms ? `${(row.ms / 1000).toFixed(1)}s` : "—").padEnd(7),
+        row.detail,
+      ].join("  ")
+    );
+  }
+  console.log(
+    `\n${rows.filter((row) => row.state === "pass").length} of ${rows.length} answered the objection\n`
+  );
+}
+
+/* -------------------------------------------------------------------------
  * The table
  * ---------------------------------------------------------------------- */
 
@@ -261,6 +396,19 @@ async function main() {
   }
 
   print(rows);
+
+  if (followup) {
+    const withRejections = chosen.filter(
+      (scenario) => scenario.rejection && scenario.expectedConstraint
+    );
+    const followups: FollowupRow[] = [];
+    for (const scenario of withRejections) {
+      if (followups.length) await pause(PACE_MS);
+      followups.push(await followUp(scenario));
+    }
+    if (followups.length) printFollowups(followups);
+  }
+
   process.exit(exitCode(rows));
 }
 

@@ -491,3 +491,83 @@ export function rejectionCases(): RejectionCase[] {
 
   return [...fromScenarios, ...fixtures];
 }
+
+/**
+ * The same scenario, one cycle later: somebody rejected the proposal, A7 made
+ * something of it, and the agent is asked again.
+ *
+ * **Not the loop.** There is no cap here, no `stuck`, and nothing is
+ * persisted — A8 owns all three. This is the smallest thing that can show
+ * success criterion 4, _"a free-text rejection produces a materially
+ * different next proposal that visibly addresses the stated reason"_, before
+ * A8 exists.
+ *
+ * Three changes to the first cycle's input, and they are the three A8 will
+ * make for real:
+ *
+ * 1. **The correction rides on the rejecting participant's context**, which is
+ *    where A7 writes it and where §5.7 says it outranks the profile.
+ * 2. **The rejected venue is gone.** A8b blocks the rejected *option* — a
+ *    (venue, slot) pair — but a scenario's `initialProposal` names a venue and
+ *    no time, so a venue is the most this harness can honestly block. It is
+ *    the stricter of the two, so a follow-up that passes here would pass under
+ *    A8's rule as well.
+ * 3. **The person's own words are carried**, whether or not a field came out
+ *    of them (tasks/a7-plan.md, decision 2).
+ *
+ * `ranked` is left whole on purpose: it is what the funnel shortlisted, which
+ * is a fact about the run, and the agent can only choose from `viable`.
+ */
+export function scenarioFollowupInput(
+  scenario: Scenario,
+  correction: SoftPreferences,
+  reasonText: string
+): MatchAgentInput {
+  if (!scenario.rejection || !scenario.initialProposal) {
+    throw new Error(`scenario "${scenario.id}" has no rejection to follow up`);
+  }
+
+  const base = scenarioAgentInput(scenario);
+  const rejectedVenue = scenario.candidateVenues.find(
+    (candidate) => candidate.name === scenario.initialProposal?.venue
+  );
+  if (!rejectedVenue) {
+    throw new Error(
+      `scenario "${scenario.id}" proposes "${scenario.initialProposal.venue}", which is not one of its candidateVenues`
+    );
+  }
+
+  const rejector = scenario.rejection.by;
+
+  return {
+    ...base,
+    cycleNumber: 2,
+    participants: base.participants.map((participant) =>
+      participant.userId === rejector
+        ? {
+            ...participant,
+            // Added to the context, never replacing it: an amendment about
+            // tonight's mobility and a correction about tonight's preferences
+            // are both true at once.
+            context: {
+              ...(participant.context ?? {
+                id: `context-${rejector}`,
+                meetingId: `eval-${scenario.id}`,
+                userId: rejector,
+                origin: null,
+                originLabel: null,
+                mobilityWindows: [],
+                note: null,
+                createdAt: new Date(0),
+              }),
+              softPreferences: correction,
+            },
+          }
+        : participant
+    ),
+    viable: base.viable.filter(
+      (pair) => pair.candidatePlaceId !== rejectedVenue.placeId
+    ),
+    rejections: { [rejector]: reasonText },
+  };
+}

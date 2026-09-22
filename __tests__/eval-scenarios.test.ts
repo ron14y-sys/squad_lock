@@ -6,6 +6,7 @@ import {
   loadScenarios,
   openingWindows,
   rejectionCases,
+  scenarioFollowupInput,
   type Scenario,
 } from "@/evals/adapter";
 
@@ -710,5 +711,41 @@ describe("the rejections A7 is measured on", () => {
     expect(new Set(cases.map((one) => one.expected.objection))).toEqual(
       new Set(["soft", "distance", "time", "venue_identity", "none"])
     );
+  });
+});
+
+/**
+ * The second cycle, without A8: what changes between the proposal that was
+ * rejected and the one that answers it.
+ */
+describe("the follow-up input", () => {
+  const scenario = loadScenario("rejection-loop-noise");
+  const input = scenarioFollowupInput(
+    scenario,
+    { noiseLevel: "quiet" },
+    scenario.rejection!.text
+  );
+
+  it("puts the correction on the person who made it, and on nobody else", () => {
+    const shani = input.participants.find((p) => p.userId === "Shani");
+    expect(shani?.context?.softPreferences).toEqual({ noiseLevel: "quiet" });
+
+    for (const other of input.participants.filter(
+      (p) => p.userId !== "Shani"
+    )) {
+      expect(other.context?.softPreferences ?? null).toBeNull();
+    }
+  });
+
+  it("drops the rejected venue and keeps the rest", () => {
+    const venues = new Set(input.viable.map((pair) => pair.candidatePlaceId));
+
+    expect(venues.has("place-07-beer-bazaar")).toBe(false);
+    expect(venues.has("place-07-quiet-corner")).toBe(true);
+  });
+
+  it("carries the words themselves, and counts a second cycle", () => {
+    expect(input.rejections).toEqual({ Shani: scenario.rejection!.text });
+    expect(input.cycleNumber).toBe(2);
   });
 });
