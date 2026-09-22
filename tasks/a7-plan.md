@@ -105,6 +105,22 @@ Two bugs this step has to avoid, both found while planning:
    has it**, not from the latest row. Written down here because A7 creates the first row that is
    not an amendment.
 
+> **Steps 3 and 4 merged while building, 22 Sep 2026.** They are one unit, not
+> two: the call site needs the option that was rejected, which is a row in the
+> latest `MatchRun`, and the answer needs a row to land in. Built separately,
+> step 3 would have been a call whose result goes nowhere — the thing the
+> minimality rule at the top of this plan exists to prevent. `applyRejection`
+> in [lib/extraction/apply-rejection.ts](../lib/extraction/apply-rejection.ts)
+> is the seam where the pure updater and the database meet, and the only
+> place they do.
+>
+> **Two things the venue snapshot cannot give us.** `MatchOption` stores a
+> name, an address and coordinates; it has no neighbourhood, and
+> `VenueSoftFacts` has no column anywhere in the schema — B7 is what produces
+> them. So the payload sends both as absent rather than inventing them. In the
+> eval path they are present, because a fixture states them, which is where
+> "too loud" can actually be read against a venue marked `lively`.
+
 ### Step 5 — A4 sees the correction
 
 In [lib/matching/agent.ts](../lib/matching/agent.ts), which
@@ -195,6 +211,41 @@ at their guard rails, not at the model):
 | Retries and backoff on a failed call                                   | B9                                                                         |
 
 ---
+
+## Verifying against a real database
+
+Nothing below can be checked before `DATABASE_URL` points at a live Postgres.
+As of 22 Sep 2026 it does not: `/api/health` answers `tenant/user
+postgres.ddwhvsjupcuqxarztawt not found`, which is the Supabase project behind
+that connection string being paused or gone, and `.env.local` has no
+`DATABASE_URL` at all. B1 ([#21](https://github.com/ron14y-sys/squad_lock/issues/21))
+was closed with this working, so this is a regression in the environment and
+not in the code.
+
+**First, apply what is waiting.** Two migrations have never run anywhere —
+A4's and A7's:
+
+```
+npx prisma migrate status
+npm run db:migrate:deploy
+curl -s https://squadlock.vercel.app/api/health
+```
+
+**Then the six things a unit test cannot reach**, in order of how expensive
+they are to get wrong:
+
+| #   | Check                                                                                                                                                    | Why it needs a real database                                                                                                                                                     |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | A correction row does **not** spend somebody's free amendment: write a correction for a user, then have that user amend, and the amendment is still free | The fix is a `Prisma.DbNull` filter on a JSON column, and Prisma's JSON-null semantics are exactly the kind of thing that is right in the type system and wrong against Postgres |
+| 2   | The correction and the outcome land together, or neither does                                                                                            | `recordRejectionOutcome` is one `$transaction`; nothing here forces a failure partway through, so the claim rests on reading the code — the same gap B5c carries                 |
+| 3   | A second correction from the same person **appends** a second row                                                                                        | The timeline has to say which objection triggered which re-weighing (spec §5.7)                                                                                                  |
+| 4   | `findRejectedOption` returns rank 1 of the **latest** run, with two runs on one meeting                                                                  | Ordering by `cycleNumber desc` is trivial to write and trivial to get backwards                                                                                                  |
+| 5   | The route path end to end: reject with text → a row and an outcome                                                                                       | Needs a `MatchRun` to exist, which needs B11 — or a seeded run, which is the cheaper way to check this before B11 lands                                                          |
+| 6   | A failed extraction still returns a normal response, and records why                                                                                     | The failure path is the one nobody exercises by accident                                                                                                                         |
+
+Checks 1–4 need a handful of rows and no model call. A small seed script is the
+honest way to run them before B11 exists; it is not written yet, and it is not
+part of A7 unless the database returns first.
 
 ## Known risks
 

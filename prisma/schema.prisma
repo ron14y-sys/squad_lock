@@ -368,6 +368,12 @@ enum ResponseStatus {
 /// `distance` and `time` are recorded rather than corrected: they are the
 /// Context Resolver's material (A12), not a soft preference, and forcing one
 /// into a soft field would be an invented opinion (issue #86).
+///
+/// The three failures are A1's own taxonomy, because each has a different
+/// fix: `failed_quota` is the free tier's allowance, a routine outcome rather
+/// than a fault; `failed_call` is a call that never came back; and
+/// `failed_invalid` is an answer that came back unusable — truncated, or
+/// rejected by validation.
 enum ExtractionOutcome {
   soft
   distance
@@ -375,7 +381,7 @@ enum ExtractionOutcome {
   venue_identity
   none
   failed_quota
-  failed_timeout
+  failed_call
   failed_invalid
 }
 

@@ -27,7 +27,7 @@
 --      5).
 
 -- CreateEnum
-CREATE TYPE "ExtractionOutcome" AS ENUM ('soft', 'distance', 'time', 'venue_identity', 'none', 'failed_quota', 'failed_timeout', 'failed_invalid');
+CREATE TYPE "ExtractionOutcome" AS ENUM ('soft', 'distance', 'time', 'venue_identity', 'none', 'failed_quota', 'failed_call', 'failed_invalid');
 
 -- AlterTable
 ALTER TABLE "participant_meeting_contexts" ADD COLUMN     "softPreferences" JSONB;

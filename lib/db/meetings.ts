@@ -4,14 +4,18 @@
 // here; they do not touch prisma.meeting, prisma.response or
 // prisma.participantMeetingContext directly.
 
-import { MeetingStatus, ResponseStatus } from "@/lib/generated/prisma/client";
+import {
+  ExtractionOutcome,
+  MeetingStatus,
+  Prisma,
+  ResponseStatus,
+} from "@/lib/generated/prisma/client";
 import { meetingFromRow } from "@/lib/types/meeting-from-row";
 import { participantMeetingContextFromRow } from "@/lib/types/participant-meeting-context-from-row";
 
 import { canonicalMeetingPair, meetingsConflict } from "./conflict-dismissal";
 import { getPrisma } from "./client";
 
-import type { Prisma } from "@/lib/generated/prisma/client";
 import type { MeetingModel } from "@/lib/generated/prisma/models";
 import type {
   InitiateMeetingInput,
@@ -22,6 +26,8 @@ import type {
   ParticipantMeetingContext,
   Response,
 } from "@/lib/types/meeting";
+import type { SoftPreferences } from "@/lib/types/profile";
+import type { TimeSlot } from "@/lib/types/primitives";
 
 /** spec §3.1's "Three Mandatory Caps": at most 3 open meetings per group. */
 const OPEN_MEETING_CAP = 3;
@@ -305,8 +311,17 @@ export async function respondToMeeting(
         break;
 
       case "amendment": {
+        // Only amendment rows count against the one free amendment (spec
+        // §3.1). A7 appends correction rows to this same table, and counting
+        // those would silently charge a cycle for somebody's *first* real
+        // amendment — a rejection they made would come out of an allowance
+        // that was never about rejections.
         const priorAmendments = await tx.participantMeetingContext.count({
-          where: { meetingId, userId },
+          where: {
+            meetingId,
+            userId,
+            softPreferences: { equals: Prisma.DbNull },
+          },
         });
         const contextRow = await tx.participantMeetingContext.create({
           data: {
@@ -349,4 +364,82 @@ export async function respondToMeeting(
     participantContext: result.participantContext,
     cancelledConflicts: result.cancelledConflicts.map(meetingFromRow),
   };
+}
+
+/* -------------------------------------------------------------------------
+ * A7 — the rejection loop's two touches on this table
+ * ---------------------------------------------------------------------- */
+
+/** What the group was last offered, as the Constraint Updater needs to see it. */
+export type RejectedOption = {
+  venueName: string;
+  slot: TimeSlot;
+};
+
+/**
+ * The rank-1 option of this meeting's latest run — the thing a rejection is
+ * about (A7).
+ *
+ * `null` when no run has happened yet, which is every meeting today: nothing
+ * creates a `MatchRun` until B11 wires the agent up. A rejection with nothing
+ * proposed is not something to extract from.
+ *
+ * **The venue's neighbourhood and its soft facts are not here, because they
+ * are not stored.** `MatchOption` snapshots the name, address and coordinates
+ * only, and `VenueSoftFacts` has no column anywhere — B7 is what produces
+ * them. The updater's payload leaves both absent rather than inventing them,
+ * which is the same rule A4 follows for a venue it knows nothing about.
+ */
+export async function findRejectedOption(
+  meetingId: string
+): Promise<RejectedOption | null> {
+  const prisma = getPrisma();
+
+  const run = await prisma.matchRun.findFirst({
+    where: { meetingId },
+    orderBy: { cycleNumber: "desc" },
+    include: { options: { where: { rank: 1 } } },
+  });
+
+  const option = run?.options[0];
+  if (!option) return null;
+
+  return {
+    venueName: option.venueName,
+    slot: { start: option.proposedDatetime, end: option.proposedEnd },
+  };
+}
+
+/**
+ * Records what A7 made of one rejection: the correction, when there is one,
+ * and the outcome either way.
+ *
+ * One transaction, because a correction that lands without its outcome — or
+ * an outcome recorded for a correction that was never written — would each be
+ * a lie about what the next weighing is working from.
+ *
+ * A correction **appends** a row rather than updating one, on the same rule
+ * amendments follow: the timeline has to be able to say which objection
+ * triggered which re-weighing (spec §5.7).
+ */
+export async function recordRejectionOutcome(
+  meetingId: string,
+  userId: string,
+  outcome: ExtractionOutcome,
+  correction: SoftPreferences | null
+): Promise<void> {
+  const prisma = getPrisma();
+
+  await prisma.$transaction(async (tx) => {
+    if (correction) {
+      await tx.participantMeetingContext.create({
+        data: { meetingId, userId, softPreferences: correction },
+      });
+    }
+
+    await tx.response.update({
+      where: { meetingId_userId: { meetingId, userId } },
+      data: { extractionOutcome: outcome },
+    });
+  });
 }

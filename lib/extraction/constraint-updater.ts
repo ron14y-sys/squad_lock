@@ -49,7 +49,12 @@
 
 import { z } from "zod";
 
-import { generate, type LlmResult } from "@/lib/llm/client";
+import {
+  generate,
+  LlmCallError,
+  LlmTruncatedError,
+  type LlmResult,
+} from "@/lib/llm/client";
 import { describeSlot } from "@/lib/matching/constraints";
 import type { SoftPreferences, TimeSlot, VenueSoftFacts } from "@/lib/types";
 
@@ -79,6 +84,33 @@ export type ConstraintUpdateOutcome = {
   /** Tokens, duration and dollars — what the eval table reports. */
   call: LlmResult;
 };
+
+/**
+ * The three ways this can fail, as A1 already separates them — because each
+ * one has a different fix, and a single "it failed" flag would hide which.
+ *
+ * `failed_quota` is the free tier's allowance, which is a routine outcome and
+ * not a fault (spec §6.4); `failed_call` never came back; `failed_invalid`
+ * came back unusable, whether truncated or rejected by validation.
+ */
+export type ExtractionFailure =
+  "failed_quota" | "failed_call" | "failed_invalid";
+
+/**
+ * Which failure this was, for the row that records it.
+ *
+ * Truncation is checked first because `LlmTruncatedError` extends
+ * `LlmCallError`, and reading a cut-off answer as an unreachable model would
+ * point the next person at the network instead of at the output cap.
+ */
+export function failureOutcome(error: unknown): ExtractionFailure {
+  if (error instanceof LlmTruncatedError) return "failed_invalid";
+  if (error instanceof ConstraintUpdateError) return "failed_invalid";
+  if (error instanceof LlmCallError) {
+    return error.rateLimited ? "failed_quota" : "failed_call";
+  }
+  return "failed_call";
+}
 
 /** The answer was not the shape it had to be. The mirror of `AgentAnswerError`. */
 export class ConstraintUpdateError extends Error {

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { LlmCallError, LlmTruncatedError } from "@/lib/llm/client";
+
 import {
   buildPayload,
   ConstraintUpdateError,
+  failureOutcome,
   interpretUpdate,
   runConstraintUpdater,
   type ConstraintUpdateInput,
@@ -105,5 +108,41 @@ describe("runConstraintUpdater", () => {
     await expect(
       runConstraintUpdater({ ...input, reasonText: "   " })
     ).rejects.toThrow(ConstraintUpdateError);
+  });
+});
+
+describe("failureOutcome", () => {
+  const context = {
+    model: "gemini-3.5-flash-lite",
+    task: "extraction" as const,
+  };
+
+  it("separates the quota wall from a call that did not come back", () => {
+    expect(
+      failureOutcome(new LlmCallError("429", { ...context, rateLimited: true }))
+    ).toBe("failed_quota");
+
+    expect(failureOutcome(new LlmCallError("socket hang up", context))).toBe(
+      "failed_call"
+    );
+  });
+
+  // LlmTruncatedError extends LlmCallError, so order matters: a cut-off
+  // answer recorded as an unreachable model points the next person at the
+  // network instead of at the output cap.
+  it("reads a cut-off answer and a rejected one as the same unusable answer", () => {
+    expect(
+      failureOutcome(
+        new LlmTruncatedError({ ...context, status: "incomplete", chars: 40 })
+      )
+    ).toBe("failed_invalid");
+
+    expect(failureOutcome(new ConstraintUpdateError("budget: invalid"))).toBe(
+      "failed_invalid"
+    );
+  });
+
+  it("treats anything it does not recognise as a failed call", () => {
+    expect(failureOutcome(new Error("who knows"))).toBe("failed_call");
   });
 });
