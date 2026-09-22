@@ -158,6 +158,18 @@ export type MatchAgentInput = {
    * atmosphere rather than being told something invented.
    */
   venueSoftFacts?: Record<string, VenueSoftFacts>;
+  /**
+   * What people said when they rejected the previous proposal, by `userId`
+   * (A7). The structured correction they produced rides on
+   * `Participant.context.softPreferences`; this is the sentence itself.
+   *
+   * **Both, not one or the other.** The correction is what the next weighing
+   * acts on; the words are what lets an option *visibly* answer the
+   * objection, which is success criterion 4 — and some objections reduce to
+   * no field at all, so the words are all there is
+   * ([tasks/a7-plan.md](../../tasks/a7-plan.md), decision 2).
+   */
+  rejections?: Record<string, string>;
   /** Streams the answer as it arrives — the progress C5/C6 render (§4.1e). */
   onText?: (chunk: string, soFar: string) => void;
 };
@@ -186,6 +198,10 @@ export type MatchAgentInput = {
  * - **"Never tell a person what an option cost them"** — §5.6. Naming a
  *   constraint is a fact; naming a comparison manufactures a grievance that
  *   did not exist.
+ * - **A correction outranks a standing preference, for tonight only** — A7.
+ *   The pair of fields is deliberate: `tonight_correction` is what the next
+ *   weighing acts on, `in_their_own_words` is what lets the answer be
+ *   recognisable as an answer (§12.4). Neither is another person's business.
  * - **Hebrew, gender-neutral, only given facts, needs stay private** — A6.
  *   Recorded runs invented reasons ("arterial roads") where the payload was
  *   thin. See [tasks/a6-plan.md](../../tasks/a6-plan.md).
@@ -203,6 +219,8 @@ HOW TO CHOOSE
 - Fairness order is advice, not an instruction. Every pair listed is a valid answer, and a better-suited venue further down may well be the right one — but passing over the fairest option trades someone's journey for something else, so name that trade in "traded_away".
 - Strongly prefer a pair marked "verified": true. A pair marked false carries something we could not check. Choose one only when the verified options are clearly worse.
 - A participant who stated no opinion on something has no opinion on it. That is a real state, not a neutral vote and not agreement with the majority. Never count a silence as a preference, never let one decide between two options, and never write a justification that describes a silence as a choice someone made.
+- A "tonight_correction" is what that person said about this evening after seeing an earlier proposal. For tonight it outranks their stated preference, field by field, and everything above about preferences applies to it too.
+- "in_their_own_words" is how they put it when they rejected the last proposal. Not every objection reduces to a field, so read the sentence itself and answer it where the pairs allow it.
 - Your three options must be three different (venue, slot) pairs.
 
 HOW TO WRITE THE JUSTIFICATIONS
@@ -211,7 +229,8 @@ HOW TO WRITE THE JUSTIFICATIONS
 - You do not know anyone's gender, so describe the place and the trip rather than the person ("קרוב לפלורנטין, והמקום כשר", not "תגיע בקלות").
 - Use only facts given above. Never invent a route, a road, a travel time, a transport schedule, or anything about a venue. When there is little to say about someone, say little.
 - Every pair meets every dietary need and allergy, but never say so of a pair marked "verified": false.
-- A person's dietary needs, allergies and unavailable travel modes are private: mention them only in that person's own justification.
+- A person's dietary needs, allergies and unavailable travel modes are private: mention them only in that person's own justification. Their correction and their own words are theirs on exactly the same terms.
+- When an option answers somebody's own objection, you may say so to them — "שקט יותר, כמו שביקשת". That is not the comparison forbidden below: it is their own request, not the cost of an option they did not get.
 - Name a constraint, never a comparison. "קרוב לפלורנטין, והמקום כשר" is right. "רחוק יותר מהאפשרות ההוגנת ביותר" is forbidden — the person never sees what an option cost them.
 - "traded_away" is the opposite: it is internal, nobody is shown it, and it is where the honest cost of the choice belongs. Say what was given up and for whom. Leave it empty only when the option genuinely gives nothing up.`;
 
@@ -235,6 +254,7 @@ export function buildPayload(input: MatchAgentInput): string {
     venueSoftFacts,
     occasion,
     cycleNumber,
+    rejections,
   } = input;
 
   const candidateById = new Map(candidates.map((c) => [c.placeId, c]));
@@ -250,6 +270,12 @@ export function buildPayload(input: MatchAgentInput): string {
     // Already enforced by A2 — here only so a justification can name them (A6).
     dietary_needs: person.profile.hardConstraints.dietary,
     allergies: person.profile.hardConstraints.allergies,
+    // A7's two halves. Shown beside `stated_preferences` rather than merged
+    // into it: the model has to be able to tell a standing preference from
+    // something said about tonight, or it cannot answer the objection in
+    // words the person will recognise (spec §12.4).
+    tonight_correction: person.context?.softPreferences ?? null,
+    in_their_own_words: rejections?.[person.userId] ?? null,
   }));
 
   // A3's order, applied to A2's survivors. `Infinity` parks anything the
