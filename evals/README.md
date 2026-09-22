@@ -70,6 +70,15 @@ The burden formula is defined on a straight line with a detour factor. **The sys
 
 `rejection-loop` scenarios add `initialProposal`, `rejection` (who, free text), and `expectedConstraint` (the structured constraint the Constraint Updater should extract) alongside `expected` (the follow-up proposal).
 
+**`rejections.json` is the second half of A7's measurement.** `07` and `08`
+keep their rejections, so the constraint and the follow-up proposal they expect
+cannot drift apart; `rejections.json` holds the cases a whole scenario would be
+waste for — a sentence and an expected answer, no venues, calendars or
+coordinates. That is where the two failure modes that matter live: a field the
+model invented, and an objection this vocabulary cannot hold ("too far", "too
+late", "not that place", "no reason I can name"). `rejectionCases()` in
+`adapter.ts` loads both, and `npm run eval:constraints` measures them.
+
 ### What the fixture says, and what the engine reads
 
 A scenario is **wrong** when it says something the engine cannot express, and merely **different** when it says the same thing in a friendlier way. The first kind gets fixed in the file. The second stays, and the mapping lives here.

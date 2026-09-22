@@ -212,6 +212,63 @@ at their guard rails, not at the model):
 
 ---
 
+## Seeing it work yourself
+
+Three commands, no screens, and none of them needs the database.
+
+```
+npm run eval:constraints -- "רחוק לי מדי, אין לי איך להגיע"
+```
+
+One sentence of your own through the real model, printing what it extracted,
+what it cost and how long it took. This is the one to reach for when you want
+to watch the thing work rather than measure it.
+
+```
+npm run eval:constraints
+```
+
+Every rejection we have an agreed answer for — `07` and `08` from the
+scenarios, six more from `evals/rejections.json` — three runs each, with an
+`agree` column saying how often the model said the same thing. `--runs 1` when
+quota is tight, or an id (`vague`, `distance`) to run just one.
+
+```
+npm run verify
+```
+
+Format, lint, types and 520 tests. Everything A7 does without a model: the
+guard rails, the payload, the failure classification, the judge.
+
+What **cannot** be seen this way, and why, is the rest of this section and the
+one below it: the database work needs a database, and nothing reaches a screen
+until B11 assembles a run.
+
+### Measured, 22 Sep 2026 — first live run
+
+`gemini-3.5-flash-lite`, one run per case. Four cases have answered correctly
+so far, across two sweeps: `07` (`noiseLevel: "quiet"`), `08`
+(`budget: "modest"`), `time`, and `preference-not-rejection`
+(`cuisine: "adventurous"`). **No case has answered wrongly yet.** $0.0002 per
+call, 20–33 output tokens, no thinking.
+
+The rest did not answer at all, and the reason is not A7:
+
+- **The model was degraded all afternoon** — sustained 503 "high demand",
+  through three retries with backoff. The first sweep lost six of eight cases
+  this way before the retry existed at all, which is the same failure A5 had
+  already recorded once; `evals/retry.ts` is the fix, now shared by both
+  runners.
+- ⚠️ **Successful calls took 49–58 seconds, against A1's 60-second extraction
+  deadline**, and two calls hit it. F2 measured this model at 4.6s. The
+  constant is not being changed on one bad afternoon, but if a repeat sweep
+  sees the same, the deadline is what to look at first — and in production
+  this path degrades rather than failing (decision 5), so the cost of hitting
+  it is a missed correction, not a broken response.
+
+A repeat sweep, on a day the model is not under load, is what turns this into
+a pass rate.
+
 ## Verifying against a real database
 
 Nothing below can be checked before `DATABASE_URL` points at a live Postgres.

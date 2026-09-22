@@ -12,6 +12,11 @@
  */
 
 import { type Scenario } from "./adapter";
+import type {
+  ConstraintUpdate,
+  ObjectionKind,
+} from "@/lib/extraction/constraint-updater";
+import type { SoftPreferences } from "@/lib/types";
 import type { MatchRunDraft } from "@/lib/matching/agent";
 import { APP_TIME_ZONE } from "@/lib/types";
 
@@ -142,4 +147,52 @@ export function judge(scenario: Scenario, draft: MatchRunDraft): Verdict {
   }
 
   return { pass: true };
+}
+
+/* -------------------------------------------------------------------------
+ * A7 — was the *constraint* right?
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The extracted correction against the one we agreed on.
+ *
+ * **Set equality, never containment.** "The right field came out" and
+ * "nothing else was invented" carry the same weight: an extra field is not a
+ * near miss, it is a preference nobody stated, and it would change the next
+ * ranking on its own ([#86](https://github.com/ron14y-sys/squad_lock/issues/86)).
+ *
+ * A separate verdict from `judge` above, and reported in its own table, for a
+ * reason worth stating plainly: "the constraint is right" and "the proposal is
+ * right" are two different claims, and only the second is what spec §12.5
+ * counts.
+ */
+export function judgeConstraint(
+  expected: { objection: ObjectionKind; softPreferences: SoftPreferences },
+  got: ConstraintUpdate
+): Verdict {
+  if (got.objection !== expected.objection) {
+    return {
+      pass: false,
+      reason: `objection "${got.objection}", expected "${expected.objection}"`,
+    };
+  }
+
+  const differences = [
+    ...Object.entries(got.softPreferences).flatMap(([field, value]) => {
+      const want = expected.softPreferences[field as keyof SoftPreferences];
+      if (want === value) return [];
+      return [
+        want === undefined
+          ? `invented ${field}=${value}`
+          : `${field}=${value}, expected ${want}`,
+      ];
+    }),
+    ...Object.keys(expected.softPreferences)
+      .filter((field) => !(field in got.softPreferences))
+      .map((field) => `missed ${field}`),
+  ];
+
+  return differences.length
+    ? { pass: false, reason: differences.join("; ") }
+    : { pass: true };
 }

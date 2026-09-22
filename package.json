@@ -22,7 +22,8 @@
     "db:generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "eval:constraints": "tsx --env-file-if-exists=.env.local scripts/run-constraint-evals.ts"
   },
   "dependencies": {
     "@google/genai": "^2.18.0",

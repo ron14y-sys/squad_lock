@@ -41,7 +41,8 @@ import {
   type MatchAgentInput,
   type MatchRunDraft,
 } from "@/lib/matching/agent";
-import { isOverloaded, isRateLimited, retryDelayMs } from "@/lib/llm/client";
+import { isRateLimited, retryDelayMs } from "@/lib/llm/client";
+import { pause, withRetries } from "@/evals/retry";
 import { describeTotal, totalCost, type Cost } from "@/lib/llm/cost";
 
 /* -------------------------------------------------------------------------
@@ -76,24 +77,6 @@ let stopped: string | null = null;
  */
 const PACE_MS = Number(process.env.EVAL_PACE_MS ?? 20_000);
 
-/** How many times a transient refusal is worth retrying before giving up. */
-const RETRIES = 3;
-
-/**
- * The longest wait worth sitting through.
- *
- * A rate limit comes in two sizes and the API distinguishes them for us: the
- * per-*minute* window says "retry in 16s" and is simply the pace this tier
- * runs at, while the per-*day* cap either gives no delay or gives one measured
- * in hours. Waiting out the first is how a free-tier sweep completes at all;
- * waiting out the second means blocking until tomorrow, so the sweep stops and
- * says so instead.
- */
-const MAX_WAIT_MS = 90_000;
-
-const pause = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 const outDir =
   replayDir ??
   join("evals", "runs", new Date().toISOString().replace(/[:.]/g, "-"));
@@ -122,43 +105,6 @@ async function answerFor(
   return { draft, cost: call.cost, ms: call.ms };
 }
 
-/**
- * Retry a transient refusal, never a quota.
- *
- * "The model is busy" clears in seconds; "you are out of allowance" does not,
- * and retrying it burns the very window it is asking us to wait for. So an
- * overload is waited out and tried again, and a rate limit is raised at once
- * for `run` to end the sweep on.
- */
-async function withRetries<T>(attempt: () => Promise<T>): Promise<T> {
-  for (let tries = 0; ; tries += 1) {
-    try {
-      return await attempt();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const busy = isOverloaded(message);
-      const asked = retryDelayMs(message);
-
-      // An overload clears on its own; a short rate-limit delay is the tier's
-      // own pace, and the API has just told us what it is. Anything else — a
-      // daily cap, or a limit with no delay attached — is not a wait, it is a
-      // stop, and `run` reports it as one.
-      const delay = busy
-        ? (asked ?? (tries + 1) * PACE_MS)
-        : isRateLimited(message) && asked !== null && asked <= MAX_WAIT_MS
-          ? asked + 2_000
-          : null;
-
-      if (delay === null || tries >= RETRIES) throw error;
-
-      console.log(
-        `  … ${busy ? "busy" : "pacing"}, waiting ${Math.round(delay / 1000)}s (attempt ${tries + 2} of ${RETRIES + 1})`
-      );
-      await pause(delay);
-    }
-  }
-}
-
 async function run(scenario: Scenario): Promise<Row> {
   const classification = classify(scenario);
   if (classification !== "scored" && !includeBlocked) {
@@ -184,8 +130,11 @@ async function run(scenario: Scenario): Promise<Row> {
   const input = scenarioAgentInput(scenario);
 
   try {
-    const { draft, cost, ms } = await withRetries(() =>
-      answerFor(scenario, input)
+    const { draft, cost, ms } = await withRetries(
+      () => answerFor(scenario, input),
+      {
+        paceMs: PACE_MS,
+      }
     );
     const verdict: Verdict = judge(scenario, draft);
     return {

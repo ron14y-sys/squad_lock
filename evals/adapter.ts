@@ -39,6 +39,10 @@ import { ALL_WEEKDAYS, filterTrimmedPairs } from "@/lib/matching/constraints";
 import type { VenueDietaryFacts } from "@/lib/matching/constraints";
 import { originOf, rankViable, straightLineKm } from "@/lib/matching/distance";
 import type { MatchAgentInput } from "@/lib/matching/agent";
+import type {
+  ConstraintUpdateInput,
+  ObjectionKind,
+} from "@/lib/extraction/constraint-updater";
 import { APP_TIME_ZONE } from "@/lib/types";
 import type {
   Candidate,
@@ -375,4 +379,115 @@ export function scenarioAgentInput(
     venueSoftFacts: venueSoftFactsOf(scenario),
     ...overrides,
   };
+}
+
+/* -------------------------------------------------------------------------
+ * A7 — the rejections, from both places they live
+ * ---------------------------------------------------------------------- */
+
+/**
+ * One rejection with the constraint we agreed it should produce.
+ *
+ * Two sources, on purpose. `07` and `08` are the agreed answers and stay in
+ * their scenarios, so the constraint they expect and the follow-up proposal
+ * they expect cannot drift apart. `evals/rejections.json` holds the cases a
+ * full scenario would be waste for: they need a sentence and an expected
+ * answer, not venues, calendars or coordinates — and they are where the two
+ * failure modes that matter live, the invented field and the objection this
+ * vocabulary cannot hold.
+ */
+export type RejectionCase = {
+  id: string;
+  source: "scenario" | "fixture";
+  text: string;
+  /** What the person was reacting to. Fixtures use a stand-in evening. */
+  rejected: ConstraintUpdateInput["rejected"];
+  expected: {
+    objection: ObjectionKind;
+    softPreferences: SoftPreferences;
+  };
+};
+
+type RejectionFixture = {
+  id: string;
+  text: string;
+  venueIs?: VenueSoftFacts;
+  expected: { objection: ObjectionKind; softPreferences: SoftPreferences };
+  why: string;
+};
+
+/**
+ * The evening a fixture's rejection is about.
+ *
+ * A real one, because `describeSlot` renders it into the payload and "an
+ * evening" is not a thing a model can be shown. Which evening it is decides
+ * nothing: no fixture's expected answer depends on the date.
+ */
+const FIXTURE_SLOT: TimeSlot = {
+  start: instantOf("2026-09-12", "21:00"),
+  end: instantOf("2026-09-13", "00:00"),
+};
+
+export function rejectionCases(): RejectionCase[] {
+  const fromScenarios = loadScenarios().flatMap((scenario) => {
+    if (!scenario.rejection || !scenario.expectedConstraint) return [];
+
+    // The venue named in `initialProposal`, with whatever the fixture says it
+    // is like — which is what makes "too loud" readable against a venue the
+    // scenario marked `lively`.
+    const venue = scenario.candidateVenues.find(
+      (candidate) => candidate.name === scenario.initialProposal?.venue
+    );
+    if (!venue) {
+      throw new Error(
+        `scenario "${scenario.id}" proposes "${scenario.initialProposal?.venue}", which is not one of its candidateVenues`
+      );
+    }
+
+    const window = scenario.availability[0];
+
+    return [
+      {
+        id: scenario.id,
+        source: "scenario" as const,
+        text: scenario.rejection.text,
+        rejected: {
+          venueName: venue.name,
+          neighbourhood: venue.neighborhood ?? null,
+          venueIs: venue.soft ?? null,
+          slot: {
+            start: instantOf(window.date, window.start),
+            end: instantOf(
+              window.date,
+              window.end,
+              window.end < window.start ? 1 : 0
+            ),
+          },
+        },
+        expected: {
+          objection: "soft" as const,
+          softPreferences: scenario.expectedConstraint.softPreferences,
+        },
+      },
+    ];
+  });
+
+  const fixtures = (
+    JSON.parse(
+      readFileSync(join(__dirname, "rejections.json"), "utf8")
+    ) as RejectionFixture[]
+  ).map((fixture) => ({
+    id: fixture.id,
+    source: "fixture" as const,
+    text: fixture.text,
+    rejected: {
+      venueName: "Some Bar",
+      neighbourhood: "Florentin",
+      venueIs: fixture.venueIs ?? null,
+      slot: FIXTURE_SLOT,
+    },
+    expected: fixture.expected,
+  }));
+
+  return [...fromScenarios, ...fixtures];
 }
