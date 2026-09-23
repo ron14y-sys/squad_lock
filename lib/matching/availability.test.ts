@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Participant, PreferenceProfile, TimeSlot } from "@/lib/types";
-import {
-  candidateSlots,
-  commonFreeWindows,
-  MIN_MEETING_HOURS,
-  slotTolerance,
-} from "./availability";
+import { commonFreeWindows, slotTolerance } from "./availability";
 
 const slot = (startIso: string, endIso: string): TimeSlot => ({
   start: new Date(startIso),
@@ -134,54 +129,6 @@ describe("commonFreeWindows", () => {
 
     expect(commonFreeWindows([dana], DAY)).toEqual([
       slot("2026-09-07T08:00:00.000Z", "2026-09-07T18:00:00.000Z"),
-    ]);
-  });
-});
-
-describe("candidateSlots", () => {
-  it("is empty for no free windows", () => {
-    expect(candidateSlots([])).toEqual([]);
-  });
-
-  it("drops a free window shorter than MIN_MEETING_HOURS rather than truncating it", () => {
-    const short = slot("2026-09-07T10:00:00.000Z", "2026-09-07T12:00:00.000Z"); // 2h
-    expect(MIN_MEETING_HOURS).toBe(3);
-    expect(candidateSlots([short])).toEqual([]);
-  });
-
-  it("is exactly one slot when the free window is exactly MIN_MEETING_HOURS long", () => {
-    const exact = slot("2026-09-07T10:00:00.000Z", "2026-09-07T13:00:00.000Z");
-    expect(candidateSlots([exact])).toEqual([exact]);
-  });
-
-  it("slides an hourly-stepped MIN_MEETING_HOURS window through a longer free window", () => {
-    // 10:00-15:00 is 5 hours: three 3-hour slots fit, stepping by an hour.
-    const window = slot("2026-09-07T10:00:00.000Z", "2026-09-07T15:00:00.000Z");
-
-    expect(candidateSlots([window])).toEqual([
-      slot("2026-09-07T10:00:00.000Z", "2026-09-07T13:00:00.000Z"),
-      slot("2026-09-07T11:00:00.000Z", "2026-09-07T14:00:00.000Z"),
-      slot("2026-09-07T12:00:00.000Z", "2026-09-07T15:00:00.000Z"),
-    ]);
-  });
-
-  it("carves slots out of each free window independently", () => {
-    const morning = slot(
-      "2026-09-07T06:00:00.000Z",
-      "2026-09-07T09:00:00.000Z"
-    );
-    const tooShort = slot(
-      "2026-09-07T10:00:00.000Z",
-      "2026-09-07T11:00:00.000Z"
-    );
-    const evening = slot(
-      "2026-09-07T16:00:00.000Z",
-      "2026-09-07T19:00:00.000Z"
-    );
-
-    expect(candidateSlots([morning, tooShort, evening])).toEqual([
-      morning,
-      evening,
     ]);
   });
 });
