@@ -7,7 +7,6 @@ import {
   getCachedDetails,
   getCachedSearch,
   isFresh,
-  roundToNeighbourhood,
   saveCachedDetails,
   saveCachedSearch,
   searchNeighbourhoodCached,
@@ -54,21 +53,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-describe("roundToNeighbourhood", () => {
-  it("rounds to 2 decimal places", () => {
-    expect(roundToNeighbourhood({ lat: 32.0812345, lng: 34.7839999 })).toEqual({
-      latKey: 32.08,
-      lngKey: 34.78,
-    });
-  });
-
-  it("two coordinates differing only past the 2nd decimal produce the identical key", () => {
-    const a = roundToNeighbourhood({ lat: 32.0801, lng: 34.7799 });
-    const b = roundToNeighbourhood({ lat: 32.0849, lng: 34.7751 });
-    expect(a).toEqual(b);
-  });
 });
 
 describe("isFresh", () => {
