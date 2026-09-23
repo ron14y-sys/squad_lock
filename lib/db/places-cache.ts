@@ -36,8 +36,11 @@
 
 import type { Candidate, LatLng, LocalWindow } from "@/lib/types";
 import { fetchPlaceDetails, searchNeighbourhood } from "@/lib/places/client";
+import { roundToNeighbourhood } from "@/lib/places/geo";
 import { getPrisma } from "./client";
 import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
+
+export { roundToNeighbourhood } from "@/lib/places/geo";
 
 type CacheClient = {
   placeSearchCache: Pick<
@@ -55,42 +58,11 @@ function asJson(value: unknown): Prisma.InputJsonValue {
 }
 
 /* -------------------------------------------------------------------------
- * Rounding and freshness — pure, no DB, no clock of their own
+ * Freshness — pure, no DB, no clock of its own. `roundToNeighbourhood`
+ * (imported above, re-exported for existing callers) lives in
+ * `lib/places/geo.ts` now — shared with `lib/places/search-area.ts`'s
+ * dedupe, see that file's own comment on why one definition matters here.
  * ---------------------------------------------------------------------- */
-
-/**
- * Decimal places kept in a cache key. `spec §5.4` already stores
- * `PreferenceProfile.home{Lat,Lng}` at this granularity for privacy — "the
- * rounding is already there" (spec §6.3) — but this file rounds again
- * rather than trusting an upstream caller to have matched that precision
- * exactly. Two coordinates that are the *same neighbourhood* but arrived
- * by different paths (a stored home vs. a future B7b union-of-neighbourhoods
- * centre) need to land on the identical key for the unique constraint to
- * ever hit — see the same reasoning `lib/matching/distance.ts`'s
- * `quantise` gives for its own `KEY_DECIMALS`.
- *
- * 2 decimal places of latitude is about 1.1 km; at Tel Aviv's latitude
- * (~32°N) a degree of longitude is narrower, so 2 decimal places there is
- * about 0.9 km — both a reasonable single-neighbourhood cell, not a
- * geographic precision claim.
- */
-const KEY_DECIMALS = 2;
-
-const roundCoordinate = (value: number): number => {
-  const factor = 10 ** KEY_DECIMALS;
-  return Math.round(value * factor) / factor;
-};
-
-/** `LatLng` → the exact `(latKey, lngKey)` pair a cache row is looked up by. */
-export function roundToNeighbourhood(center: LatLng): {
-  latKey: number;
-  lngKey: number;
-} {
-  return {
-    latKey: roundCoordinate(center.lat),
-    lngKey: roundCoordinate(center.lng),
-  };
-}
 
 /** "Long" (spec §6.3) — venues rarely stop existing or move. Tunable. */
 export const SEARCH_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
