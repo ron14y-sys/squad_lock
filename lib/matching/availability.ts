@@ -6,13 +6,23 @@
  * separate piece (B6b) — this file only turns busy blocks that are already
  * in hand into what the rest of the funnel needs.
  *
- * 1. **`commonFreeWindows` + `candidateSlots`** produce `ConstraintInput.slots`
- *    — `constraints.ts` names this file as the producer in its own comment.
+ * 1. **`commonFreeWindows`** is the group's raw free time. Per
+ *    `docs/decisions/slot-trimming.md`, this file no longer slices those
+ *    windows into fixed-length candidate slots itself — each free window is
+ *    handed, as-is, to `constraints.ts`'s `trimPairToViableSlots` per
+ *    candidate, which narrows it by opening hours and reach and only then
+ *    checks `meetsMinimumLength`. The same minimum also gates the raw free
+ *    window before any venue is considered (the `stuck` case, spec §9) —
+ *    `constraints.ts`'s comment on `meetsMinimumLength` says B6 owns making
+ *    that call.
  * 2. **`slotTolerance`** is the composition `constraints.ts` describes and
  *    asks for by name: `min(profile.toleranceKm, cap ?? Infinity)`, done here
  *    rather than in the Context Resolver (A12) because the Resolver ships
  *    dark and falls back — a Resolver-only version would hand a car-sized
- *    tolerance to someone who cannot drive every time it was off.
+ *    tolerance to someone who cannot drive every time it was off. This is
+ *    separate from the reach narrowing `trimPairToViableSlots` applies — the
+ *    decision doc keeps `toleranceKm` out of that function on purpose, since
+ *    it is a soft cost for burden calc, not a hard constraint.
  */
 
 import type {
@@ -106,57 +116,6 @@ export function commonFreeWindows(
   }
 
   return free;
-}
-
-/* -------------------------------------------------------------------------
- * Candidate slots
- * ---------------------------------------------------------------------- */
-
-/**
- * The shortest meeting worth proposing (#86). Applied here — a free window
- * under this is dropped, not truncated to something shorter — and again,
- * separately, wherever a (venue, time) pair gets narrowed by opening hours.
- */
-export const MIN_MEETING_HOURS = 3;
-
-const MS_PER_HOUR = 60 * 60 * 1000;
-const MIN_MEETING_MS = MIN_MEETING_HOURS * MS_PER_HOUR;
-
-/** How far apart successive candidate slots start, inside one free window. */
-const SLOT_STEP_MS = MS_PER_HOUR;
-
-/**
- * `MIN_MEETING_HOURS`-long candidate slots carved out of free windows.
- *
- * A single long free window (say, six hours) cannot be handed to `A2` as one
- * slot: `windowsCoverSlot` requires a venue to be open for the *whole* slot,
- * and a venue open 18:00–22:00 would then be wrongly dropped from a
- * 17:00–23:00 window even though a real three-hour meeting fits inside it
- * fine. So this slides a fixed `MIN_MEETING_HOURS` window through each free
- * window in hourly steps, producing the actual proposable start times.
- *
- * A free window shorter than `MIN_MEETING_HOURS` contributes nothing. An
- * empty result overall — no free window anywhere long enough — is the
- * `stuck` case spec §9 describes, decided by whoever calls this.
- */
-export function candidateSlots(freeWindows: TimeSlot[]): TimeSlot[] {
-  const slots: TimeSlot[] = [];
-
-  for (const window of freeWindows) {
-    const latestStart = window.end.getTime() - MIN_MEETING_MS;
-    for (
-      let start = window.start.getTime();
-      start <= latestStart;
-      start += SLOT_STEP_MS
-    ) {
-      slots.push({
-        start: new Date(start),
-        end: new Date(start + MIN_MEETING_MS),
-      });
-    }
-  }
-
-  return slots;
 }
 
 /* -------------------------------------------------------------------------
