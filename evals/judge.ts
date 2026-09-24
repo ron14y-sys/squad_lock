@@ -32,7 +32,14 @@ import { APP_TIME_ZONE } from "@/lib/types";
  * | Scenario   | Waiting on           | Because                                            |
  * | ---------- | -------------------- | -------------------------------------------------- |
  * | `04`       | A12 Context Resolver | leximin on a bare straight line picks the other venue |
- * | `07`, `08` | A7 + A8              | `expected` is the proposal *after* a rejection     |
+ * | `07`, `08` | A8                   | `expected` is the proposal *after* a rejection     |
+ *
+ * **`07` and `08` have an answer today**, under `npm run eval -- --followup`:
+ * A7 extracts the constraint and the agent answers it, and both reach the
+ * venue we agreed on. They stay `deferred` here anyway, because that harness
+ * is not the loop — no cap, no `stuck`, nothing persisted — and spec §12.5's
+ * pass rate may only carry the claim the product can make. A8 is what moves
+ * them.
  *
  * **`03` and `05` used to be here too**, waiting on the trimming. The adapter
  * now trims, so they are scored — and `05` is the one that mattered most: its
@@ -69,7 +76,7 @@ export function classify(scenario: Scenario): Classification {
  * a bug in the caller.
  */
 export function blockedReason(scenario: Scenario): string {
-  if (scenario.trap === "rejection-loop") return "needs A7/A8";
+  if (scenario.trap === "rejection-loop") return "needs A8";
   if (scenario.trap === "semantic-geography") return "needs A12";
   throw new Error(
     `judge: "${scenario.id}" is scored, not blocked — it has no missing stage`

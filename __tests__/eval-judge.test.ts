@@ -83,7 +83,7 @@ describe("blockedReason", () => {
       "needs A12"
     );
     expect(blockedReason(loadScenario("rejection-loop-noise"))).toBe(
-      "needs A7/A8"
+      "needs A8"
     );
   });
 
