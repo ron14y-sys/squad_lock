@@ -458,3 +458,45 @@ model ConflictDismissal {
   @@unique([userId, meetingAId, meetingBId])
   @@map("conflict_dismissals")
 }
+
+/// B7 two-tier Places cache, tier 1 (spec §6.3): the broad Text Search
+/// (New) result for one neighbourhood-sized area — a property of a
+/// *location*, not of any one meeting, so it is keyed on coordinates rather
+/// than on a meeting id and shared across every meeting and user that
+/// searches nearby. `results` holds `Candidate[]` from
+/// `lib/places/client.ts`'s `searchNeighbourhood` — Essentials+Pro fields
+/// only, `rating`/`openingHours` always absent here (they are tier 2).
+/// See lib/db/places-cache.ts for the rounding and freshness rules.
+model PlaceSearchCache {
+  id            String   @id @default(cuid())
+  /// Rounded to neighbourhood granularity by `roundToNeighbourhood` —
+  /// already-equal inputs are required to produce bit-identical keys for
+  /// the unique constraint below to ever hit.
+  latKey        Float
+  lngKey        Float
+  radiusMeters  Int
+  results       Json
+  fetchedAt     DateTime @default(now())
+
+  @@unique([latKey, lngKey, radiusMeters])
+  @@map("place_search_cache")
+}
+
+/// B7 two-tier Places cache, tier 2 (spec §6.3): the Enterprise-tier detail
+/// fields — `rating`, `regularOpeningHours` — for one shortlisted place.
+/// Cached **separately and more briefly** than tier 1 on purpose: opening
+/// hours change for holidays and closures, and this is the data that
+/// decides whether a proposal is real. Keyed on `placeId` directly, no
+/// rounding — a Places id is already exact and stable.
+model PlaceDetailsCache {
+  placeId       String   @id
+  rating        Float?
+  /// `LocalWindow[]`, same shape `Candidate.openingHours` and
+  /// `trimPairToViableSlots` already consume. `[]` means "fetched, no
+  /// hours returned" — distinct from the row not existing at all, which
+  /// means "never fetched."
+  openingHours  Json     @default("[]")
+  fetchedAt     DateTime @default(now())
+
+  @@map("place_details_cache")
+}
