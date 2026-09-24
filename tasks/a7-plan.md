@@ -389,14 +389,18 @@ system could not have told us. Two checks were added while writing them — that
 a correction reads back as it was written, and that the _second_ amendment
 still costs a cycle, so the narrowed count did not simply stop counting.
 
-Checks 1–4 need a handful of rows and no model call. A small seed script is the
-honest way to run them before B11 exists; it is not written yet, and it is not
-part of A7 unless the database returns first.
+Checks 1–4 need a handful of rows and no model call; 5 and 6 spend one each,
+because the point of them is that the whole path runs and that a failed call is
+recorded rather than thrown. `scripts/verify-a7-db.ts` seeds what it needs and
+deletes it in a `finally`, so none of this waits on B11.
 
 ## Known risks
 
-- **The write path cannot be tested here.** No test in this repo touches a real database, so step
-  4's transaction is checked by reading it — the same gap B5 and B5c already carry.
+- ~~**The write path cannot be tested here.**~~ **Closed, 24 Sep 2026.** It is
+  checked by `npm run verify:a7-db` against the real database. What remains
+  untested is the same thing B5c leaves untested: nothing forces a failure
+  partway through the transaction, so atomicity still rests on everything
+  living inside one `$transaction` callback.
 - **Hebrew extraction on a lite model is unmeasured.** Step 6 is what turns that into a number; if
   it is poor, A10 is where a stronger model is measured against it, not a second provider.
 - **`objection` has one consumer at birth** — the stored outcome and the constraint judge. Its
