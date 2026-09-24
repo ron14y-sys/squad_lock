@@ -11,6 +11,7 @@ import type {
 } from "@/lib/generated/prisma/models";
 import {
   meetingFromRow,
+  mergeContexts,
   participantMeetingContextFromRow,
   preferenceProfileFromRow,
   type MeetingStatus,
@@ -283,5 +284,128 @@ describe("participantMeetingContextFromRow", () => {
       participantMeetingContextFromRow(participantMeetingContextRow())
         .softPreferences
     ).toBeNull();
+  });
+});
+
+/**
+ * A8's field-wise read. The scenario each case is drawn from is one evening:
+ * Dana amends at 19:00 ("coming from work"), then rejects at 20:30 ("too
+ * loud"). Two rows, two different halves filled in, and a run that reads the
+ * newest one gets exactly half of what she said.
+ */
+describe("mergeContexts", () => {
+  const CAR_UNAVAILABLE = [
+    {
+      mode: "car",
+      available: false,
+      window: { weekdays: [], from: "18:00", to: "21:00" },
+    },
+  ];
+
+  const amendment = participantMeetingContextFromRow(
+    participantMeetingContextRow({
+      id: "amendment",
+      originLat: 32.07,
+      originLng: 34.79,
+      originLabel: "Coming from work",
+      mobilityWindows: CAR_UNAVAILABLE,
+      createdAt: new Date("2026-09-24T16:00:00.000Z"),
+    })
+  );
+
+  const correction = participantMeetingContextFromRow(
+    participantMeetingContextRow({
+      id: "correction",
+      softPreferences: { noiseLevel: "quiet" },
+      createdAt: new Date("2026-09-24T17:30:00.000Z"),
+    })
+  );
+
+  it("keeps both halves when a correction follows an amendment", () => {
+    const merged = mergeContexts([amendment, correction]);
+
+    expect(merged?.softPreferences).toEqual({ noiseLevel: "quiet" });
+    expect(merged?.origin).toEqual({ lat: 32.07, lng: 34.79 });
+    expect(merged?.mobilityWindows).toEqual(CAR_UNAVAILABLE);
+  });
+
+  it("keeps both halves in the other order too", () => {
+    const merged = mergeContexts([correction, amendment]);
+
+    expect(merged?.softPreferences).toEqual({ noiseLevel: "quiet" });
+    expect(merged?.origin).toEqual({ lat: 32.07, lng: 34.79 });
+  });
+
+  it("takes the newest row that has the field", () => {
+    const later = participantMeetingContextFromRow(
+      participantMeetingContextRow({
+        originLat: 31.77,
+        originLng: 35.21,
+        originLabel: "Actually from home",
+        createdAt: new Date("2026-09-24T18:00:00.000Z"),
+      })
+    );
+
+    expect(mergeContexts([amendment, correction, later])?.origin).toEqual({
+      lat: 31.77,
+      lng: 35.21,
+    });
+  });
+
+  // "Too loud" at 20:30 and "too expensive" at 21:15 are two complaints about
+  // two different things, and both are still true. Replacing the object
+  // wholesale would answer the second and forget the first.
+  it("keeps two corrections that land on different fields", () => {
+    const second = participantMeetingContextFromRow(
+      participantMeetingContextRow({
+        softPreferences: { budget: "modest" },
+        createdAt: new Date("2026-09-24T18:00:00.000Z"),
+      })
+    );
+
+    expect(mergeContexts([correction, second])?.softPreferences).toEqual({
+      noiseLevel: "quiet",
+      budget: "modest",
+    });
+  });
+
+  // Merging across fields is not accumulating within one: saying "quiet"
+  // after "lively" is a change of mind, and the newer value wins outright.
+  it("lets the newest correction win on a field it repeats", () => {
+    const lively = participantMeetingContextFromRow(
+      participantMeetingContextRow({
+        softPreferences: { noiseLevel: "lively" },
+        createdAt: new Date("2026-09-24T15:00:00.000Z"),
+      })
+    );
+
+    expect(mergeContexts([lively, correction])?.softPreferences).toEqual({
+      noiseLevel: "quiet",
+    });
+  });
+
+  // A label describing coordinates from a different row would be a sentence
+  // about a place nobody is starting from.
+  it("takes origin and its label from one row, never two", () => {
+    const labelOnly = participantMeetingContextFromRow(
+      participantMeetingContextRow({
+        originLabel: "From the office",
+        createdAt: new Date("2026-09-24T18:00:00.000Z"),
+      })
+    );
+    const merged = mergeContexts([amendment, labelOnly]);
+
+    expect(merged?.originLabel).toBe("From the office");
+    expect(merged?.origin).toBeNull();
+  });
+
+  it("does not let an empty mobility list erase an earlier one", () => {
+    expect(mergeContexts([amendment, correction])?.mobilityWindows).toEqual(
+      CAR_UNAVAILABLE
+    );
+  });
+
+  it("is null when the person has no rows at all", () => {
+    expect(mergeContexts([])).toBeNull();
   });
 });
