@@ -6,6 +6,7 @@ import {
   classify,
   expectedPlaceId,
   judge,
+  judgeConstraint,
   type Classification,
 } from "@/evals/judge";
 import type { MatchOptionDraft, MatchRunDraft } from "@/lib/matching/agent";
@@ -82,7 +83,7 @@ describe("blockedReason", () => {
       "needs A12"
     );
     expect(blockedReason(loadScenario("rejection-loop-noise"))).toBe(
-      "needs A7/A8"
+      "needs A8"
     );
   });
 
@@ -162,5 +163,63 @@ describe("judge", () => {
       venue: { ...draft.options[0].venue, placeId: "place-01-container" },
     });
     expect(judge(venueOnly, draft).pass).toBe(false);
+  });
+});
+
+describe("judgeConstraint", () => {
+  const expected = {
+    objection: "soft" as const,
+    softPreferences: { noiseLevel: "quiet" as const },
+  };
+
+  it("passes the agreed field and nothing else", () => {
+    expect(
+      judgeConstraint(expected, {
+        objection: "soft",
+        softPreferences: { noiseLevel: "quiet" },
+      }).pass
+    ).toBe(true);
+  });
+
+  // Set equality, not containment: an extra field is a preference nobody
+  // stated, and it changes the next ranking on its own (#86).
+  it("fails an answer that also invented a field", () => {
+    const verdict = judgeConstraint(expected, {
+      objection: "soft",
+      softPreferences: { noiseLevel: "quiet", budget: "modest" },
+    });
+
+    expect(verdict.pass).toBe(false);
+    expect(verdict.reason).toContain("invented budget");
+  });
+
+  it("fails a missed field, a wrong value and a wrong objection", () => {
+    expect(
+      judgeConstraint(expected, { objection: "soft", softPreferences: {} })
+        .reason
+    ).toContain("missed noiseLevel");
+
+    expect(
+      judgeConstraint(expected, {
+        objection: "soft",
+        softPreferences: { noiseLevel: "lively" },
+      }).reason
+    ).toContain("expected quiet");
+
+    expect(
+      judgeConstraint(expected, { objection: "none", softPreferences: {} })
+        .reason
+    ).toContain('objection "none"');
+  });
+
+  // "Nothing mapped" and "the objection was distance" are different answers,
+  // and the whole point of recording the kind is being able to tell them apart.
+  it("does not accept one unmappable objection for another", () => {
+    expect(
+      judgeConstraint(
+        { objection: "distance", softPreferences: {} },
+        { objection: "none", softPreferences: {} }
+      ).pass
+    ).toBe(false);
   });
 });

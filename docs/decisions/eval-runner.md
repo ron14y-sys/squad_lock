@@ -200,3 +200,13 @@ When A12 lands, the only work in A5 is deleting the `semantic-geography` line
 from `classify`. When A7/A8 land, it is deleting the `rejection-loop` line and
 teaching the runner to run a second cycle. The
 judge, the table, the recording and the violation count are stage-agnostic.
+
+> **Half of that happened, 24 Sep 2026.** A7 landed, and the runner does run a
+> second cycle — `npm run eval -- --followup` extracts the constraint from what
+> somebody wrote and asks the agent again, in its own table. Both rejection
+> scenarios reach the agreed venue. The `rejection-loop` line in `classify`
+> stays, though, and `07` and `08` stay `deferred`: that harness has no cap, no
+> `stuck` and no persistence, so it is not the loop, and §12.5's pass rate may
+> only carry the claim the product can make. **A8** is what deletes the line.
+> `blockedReason` now says `needs A8`. See
+> [constraint-updater.md](constraint-updater.md).

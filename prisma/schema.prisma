@@ -337,6 +337,10 @@ model Response {
   reasonText  String?
   respondedAt DateTime?
 
+  /// What A7 made of `reasonText`, or why it made nothing of it. NULL means
+  /// no extraction was attempted — every response except `doesnt_suit`.
+  extractionOutcome ExtractionOutcome?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -353,6 +357,32 @@ enum ResponseStatus {
   approved
   cant_make_it
   doesnt_suit
+}
+
+/// The outcome of one Constraint Updater call (A7).
+///
+/// One enum for both axes, because they are mutually exclusive: either a
+/// constraint was extracted — and the first five values say what kind of
+/// objection it was — or it was not, and one of the last three says why.
+///
+/// `distance` and `time` are recorded rather than corrected: they are the
+/// Context Resolver's material (A12), not a soft preference, and forcing one
+/// into a soft field would be an invented opinion (issue #86).
+///
+/// The three failures are A1's own taxonomy, because each has a different
+/// fix: `failed_quota` is the free tier's allowance, a routine outcome rather
+/// than a fault; `failed_call` is a call that never came back; and
+/// `failed_invalid` is an answer that came back unusable — truncated, or
+/// rejected by validation.
+enum ExtractionOutcome {
+  soft
+  distance
+  time
+  venue_identity
+  none
+  failed_quota
+  failed_call
+  failed_invalid
 }
 
 /// Sparse per-meeting correction — "no car tonight", "coming from work"
@@ -373,6 +403,16 @@ model ParticipantMeetingContext {
   /// Mode-tagged windows, e.g. "no car between 18:00 and 21:00"
   /// (spec §6.2: mode is car / transit / walk).
   mobilityWindows Json @default("[]")
+
+  /// A soft preference that applies to this meeting only — where a rejection
+  /// lands (A7, spec §3.2, issue #86). "Too expensive this time" does not
+  /// make somebody permanently thrifty, so the Constraint Updater writes a
+  /// correction here rather than editing the profile.
+  ///
+  /// Nullable with no default, deliberately: NULL is "no correction", which
+  /// is what every amendment row carries, while {} would mean "corrected to
+  /// nothing" — a state nobody can be in.
+  softPreferences Json?
 
   note String?
 

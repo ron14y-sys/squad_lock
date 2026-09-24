@@ -198,6 +198,8 @@ The first version of that check _was_ a hardcoded list, and it named only two of
 
 **3. No rejection history in the payload.** A7 extracts a constraint from a rejection and A8 loops; neither exists. Rather than adding an optional field nothing fills — _a build step nothing exercises yet is not working, it is merely untested_ (AGENTS.md) — A4 leaves it out entirely. A7 adds it to `MatchAgentInput` and to the prompt together.
 
+> **Done, 24 Sep 2026 (A7).** Two fields, not one: `tonight_correction` is what the next weighing acts on, `in_their_own_words` is what lets an option be recognisable as an answer to the objection — and when an objection reduces to no field at all, the sentence is all there is. Both sit beside `stated_preferences`, never merged into it. See [constraint-updater.md](constraint-updater.md).
+
 **4. ~~A6's coverage check is not written.~~** Written in A6. See decision 5.
 
 ## How A4 was verified

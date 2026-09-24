@@ -224,6 +224,7 @@ function participantMeetingContextRow(
     originLng: null,
     originLabel: null,
     mobilityWindows: [],
+    softPreferences: null,
     note: null,
     createdAt: new Date("2026-08-27T09:00:00.000Z"),
     ...overrides,
@@ -264,5 +265,23 @@ describe("participantMeetingContextFromRow", () => {
     expect(context.originLabel).toBe("Coming from work");
     expect(context.mobilityWindows).toEqual(mobilityWindows);
     expect(context.note).toBe("No car tonight.");
+  });
+
+  // A7 writes a correction here; an amendment leaves the column NULL. The two
+  // must not collapse into one value: "no correction" is not "corrected to
+  // nothing" (issue #86).
+  it("reads a correction back, and leaves an amendment's absence as null", () => {
+    expect(
+      participantMeetingContextFromRow(
+        participantMeetingContextRow({
+          softPreferences: { noiseLevel: "quiet" },
+        })
+      ).softPreferences
+    ).toEqual({ noiseLevel: "quiet" });
+
+    expect(
+      participantMeetingContextFromRow(participantMeetingContextRow())
+        .softPreferences
+    ).toBeNull();
   });
 });

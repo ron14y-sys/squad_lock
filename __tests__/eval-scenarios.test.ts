@@ -5,6 +5,8 @@ import {
   loadScenario,
   loadScenarios,
   openingWindows,
+  rejectionCases,
+  scenarioFollowupInput,
   type Scenario,
 } from "@/evals/adapter";
 
@@ -664,5 +666,86 @@ describe("the six answers from #86", () => {
       end: "23:00",
     });
     expect(scenario.expected.time).toEqual({ start: "20:00", end: "23:00" });
+  });
+});
+
+/**
+ * A7's cases come from two places — `07` and `08` carry theirs so the
+ * constraint and the follow-up proposal cannot drift apart, and
+ * `evals/rejections.json` holds the ones a whole scenario would be waste for.
+ * Both halves are loaded here, so a malformed fixture fails on `npm test`
+ * rather than halfway through a sweep that spends quota.
+ */
+describe("the rejections A7 is measured on", () => {
+  const cases = rejectionCases();
+
+  it("takes 07 and 08 from the scenarios that own their answers", () => {
+    const fromScenarios = cases.filter((one) => one.source === "scenario");
+
+    expect(fromScenarios.map((one) => one.id).sort()).toEqual([
+      "rejection-loop-budget",
+      "rejection-loop-noise",
+    ]);
+    // The venue the person was reacting to, with what the fixture says it is
+    // like — which is what makes "too loud" readable at all.
+    expect(
+      fromScenarios.find((one) => one.id === "rejection-loop-noise")?.rejected
+    ).toMatchObject({
+      venueName: "Beer Bazaar",
+      venueIs: { noiseLevel: "lively" },
+    });
+  });
+
+  it("states an expected answer that the vocabulary can actually hold", () => {
+    for (const one of cases) {
+      expect(one.text.trim().length).toBeGreaterThan(0);
+
+      const stated = Object.keys(one.expected.softPreferences).length > 0;
+      // The same rule the updater enforces on a model's answer: a stated
+      // preference is exactly what "soft" means, and nothing else.
+      expect(stated).toBe(one.expected.objection === "soft");
+    }
+  });
+
+  it("covers every objection kind, so no branch is measured by nothing", () => {
+    expect(new Set(cases.map((one) => one.expected.objection))).toEqual(
+      new Set(["soft", "distance", "time", "venue_identity", "none"])
+    );
+  });
+});
+
+/**
+ * The second cycle, without A8: what changes between the proposal that was
+ * rejected and the one that answers it.
+ */
+describe("the follow-up input", () => {
+  const scenario = loadScenario("rejection-loop-noise");
+  const input = scenarioFollowupInput(
+    scenario,
+    { noiseLevel: "quiet" },
+    scenario.rejection!.text
+  );
+
+  it("puts the correction on the person who made it, and on nobody else", () => {
+    const shani = input.participants.find((p) => p.userId === "Shani");
+    expect(shani?.context?.softPreferences).toEqual({ noiseLevel: "quiet" });
+
+    for (const other of input.participants.filter(
+      (p) => p.userId !== "Shani"
+    )) {
+      expect(other.context?.softPreferences ?? null).toBeNull();
+    }
+  });
+
+  it("drops the rejected venue and keeps the rest", () => {
+    const venues = new Set(input.viable.map((pair) => pair.candidatePlaceId));
+
+    expect(venues.has("place-07-beer-bazaar")).toBe(false);
+    expect(venues.has("place-07-quiet-corner")).toBe(true);
+  });
+
+  it("carries the words themselves, and counts a second cycle", () => {
+    expect(input.rejections).toEqual({ Shani: scenario.rejection!.text });
+    expect(input.cycleNumber).toBe(2);
   });
 });

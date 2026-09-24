@@ -665,6 +665,48 @@ describe("what the model is shown", () => {
     expect(pairs[0].modes_unavailable_during_slot).toEqual({ Adi: ["car"] });
   });
 
+  it("shows a correction and the words it came from, and only to their owner", () => {
+    // A7. The correction is what the next weighing acts on; the sentence is
+    // what lets the answer be recognisable as an answer (spec §12.4). Both
+    // sit beside `stated_preferences`, never merged into it.
+    const shani = participant("u-shani", "Shani", ROTHSCHILD, {
+      softPreferences: { budget: "modest" },
+    });
+    const { people } = parsePayload(
+      buildPayload({
+        ...inputFor(
+          [NEAR],
+          [
+            {
+              ...shani,
+              context: {
+                id: "ctx-1",
+                meetingId: "meeting-1",
+                userId: "u-shani",
+                origin: null,
+                originLabel: null,
+                mobilityWindows: [],
+                softPreferences: { noiseLevel: "quiet" },
+                note: null,
+                createdAt: new Date("2026-09-10T10:00:00.000Z"),
+              },
+            },
+            YOAV,
+          ]
+        ),
+        rejections: { "u-shani": "רועש לי מדי שם" },
+      })
+    );
+
+    expect(people.Shani.stated_preferences).toEqual({ budget: "modest" });
+    expect(people.Shani.tonight_correction).toEqual({ noiseLevel: "quiet" });
+    expect(people.Shani.in_their_own_words).toBe("רועש לי מדי שם");
+
+    // Nobody else carries either field, so a justification cannot borrow one.
+    expect(people.Yoav.tonight_correction).toBeNull();
+    expect(people.Yoav.in_their_own_words).toBeNull();
+  });
+
   it("tells the model to copy the ids back rather than tidy them", () => {
     expect(buildPayload(inputFor([NEAR]))).toContain(
       "Copy venue_id and slot_id"

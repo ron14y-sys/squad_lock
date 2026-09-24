@@ -9,6 +9,7 @@ import {
   respondToMeeting,
 } from "@/lib/db/meetings";
 import { respondToMeetingSchema } from "@/lib/meetings/schema";
+import { applyRejection } from "@/lib/extraction/apply-rejection";
 import { auth } from "@/auth";
 
 export async function POST(
@@ -40,6 +41,16 @@ export async function POST(
 
   try {
     const result = await respondToMeeting(meetingId, userId, parsed.data);
+
+    // A7: the free text becomes a structured correction for the next
+    // weighing. Outside the transaction above, deliberately — an LLM call
+    // inside it would hold a database connection for up to a minute — and it
+    // never throws, so a failed extraction cannot fail a response that has
+    // already been recorded (tasks/a7-plan.md, decisions 4 and 5).
+    if (parsed.data.kind === "doesnt_suit") {
+      await applyRejection(meetingId, userId, parsed.data.reasonText);
+    }
+
     return Response.json(result);
   } catch (error) {
     if (error instanceof NotAMeetingParticipantError) {
