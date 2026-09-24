@@ -351,6 +351,17 @@ that connection string being paused or gone, and `.env.local` has no
 was closed with this working, so this is a regression in the environment and
 not in the code.
 
+> **Done, 24 Sep 2026.** The Supabase project is back, A4's migration turned
+> out to have been applied already, A7's was applied with `migrate deploy`, and
+> all six checks below pass — plus two more the script added while it was being
+> written. `npm run verify:a7-db` is what runs them; it makes its own rows and
+> deletes them in a `finally`, so it can be re-run after A8 or B11 change what
+> is around it.
+>
+> The database had also moved on without us: `20260923115802_b7_places_cache`
+> was applied from main while this branch was open. Main was merged in before
+> anything was applied, so the two histories agree again.
+
 **First, apply what is waiting.** Two migrations have never run anywhere —
 A4's and A7's:
 
@@ -371,6 +382,12 @@ they are to get wrong:
 | 4   | `findRejectedOption` returns rank 1 of the **latest** run, with two runs on one meeting                                                                  | Ordering by `cycleNumber desc` is trivial to write and trivial to get backwards                                                                                                  |
 | 5   | The route path end to end: reject with text → a row and an outcome                                                                                       | Needs a `MatchRun` to exist, which needs B11 — or a seeded run, which is the cheaper way to check this before B11 lands                                                          |
 | 6   | A failed extraction still returns a normal response, and records why                                                                                     | The failure path is the one nobody exercises by accident                                                                                                                         |
+
+All six pass, and the first was worth the trouble: the `Prisma.DbNull` filter
+behind the amendment fix is right against Postgres, which is the thing a type
+system could not have told us. Two checks were added while writing them — that
+a correction reads back as it was written, and that the _second_ amendment
+still costs a cycle, so the narrowed count did not simply stop counting.
 
 Checks 1–4 need a handful of rows and no model call. A small seed script is the
 honest way to run them before B11 exists; it is not written yet, and it is not
