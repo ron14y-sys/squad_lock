@@ -312,15 +312,21 @@ export async function respondToMeeting(
 
       case "amendment": {
         // Only amendment rows count against the one free amendment (spec
-        // §3.1). A7 appends correction rows to this same table, and counting
-        // those would silently charge a cycle for somebody's *first* real
-        // amendment — a rejection they made would come out of an allowance
-        // that was never about rejections.
+        // §3.1). A7 and A8 append rejection rows to this same table, and
+        // counting those would silently charge a cycle for somebody's *first*
+        // real amendment — a rejection they made would come out of an
+        // allowance that was never about rejections.
+        //
+        // Both clauses are load-bearing. `softPreferences IS NULL` alone was
+        // enough while only a `soft` rejection wrote a row; now that every
+        // rejection writes one, a "too far" or "not that place" row is also
+        // NULL there and would be miscounted as an amendment.
         const priorAmendments = await tx.participantMeetingContext.count({
           where: {
             meetingId,
             userId,
             softPreferences: { equals: Prisma.DbNull },
+            rejectionText: null,
           },
         });
         const contextRow = await tx.participantMeetingContext.create({
@@ -411,31 +417,40 @@ export async function findRejectedOption(
 }
 
 /**
- * Records what A7 made of one rejection: the correction, when there is one,
- * and the outcome either way.
+ * Records what A7 made of one rejection: the sentence, the correction when
+ * there is one, and the outcome either way.
  *
  * One transaction, because a correction that lands without its outcome — or
  * an outcome recorded for a correction that was never written — would each be
  * a lie about what the next weighing is working from.
  *
- * A correction **appends** a row rather than updating one, on the same rule
- * amendments follow: the timeline has to be able to say which objection
- * triggered which re-weighing (spec §5.7).
+ * **A row is appended for every rejection now, not only for a `soft` one**
+ * (A8). It used to be written only when there was a correction to put in it,
+ * which meant "no Asian food" — an objection this vocabulary cannot hold —
+ * left no trace anywhere except `Response.reasonText`, and that column is
+ * *updated*: the same person writing "no Italian either" overwrote it. Both
+ * the next weighing and the timeline were left with one sentence per person,
+ * forever. These rows append, so the history keeps itself.
  */
 export async function recordRejectionOutcome(
   meetingId: string,
   userId: string,
   outcome: ExtractionOutcome,
-  correction: SoftPreferences | null
+  correction: SoftPreferences | null,
+  reasonText: string
 ): Promise<void> {
   const prisma = getPrisma();
 
   await prisma.$transaction(async (tx) => {
-    if (correction) {
-      await tx.participantMeetingContext.create({
-        data: { meetingId, userId, softPreferences: correction },
-      });
-    }
+    await tx.participantMeetingContext.create({
+      data: {
+        meetingId,
+        userId,
+        softPreferences: correction ?? Prisma.DbNull,
+        rejectionText: reasonText,
+        rejectionOutcome: outcome,
+      },
+    });
 
     await tx.response.update({
       where: { meetingId_userId: { meetingId, userId } },

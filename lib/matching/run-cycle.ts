@@ -55,6 +55,8 @@ import {
 } from "@/lib/places/search-area";
 import { commonFreeWindows } from "./availability";
 import { originOf } from "./distance";
+import { pairId } from "./schemas";
+import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
 import { buildShortlist } from "./funnel";
 import type { MatchAgentInput } from "./agent";
 
@@ -148,6 +150,90 @@ export function searchWindow(pinnedDate: Date | null, now: Date): TimeSlot {
   };
 }
 
+/* -------------------------------------------------------------------------
+ * A8b — what a rejection takes off the table
+ * ---------------------------------------------------------------------- */
+
+/** Rank 1 of one earlier run: what the group was actually offered, and when. */
+export type PriorProposal = {
+  at: Date;
+  placeId: string | null;
+  slot: TimeSlot;
+};
+
+/** One rejection as it was recorded, with what A7 made of it at the time. */
+export type RecordedRejection = {
+  at: Date;
+  outcome: ExtractionOutcome | null;
+};
+
+export type Blocked = {
+  /** Venues that may not be offered again at any hour. */
+  venues: Set<string>;
+  /** Exact `(venue, slot)` pairs, by `pairId`. */
+  pairs: Set<string>;
+};
+
+/**
+ * What this meeting's history forbids the next proposal from containing
+ * ([#17](https://github.com/ron14y-sys/squad_lock/issues/17)).
+ *
+ * Two rules, and the second is the one that needed the new column.
+ *
+ * **No proposal is ever repeated.** Every earlier run's rank-1 pair is
+ * blocked. #17 asks for this about the option just rejected; doing it for all
+ * of them costs nothing and closes the case where an option comes back two
+ * cycles later as though nobody had said anything.
+ *
+ * **A venue goes entirely when the objection was about the venue**, and only
+ * the pair goes when it was about the hour:
+ *
+ * | Outcome | Blocked | Why |
+ * | ------- | ------- | --- |
+ * | `venue_identity` | the venue | "not that place" |
+ * | `soft` | the venue | too loud, too expensive — a property of the place, and 19:00 does not fix it |
+ * | `time` | the pair | the same venue three hours earlier is the right answer, not a worse one |
+ * | `distance` | the pair | reach genuinely varies by hour — "no car after 21:00" ([#89](https://github.com/ron14y-sys/squad_lock/issues/89)) |
+ * | `none`, `failed_*` | the pair | nothing was understood, so block the minimum #17 requires and let the sentence do the rest |
+ *
+ * Which venue a rejection was *about* is the one that was on screen when it
+ * was written — the latest proposal at or before it. That is why the outcome
+ * is recorded per row rather than read off `Response.extractionOutcome`,
+ * which only ever holds the last one.
+ *
+ * Pure: no database, no clock.
+ */
+export function blockedByRejections(
+  proposals: readonly PriorProposal[],
+  rejections: readonly RecordedRejection[]
+): Blocked {
+  const venues = new Set<string>();
+  const pairs = new Set<string>();
+
+  for (const proposal of proposals) {
+    if (proposal.placeId) {
+      pairs.add(pairId(proposal.placeId, proposal.slot));
+    }
+  }
+
+  for (const rejection of rejections) {
+    if (
+      rejection.outcome !== "soft" &&
+      rejection.outcome !== "venue_identity"
+    ) {
+      continue;
+    }
+
+    let rejected: PriorProposal | undefined;
+    for (const proposal of proposals) {
+      if (proposal.at.getTime() <= rejection.at.getTime()) rejected = proposal;
+    }
+    if (rejected?.placeId) venues.add(rejected.placeId);
+  }
+
+  return { venues, pairs };
+}
+
 /**
  * Everything one run needs, read out of the database and put in the shape A4
  * takes. Throws rather than returning a partial answer: a run assembled from
@@ -172,6 +258,12 @@ export async function assembleRun(
       },
       // Oldest first, which is the order `mergeContexts` reads.
       participantContexts: { orderBy: { createdAt: "asc" } },
+      // Rank 1 of every earlier cycle — what this group has already been
+      // offered, and therefore what may not be offered again.
+      matchRuns: {
+        orderBy: { cycleNumber: "asc" },
+        include: { options: { where: { rank: 1 } } },
+      },
     },
   });
   if (!meeting) throw new Error(`a8: no meeting ${meetingId}`);
@@ -187,11 +279,34 @@ export async function assembleRun(
   }
 
   const contextRows = new Map<string, ParticipantMeetingContext[]>();
+  // Everything each person has said when rejecting, oldest first. The
+  // vocabulary cannot hold every objection — "no Asian food" lands in no
+  // field — so for those the sentence is the whole memory, and A4 is given
+  // all of them rather than the latest (agent.ts, `rejections`).
+  const rejections: Record<string, string[]> = {};
+  const recorded: RecordedRejection[] = [];
+
   for (const row of meeting.participantContexts) {
     const rows = contextRows.get(row.userId) ?? [];
     rows.push(participantMeetingContextFromRow(row));
     contextRows.set(row.userId, rows);
+
+    if (row.rejectionText !== null) {
+      (rejections[row.userId] ??= []).push(row.rejectionText);
+      recorded.push({ at: row.createdAt, outcome: row.rejectionOutcome });
+    }
   }
+
+  const blocked = blockedByRejections(
+    meeting.matchRuns.flatMap((run) =>
+      run.options.map((option) => ({
+        at: run.createdAt,
+        placeId: option.venuePlaceId,
+        slot: { start: option.proposedDatetime, end: option.proposedEnd },
+      }))
+    ),
+    recorded
+  );
 
   const window = searchWindow(meeting.pinnedDate, now);
   const busyByUser = await fetchBusyForUsers(
@@ -240,7 +355,11 @@ export async function assembleRun(
     )
   );
   // `buildShortlist` dedupes, so the pools are merged and not reconciled.
-  const found = pools.flat();
+  // Blocked venues come out here rather than at the end: a venue that may
+  // not be proposed should not first cost an Enterprise-tier details call.
+  const found = pools
+    .flat()
+    .filter((candidate) => !blocked.venues.has(candidate.placeId));
   if (found.length === 0) {
     throw new Error(`a8: no venue was found near ${meetingId}'s group`);
   }
@@ -268,9 +387,22 @@ export async function assembleRun(
     participants,
     slots,
   });
-  if (shortlisted.shortlist.length === 0) {
+  // An identical proposal is never repeated, so the exact pairs go last —
+  // they can only be recognised once the funnel has cut the evenings.
+  const viable = shortlisted.viable.filter(
+    (pair) => !blocked.pairs.has(pairId(pair.candidatePlaceId, pair.slot))
+  );
+  const offerable = new Set(viable.map((pair) => pair.candidatePlaceId));
+  // A venue whose every hour was blocked stays out of the payload entirely.
+  // A4 could not pick it — it re-checks against `viable` — but listing a
+  // candidate the agent may not choose is an invitation to try.
+  const ranked = shortlisted.shortlist.filter((score) =>
+    offerable.has(score.candidate.placeId)
+  );
+
+  if (ranked.length === 0) {
     throw new Error(
-      `a8: nothing survived the filter for ${meetingId} — ${shortlisted.droppedPairs.length} pairs dropped, ${shortlisted.gatedOut.length} gated out`
+      `a8: nothing survived the filter for ${meetingId} — ${shortlisted.droppedPairs.length} pairs dropped, ${shortlisted.gatedOut.length} gated out, ${blocked.venues.size} venues and ${blocked.pairs.size} pairs already rejected`
     );
   }
 
@@ -279,9 +411,10 @@ export async function assembleRun(
     cycleNumber: meeting.cycleCount + 1,
     occasion: meeting.occasion,
     participants,
-    candidates: shortlisted.shortlist.map((score) => score.candidate),
-    viable: shortlisted.viable,
-    ranked: shortlisted.shortlist,
+    candidates: ranked.map((score) => score.candidate),
+    viable,
+    ranked,
+    rejections,
     // `venueFacts` and `venueSoftFacts` stay absent rather than empty: B7
     // fetches neither dietary tags nor atmosphere, and an empty object would
     // tell A2 and A4 that nothing is true of these venues rather than that

@@ -226,6 +226,8 @@ function participantMeetingContextRow(
     originLabel: null,
     mobilityWindows: [],
     softPreferences: null,
+    rejectionText: null,
+    rejectionOutcome: null,
     note: null,
     createdAt: new Date("2026-08-27T09:00:00.000Z"),
     ...overrides,

@@ -67,9 +67,13 @@ async function main(): Promise<void> {
 
     /* 1 — the correction and the outcome land together ------------------- */
 
-    await recordRejectionOutcome(meeting.id, user.id, "soft", {
-      noiseLevel: "quiet",
-    });
+    await recordRejectionOutcome(
+      meeting.id,
+      user.id,
+      "soft",
+      { noiseLevel: "quiet" },
+      "רועש לי מדי שם"
+    );
 
     const afterFirst = await prisma.response.findUniqueOrThrow({
       where: { meetingId_userId: { meetingId: meeting.id, userId: user.id } },
@@ -118,9 +122,13 @@ async function main(): Promise<void> {
 
     /* 3 — corrections append ---------------------------------------------- */
 
-    await recordRejectionOutcome(meeting.id, user.id, "soft", {
-      budget: "modest",
-    });
+    await recordRejectionOutcome(
+      meeting.id,
+      user.id,
+      "soft",
+      { budget: "modest" },
+      "וגם יקר לי מדי"
+    );
     const appended = await prisma.participantMeetingContext.findMany({
       where: {
         meetingId: meeting.id,

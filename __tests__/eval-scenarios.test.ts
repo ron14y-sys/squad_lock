@@ -745,7 +745,7 @@ describe("the follow-up input", () => {
   });
 
   it("carries the words themselves, and counts a second cycle", () => {
-    expect(input.rejections).toEqual({ Shani: scenario.rejection!.text });
+    expect(input.rejections).toEqual({ Shani: [scenario.rejection!.text] });
     expect(input.cycleNumber).toBe(2);
   });
 });

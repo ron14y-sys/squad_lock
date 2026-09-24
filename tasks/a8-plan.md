@@ -152,12 +152,19 @@ a separate file.
   so nothing else remembers them. Both the next proposal and C6's timeline
   are left with one sentence per person, forever.
 
-  So: a nullable `rejectionText` on `participant_meeting_contexts`, and A7
-  writes a row for **every** rejection rather than only a `soft` one. Rows
-  append, so the history keeps itself. `MatchAgentInput.rejections` becomes
-  `Record<string, string[]>` — everything that person has said about this
-  evening, oldest first — and A4's prompt line stops saying "the last
-  proposal".
+  So: nullable `rejectionText` **and `rejectionOutcome`** on
+  `participant_meeting_contexts`, and A7 writes a row for **every** rejection
+  rather than only a `soft` one. Rows append, so the history keeps itself.
+  `MatchAgentInput.rejections` becomes `Record<string, string[]>` —
+  everything that person has said about this evening, oldest first — and A4's
+  prompt line stops saying "the last proposal".
+
+  **Two columns and not one**, because `Response.extractionOutcome` holds
+  only the _latest_ outcome for a person — a Response row is that person's
+  current state. The block below needs the objection that was raised round by
+  round, and without it the rule needs a special case for the newest
+  rejection and a weaker rule for every older one. One more column removes a
+  case rather than adding one, which is what makes it the smaller change.
 
   ⚠️ **The trap this drags along**, and it is the A7 bug arriving from the
   other side: `respondToMeeting` counts amendments as rows where
@@ -169,14 +176,23 @@ a separate file.
   run. What gets removed from `viable` depends on A7's `objection` on the
   same `Response` row:
 
-  | `objection`              | Removed                       |
-  | ------------------------ | ----------------------------- |
-  | `venue_identity`, `soft` | every pair of that venue      |
-  | `time`                   | that one `(venue, slot)` pair |
-  | `distance`, `none`       | the one rejected pair         |
+  | `objection`        | Removed   | Why                                                                                                               |
+  | ------------------ | --------- | ----------------------------------------------------------------------------------------------------------------- |
+  | `venue_identity`   | the venue | "not that place"                                                                                                  |
+  | `soft`             | the venue | too loud, too expensive — a property of the place, and 19:00 does not fix it                                      |
+  | `time`             | the pair  | the same venue three hours earlier is the right answer, not a worse one                                           |
+  | `distance`         | the pair  | reach genuinely varies by hour — "no car after 21:00" ([#89](https://github.com/ron14y-sys/squad_lock/issues/89)) |
+  | `none`, `failed_*` | the pair  | nothing was understood; block the minimum #17 requires and let the sentence do the rest                           |
 
-  Rejecting a venue because it was too late should not cost the group the
-  venue.
+  And **every** earlier run's rank-1 pair is blocked, not just the last one.
+  #17 asks for the option just rejected; doing it for all of them costs
+  nothing and closes the case where a venue turned down in cycle 1 comes back
+  in cycle 3 as though nobody had said anything.
+
+  Blocked venues come out **before** the Places search, so a venue that may
+  not be proposed never costs an Enterprise-tier details call. Blocked pairs
+  come out after, because they can only be recognised once the funnel has cut
+  the evenings.
 
 - **Ranks 2 and 3** — read back from the previous run and checked to be in
   the new shortlist. One dropped by a deterministic filter (shut, out of

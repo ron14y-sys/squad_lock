@@ -568,6 +568,6 @@ export function scenarioFollowupInput(
     viable: base.viable.filter(
       (pair) => pair.candidatePlaceId !== rejectedVenue.placeId
     ),
-    rejections: { [rejector]: reasonText },
+    rejections: { [rejector]: [reasonText] },
   };
 }

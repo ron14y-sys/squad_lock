@@ -1,0 +1,33 @@
+-- A8 (cycle loop) — giving a rejection somewhere to live.
+--
+-- Two nullable columns, so this is additive and reversible without touching a
+-- row, on the same terms as A7's migration beside it.
+--
+-- The bug they fix: `responses` holds one row per (meeting, user) and
+-- `respondToMeeting` *updates* `reasonText`, so a person's second rejection
+-- overwrites their first. "No Asian food" is gone from the database the
+-- moment the same person writes "no Italian either" — and neither objection
+-- has a SoftPreferences field to land in (the vocabulary has noiseLevel,
+-- activityStyle, budget and cuisine, none of which can hold a cuisine *type*),
+-- so no correction row remembers them either. The next proposal and the
+-- meeting timeline are both left with one sentence per person, forever.
+--
+-- participant_meeting_contexts rows append rather than update — that is what
+-- lets the timeline say which objection triggered which re-weighing — so
+-- putting the sentence here makes the history keep itself.
+--
+-- rejectionOutcome is deliberately not read back off `responses`. That column
+-- carries the *latest* outcome for a person, because a Response row is that
+-- person's current state; this one carries what was decided about one
+-- objection at the time it was raised. A8 blocks a venue wholesale when the
+-- objection was about the venue (`soft`, `venue_identity`) and only the exact
+-- (venue, slot) pair when it was about the hour (`time`, `distance`), so it
+-- needs the objection round by round, not just the last one.
+--
+-- Both are NULL together on an amendment row, which is also how the one free
+-- amendment per participant is counted — see respondToMeeting, which now
+-- looks for rows with neither a correction nor a rejection on them.
+
+-- AlterTable
+ALTER TABLE "participant_meeting_contexts" ADD COLUMN     "rejectionText" TEXT,
+ADD COLUMN     "rejectionOutcome" "ExtractionOutcome";

@@ -414,6 +414,27 @@ model ParticipantMeetingContext {
   /// nothing" — a state nobody can be in.
   softPreferences Json?
 
+  /// The rejection in the person's own words, and what A7 made of it (A8).
+  ///
+  /// Here rather than only on `Response` because a Response row is *updated*:
+  /// one row per (meeting, user), so a second rejection overwrites the first
+  /// and "no Asian food" is gone the moment the same person writes "no
+  /// Italian either". Neither sentence has a SoftPreferences field to land
+  /// in, so nothing else remembers them — and both the next proposal and the
+  /// timeline are left with one sentence per person forever. These rows
+  /// append, so the history keeps itself.
+  ///
+  /// `rejectionOutcome` duplicates `Response.extractionOutcome` for the
+  /// latest rejection and diverges for every earlier one, which is the point:
+  /// a Response row is that person's *current* state, and this is the record
+  /// of one objection. Blocking what was rejected needs the objection that
+  /// was raised at the time, round by round.
+  ///
+  /// Both NULL together on an amendment row — which is also how the free
+  /// amendment is counted (see `respondToMeeting`).
+  rejectionText    String?
+  rejectionOutcome ExtractionOutcome?
+
   note String?
 
   createdAt DateTime @default(now())

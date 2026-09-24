@@ -159,9 +159,14 @@ export type MatchAgentInput = {
    */
   venueSoftFacts?: Record<string, VenueSoftFacts>;
   /**
-   * What people said when they rejected the previous proposal, by `userId`
-   * (A7). The structured correction they produced rides on
-   * `Participant.context.softPreferences`; this is the sentence itself.
+   * What people have said when they rejected a proposal, by `userId` (A7),
+   * oldest first. The structured correction they produced rides on
+   * `Participant.context.softPreferences`; these are the sentences.
+   *
+   * **Every one of them, not just the latest round** (A8). The vocabulary
+   * has four fields and some objections fit none of them — "no Asian food"
+   * has nowhere to land — so for those the sentence is the only memory there
+   * is, and dropping an earlier one lets the next proposal walk back into it.
    *
    * **Both, not one or the other.** The correction is what the next weighing
    * acts on; the words are what lets an option *visibly* answer the
@@ -169,7 +174,7 @@ export type MatchAgentInput = {
    * no field at all, so the words are all there is
    * ([tasks/a7-plan.md](../../tasks/a7-plan.md), decision 2).
    */
-  rejections?: Record<string, string>;
+  rejections?: Record<string, string[]>;
   /** Streams the answer as it arrives — the progress C5/C6 render (§4.1e). */
   onText?: (chunk: string, soFar: string) => void;
 };
@@ -220,7 +225,7 @@ HOW TO CHOOSE
 - Strongly prefer a pair marked "verified": true. A pair marked false carries something we could not check. Choose one only when the verified options are clearly worse.
 - A participant who stated no opinion on something has no opinion on it. That is a real state, not a neutral vote and not agreement with the majority. Never count a silence as a preference, never let one decide between two options, and never write a justification that describes a silence as a choice someone made.
 - A "tonight_correction" is what that person said about this evening after seeing an earlier proposal. For tonight it outranks their stated preference, field by field, and everything above about preferences applies to it too.
-- "in_their_own_words" is how they put it when they rejected the last proposal. Not every objection reduces to a field, so read the sentence itself and answer it where the pairs allow it.
+- "in_their_own_words" is everything that person has said when rejecting a proposal for this evening, oldest first. Not every objection reduces to a field, so read the sentences themselves and answer all of them where the pairs allow it — an earlier one is still true unless a later one takes it back.
 - Your three options must be three different (venue, slot) pairs.
 
 HOW TO WRITE THE JUSTIFICATIONS
