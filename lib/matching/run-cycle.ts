@@ -53,7 +53,10 @@ import {
   deriveSearchCentres,
   SEARCH_RADIUS_METERS,
 } from "@/lib/places/search-area";
+import { persistMatchRun } from "@/lib/db/match-run";
+import { MeetingStatus } from "@/lib/generated/prisma/enums";
 import { commonFreeWindows } from "./availability";
+import { runMatchingAgent } from "./agent";
 import { originOf } from "./distance";
 import { pairId } from "./schemas";
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
@@ -239,15 +242,20 @@ export function blockedByRejections(
  * takes. Throws rather than returning a partial answer: a run assembled from
  * half the group is a worse outcome than no run.
  *
- * Returns the input and nothing else. The ids of every context row it read
- * (for `MatchRunSeenContext`) and the pairs it dropped (for the `stuck`
- * reason) both have callers coming in steps 4 and 5, and gain their place in
- * the return type there rather than sitting unused here.
+ * `contextIds` is every context row it read, which is exactly what
+ * `MatchRunSeenContext` records — the join C6's timeline reads to say *why* a
+ * re-weighing happened. The pairs it dropped still have no caller and so
+ * still have no place here; step 5 gives them one.
  */
+export type AssembledRun = {
+  input: MatchAgentInput;
+  contextIds: string[];
+};
+
 export async function assembleRun(
   meetingId: string,
   now: Date = new Date()
-): Promise<MatchAgentInput> {
+): Promise<AssembledRun> {
   const prisma = getPrisma();
 
   const meeting = await prisma.meeting.findUnique({
@@ -407,17 +415,92 @@ export async function assembleRun(
   }
 
   return {
-    meetingId,
-    cycleNumber: meeting.cycleCount + 1,
-    occasion: meeting.occasion,
-    participants,
-    candidates: ranked.map((score) => score.candidate),
-    viable,
-    ranked,
-    rejections,
-    // `venueFacts` and `venueSoftFacts` stay absent rather than empty: B7
-    // fetches neither dietary tags nor atmosphere, and an empty object would
-    // tell A2 and A4 that nothing is true of these venues rather than that
-    // nothing is known (the rule `findRejectedOption` already follows).
+    input: {
+      meetingId,
+      cycleNumber: meeting.cycleCount + 1,
+      occasion: meeting.occasion,
+      participants,
+      candidates: ranked.map((score) => score.candidate),
+      viable,
+      ranked,
+      rejections,
+      // `venueFacts` and `venueSoftFacts` stay absent rather than empty: B7
+      // fetches neither dietary tags nor atmosphere, and an empty object
+      // would tell A2 and A4 that nothing is true of these venues rather
+      // than that nothing is known (the rule `findRejectedOption` follows).
+    },
+    contextIds: meeting.participantContexts.map((row) => row.id),
   };
+}
+
+/* -------------------------------------------------------------------------
+ * One cycle, start to finish
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Assemble, ask, write. The five lines that were missing between everything
+ * A4 built and anything a person can see.
+ *
+ * ## The four writes, and who was already waiting for each
+ *
+ * | Write | Waiting | What it showed instead |
+ * | ----- | ------- | ---------------------- |
+ * | the run and its three options | `persistMatchRun`, written in A4 and never called | "no proposal yet" |
+ * | `MatchRunSeenContext` | [`meeting-detail.ts`](../db/meeting-detail.ts)'s timeline | a re-weighing with no reason beside it |
+ * | `status = awaiting` | the feed | "re-weighing", forever |
+ * | `cycleCount`, `currentDatetime` | C7's remaining count; the feed's sort — **and B5b's conflict query, which filters on `currentDatetime` and therefore never found anything** | no date, no cross-group conflict |
+ *
+ * All in one transaction, because a run persisted without its status update
+ * is a meeting stuck on "re-weighing" holding a proposal no screen displays.
+ * `currentDatetime` needs no timezone conversion despite B5's note on it:
+ * `proposedDatetime` is already an instant.
+ *
+ * ## Where `stuck` is not
+ *
+ * A run always leaves the meeting `awaiting`, **including the third one**.
+ * The cap is three proposals, and the third is a proposal — flipping to
+ * `stuck` as it lands would hand the group an answer they are not allowed to
+ * look at. `stuck` belongs to the moment a re-weighing is *asked for* and
+ * there is none left, which is `respondToMeeting`'s rejection branch.
+ */
+export async function runCycle(meetingId: string, now: Date = new Date()) {
+  const { input, contextIds } = await assembleRun(meetingId, now);
+  const { draft, call } = await runMatchingAgent(input);
+
+  const top = draft.options.find((option) => option.rank === 1);
+  if (!top) {
+    // `validateOptions` already requires rank 1 to exist; this is the type
+    // narrowing, and a second reader of the same rule.
+    throw new Error(`a8: ${meetingId}'s run came back with no rank-1 option`);
+  }
+
+  const prisma = getPrisma();
+
+  return prisma.$transaction(async (tx) => {
+    const run = await persistMatchRun(draft, call, tx);
+
+    if (contextIds.length > 0) {
+      await tx.matchRunSeenContext.createMany({
+        data: contextIds.map((contextId) => ({
+          matchRunId: run.id,
+          contextId,
+        })),
+      });
+    }
+
+    await tx.meeting.update({
+      where: { id: meetingId },
+      data: {
+        status: MeetingStatus.awaiting,
+        // A cycle is a proposal (#125), so this is the one place it is
+        // counted. `MatchRun` is unique on (meetingId, cycleNumber), so two
+        // runs racing for the same number make the second transaction fail
+        // rather than writing two histories of one weighing.
+        cycleCount: draft.cycleNumber,
+        currentDatetime: top.proposedDatetime,
+      },
+    });
+
+    return run;
+  });
 }

@@ -206,12 +206,12 @@ a separate file.
 **Files:** `lib/matching/run-cycle.ts`, `lib/db/meetings.ts`.
 
 ```ts
-const input = await assembleRun(meetingId);
+const { input, contextIds } = await assembleRun(meetingId);
 const { draft, call } = await runMatchingAgent(input);
 await prisma.$transaction(async (tx) => {
   await persistMatchRun(draft, call, tx); // the run and its 3 options
   // + MatchRunSeenContext rows for every context this run read
-  // + meeting: status = awaiting | stuck, cycleCount, currentDatetime
+  // + meeting: status = awaiting, cycleCount, currentDatetime
 });
 ```
 
@@ -227,15 +227,49 @@ Four updates, and **each one already has a reader waiting**:
 `currentDatetime` needs no timezone conversion, despite B5's note:
 `option.proposedDatetime` is already an instant.
 
+**A run always leaves the meeting `awaiting`, the third one included** —
+which is a correction to what this plan said before the code was written. The
+cap is three _proposals_, and the third is a proposal: flipping to `stuck` as
+it lands would hand the group an answer they are not allowed to look at.
+`stuck` belongs to the moment a re-weighing is asked for and there is none
+left, so it lives in the rejection branch below:
+
+```
+created  → weighing
+run      → proposal 1, awaiting
+reject   → 1 < 3 → weighing
+run      → proposal 2, awaiting
+reject   → 2 < 3 → weighing
+run      → proposal 3, awaiting     ← a real proposal, and it is shown
+reject   → 3 ≥ 3 → stuck
+```
+
+Three proposals and then `stuck`, which is §3.1. Today it is three
+_complaints_ and then `stuck`, with possibly no corrected proposal at all —
+that is [#125](https://github.com/ron14y-sys/squad_lock/issues/125).
+
 And in `respondToMeeting`, the `doesnt_suit` branch:
 
 ```diff
 -        cycleSpent = true;
-+        // A cycle is a proposal, not a complaint (#125). The run is what
-+        // counts one; this only puts the meeting back into weighing so the
-+        // next poll picks it up.
 +        backToWeighing = true;
 ```
+
+and, after the switch, a status write instead of an increment:
+
+```ts
+status: meetingRow.cycleCount >= CYCLE_CAP ? stuck : weighing;
+```
+
+The cap is **read** here and **written** by the run.
+
+`assembleRun` also widens to `{ input, contextIds }` — the ids promised a
+place in the return type as soon as they had a caller, and
+`MatchRunSeenContext` is it.
+
+**Not unit-tested, deliberately.** The rule is one comparison; what could
+actually be wrong is whether a rejection reaches it at all, and only a real
+database answers that. Step 8's script asserts the whole sequence above.
 
 **The amendment branch is not touched.** A8 wires the rejection trigger;
 §3.2's amendment batching window is B11's. Whoever writes B11 inherits one
