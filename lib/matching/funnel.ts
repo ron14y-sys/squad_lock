@@ -42,6 +42,7 @@ import {
   type ConstraintInput,
   type PairCheck,
   type VenueDietaryFacts,
+  type ViablePair,
 } from "./constraints";
 import {
   originOf,
@@ -111,6 +112,21 @@ export type FunnelInput = {
 export type FunnelResult = {
   /** Gated, ranked fairest-first, capped at `SHORTLIST_SIZE`. Provisional — see this file's header comment. */
   shortlist: CandidateScore[];
+  /**
+   * The surviving `(venue, slot)` pairs **of the shortlisted candidates** —
+   * `MatchAgentInput.viable`, which A4 describes as the set the agent sees
+   * and nothing else.
+   *
+   * Narrowed to the shortlist rather than returned whole, because the two
+   * lists have to agree: a pair whose venue lost at the burden gate is not
+   * one the agent may pick, and handing it both would make that reachable.
+   *
+   * `filterTrimmedPairs` computes these on the way through and, until A8,
+   * they were dropped on the floor — `evals/adapter.ts` needed the same
+   * pairs and ran that filter a second time, from the fixture side, to get
+   * them back.
+   */
+  viable: ViablePair[];
   /** Every `(candidate, slot)` pair `filterTrimmedPairs` dropped, with why. */
   droppedPairs: PairCheck[];
   /**
@@ -189,8 +205,16 @@ export function buildShortlist(input: FunnelInput): FunnelResult {
     }
   }
 
+  const shortlist = passed.slice(0, SHORTLIST_SIZE);
+  const shortlisted = new Set(
+    shortlist.map((score) => score.candidate.placeId)
+  );
+
   return {
-    shortlist: passed.slice(0, SHORTLIST_SIZE),
+    shortlist,
+    viable: filtered.viable.filter((pair) =>
+      shortlisted.has(pair.candidatePlaceId)
+    ),
     droppedPairs: filtered.dropped,
     gatedOut,
   };

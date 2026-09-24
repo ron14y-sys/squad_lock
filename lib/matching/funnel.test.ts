@@ -242,4 +242,36 @@ describe("buildShortlist", () => {
     expect(result.gatedOut).toEqual([]);
     expect(result.droppedPairs).toEqual([]);
   });
+
+  it("returns the surviving pairs of the shortlisted candidates", () => {
+    const dana = participant("u-dana", "Dana", ROTHSCHILD);
+    const near = candidate("near");
+
+    const result = buildShortlist({
+      candidates: [near],
+      participants: [dana],
+      slots: [THREE_HOUR_WINDOW],
+    });
+
+    expect(result.viable.map((pair) => pair.candidatePlaceId)).toEqual([
+      "near",
+    ]);
+  });
+
+  // The two lists have to agree. A venue the gate threw out is not one the
+  // agent may pick, and leaving its pairs in `viable` would make it
+  // reachable — A4 treats that list as the whole world.
+  it("leaves a gated-out candidate's pairs out of viable too", () => {
+    const dana = participant("u-dana", "Dana", ROTHSCHILD, 1);
+    const faraway = candidate("faraway", JERUSALEM);
+
+    const result = buildShortlist({
+      candidates: [faraway],
+      participants: [dana],
+      slots: [THREE_HOUR_WINDOW],
+    });
+
+    expect(result.gatedOut).toHaveLength(1);
+    expect(result.viable).toEqual([]);
+  });
 });
