@@ -263,6 +263,38 @@ What **cannot** be seen this way, and why, is the rest of this section and the
 one below it: the database work needs a database, and nothing reaches a screen
 until B11 assembles a run.
 
+### Measured, 24 Sep 2026 — the sweep, on a day the model was healthy
+
+**8 of 8, every one 3/3.** $0.0047 for 24 calls, 2.4–4.8 seconds each.
+
+| Case                       | Answer                                     | Agreement |
+| -------------------------- | ------------------------------------------ | --------- |
+| `07` noise                 | `soft {noiseLevel: quiet}`                 | 3/3       |
+| `08` budget                | `soft {budget: modest}`                    | 3/3       |
+| `two-fields`               | `soft {noiseLevel: quiet, budget: modest}` | 3/3       |
+| `vague`                    | `none`                                     | 3/3       |
+| `distance`                 | `distance`                                 | 3/3       |
+| `time`                     | `time`                                     | 3/3       |
+| `venue-identity`           | `venue_identity`                           | 3/3       |
+| `preference-not-rejection` | `soft {cuisine: adventurous}`              | 3/3       |
+
+This is also the stability answer A5's open ⚠️ asked for, at least for this
+stage: every case gave the same answer three times running.
+
+**One fixture was wrong, and the model found it.** `vague` read
+_"לא בא לי שם, אני לא יודע להסביר למה"_ and expected `none`; the model answered
+`venue_identity` three times out of three. It was right — **שם** points at the
+place, so the sentence does map to something, and the fixture's own `why`
+claimed it mapped to nothing. That is the #86 category — a fixture saying one
+thing and meaning another — so the text was fixed rather than the expectation,
+and the file records why. Nothing behavioural hung on it: `none` and
+`venue_identity` both write no correction, block the pair and carry the words.
+
+⚠️ **The 49–58 second calls were Google's bad afternoon, not ours.** The same
+model answered in 2.4–4.8s today, so A1's 60-second extraction deadline needs
+no change. The earlier note below stands as a record of what a degraded free
+tier looks like.
+
 ### Measured, 22 Sep 2026 — first live run
 
 `gemini-3.5-flash-lite`, one run per case. Four cases have answered correctly

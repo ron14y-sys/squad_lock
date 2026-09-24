@@ -2,35 +2,53 @@
   {
     "id": "two-fields",
     "text": "גם יקר לי שם וגם רועש מדי, אני מעדיפה משהו פשוט ושקט",
-    "venueIs": { "budget": "splurge", "noiseLevel": "lively" },
+    "venueIs": {
+      "budget": "splurge",
+      "noiseLevel": "lively"
+    },
     "expected": {
       "objection": "soft",
-      "softPreferences": { "budget": "modest", "noiseLevel": "quiet" }
+      "softPreferences": {
+        "budget": "modest",
+        "noiseLevel": "quiet"
+      }
     },
     "why": "One sentence can carry two fields. Extracting one of them would leave half an objection on the table."
   },
   {
     "id": "vague",
-    "text": "לא בא לי שם, אני לא יודע להסביר למה",
-    "expected": { "objection": "none", "softPreferences": {} },
-    "why": "Nothing maps to the vocabulary. A field invented here would change the next ranking on an opinion nobody stated (#86), and 'none' is what lets A8 say so instead."
+    "text": "סתם לא מתחשק לי, אין סיבה מיוחדת",
+    "expected": {
+      "objection": "none",
+      "softPreferences": {}
+    },
+    "why": "Nothing maps to the vocabulary, and nothing points at the venue either. A field invented here would change the next ranking on an opinion nobody stated (#86), and 'none' is what lets A8 say so instead. The first version of this text said \"לא בא לי שם\" and expected 'none'; the model answered 'venue_identity' three times out of three, and it was right — \"שם\" points at the place. The fixture said one thing and meant another, which is the #86 category, so the text was fixed rather than the expectation."
   },
   {
     "id": "distance",
     "text": "רחוק לי מדי, אין לי דרך להגיע עד לשם",
-    "expected": { "objection": "distance", "softPreferences": {} },
+    "expected": {
+      "objection": "distance",
+      "softPreferences": {}
+    },
     "why": "A real objection this vocabulary cannot hold. It is A12's material, and forcing it into a soft field would record a preference the person never expressed."
   },
   {
     "id": "time",
     "text": "מאוחר מדי בשבילי, אני לא יכול לצאת בשעה כזאת",
-    "expected": { "objection": "time", "softPreferences": {} },
+    "expected": {
+      "objection": "time",
+      "softPreferences": {}
+    },
     "why": "Same, for the hour. Note it is not 'none': the timeline can say what was wrong even though nothing was corrected."
   },
   {
     "id": "venue-identity",
     "text": "היה לי שם פעם מקרה לא נעים, כל מקום אחר בסדר מבחינתי",
-    "expected": { "objection": "venue_identity", "softPreferences": {} },
+    "expected": {
+      "objection": "venue_identity",
+      "softPreferences": {}
+    },
     "why": "The objection is to that place, not to any quality of it. A8b blocks the pair; there is nothing to correct."
   },
   {
@@ -38,7 +56,9 @@
     "text": "האמת שדווקא בא לי משהו הרפתקני לאכול, לא את אותו הדבר כרגיל",
     "expected": {
       "objection": "soft",
-      "softPreferences": { "cuisine": "adventurous" }
+      "softPreferences": {
+        "cuisine": "adventurous"
+      }
     },
     "why": "Stated as a wish rather than a complaint. It is still exactly one field, and reading it as 'none' would drop what the person actually said."
   }
