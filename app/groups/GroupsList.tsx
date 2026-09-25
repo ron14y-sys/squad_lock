@@ -44,6 +44,8 @@ type LoadState = "loading" | "ready" | "signed-out" | "error";
 
 function summaryLine(meeting: OpenMeeting): string {
   const parts = [meeting.groupName];
+  if (meeting.status === "stuck")
+    parts.push("לא מצאנו הצעה — צריך להחליט ידנית");
   if (meeting.occasion) parts.push(meeting.occasion);
   else if (meeting.pinnedVenue) parts.push(meeting.pinnedVenue);
   if (meeting.currentDatetime) {

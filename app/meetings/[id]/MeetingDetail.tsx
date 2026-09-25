@@ -11,6 +11,7 @@ import {
 } from "@/lib/format/hebrew-labels";
 import { ResponseControls } from "./respond/ResponseControls";
 import { ConflictWarning, type Conflict } from "./respond/ConflictWarning";
+import { StuckPanel } from "./StuckPanel";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
 
 type MeetingCardStatus =
@@ -63,6 +64,8 @@ type MeetingDetail = {
   status: MeetingCardStatus;
   viewerId: string;
   remainingCycles: number;
+  isStuck: boolean;
+  isInitiator: boolean;
   conflicts: Conflict[];
   initiatorName: string;
   pinnedVenue: string | null;
@@ -96,17 +99,26 @@ function formatRange(startIso: string, endIso: string): string {
   return `${DATE_TIME_FMT.format(start)} · ${TIME_FMT.format(start)}–${TIME_FMT.format(end)}`;
 }
 
-function ProposalBlock({ proposal }: { proposal: Proposal | null }) {
+function ProposalBlock({
+  proposal,
+  stuck,
+}: {
+  proposal: Proposal | null;
+  stuck: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const heading = stuck ? "ההצעה הטובה ביותר שמצאנו" : "ההצעה";
 
   if (!proposal) {
     return (
       <section className="flex flex-col gap-2 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          ההצעה
+          {heading}
         </h2>
         <p className="text-sm text-zinc-500">
-          עדיין אין הצעה — הסוכן בוחן אפשרויות.
+          {stuck
+            ? "לא נמצאה הצעה שמתאימה לכולם."
+            : "עדיין אין הצעה — הסוכן בוחן אפשרויות."}
         </p>
       </section>
     );
@@ -117,7 +129,7 @@ function ProposalBlock({ proposal }: { proposal: Proposal | null }) {
   return (
     <section className="flex flex-col gap-2 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
       <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-        ההצעה
+        {heading}
       </h2>
       <p className="text-base font-medium text-zinc-900 dark:text-zinc-50">
         {proposal.venueName}
@@ -313,7 +325,24 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
         )}
       </div>
 
-      <ProposalBlock proposal={detail.proposal} />
+      {detail.isStuck && (
+        <StuckPanel
+          meetingId={detail.id}
+          groupId={detail.groupId}
+          initiatorName={detail.initiatorName}
+          isInitiator={detail.isInitiator}
+          hasProposal={detail.proposal !== null}
+          rejections={detail.timeline.flatMap((event) =>
+            event.kind === "response" &&
+            event.status === "doesnt_suit" &&
+            event.reasonText
+              ? [{ by: event.by, reasonText: event.reasonText }]
+              : []
+          )}
+          onCancelled={refresh}
+        />
+      )}
+      <ProposalBlock proposal={detail.proposal} stuck={detail.isStuck} />
       <ResponseControls
         meetingId={detail.id}
         myStatus={

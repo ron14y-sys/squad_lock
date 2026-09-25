@@ -18,6 +18,8 @@ function detail(overrides: Record<string, unknown> = {}) {
     status: "waiting_on_you",
     viewerId: "u2",
     remainingCycles: 3,
+    isStuck: false,
+    isInitiator: false,
     conflicts: [],
     initiatorName: "אלדד",
     pinnedVenue: null,
@@ -276,4 +278,48 @@ test("shows no conflict warning when there is no clash", async () => {
   expect(
     screen.queryByText(/יש לך פגישה נוספת באותו ערב/)
   ).not.toBeInTheDocument();
+});
+
+test("a stuck meeting explains itself, lists what was said, and relabels its best option", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            status: "stuck",
+            isStuck: true,
+            timeline: [
+              { kind: "initiated", at: "2026-09-13T10:00:00.000Z", by: "אלדד" },
+              {
+                kind: "response",
+                at: "2026-09-13T11:00:00.000Z",
+                by: "דני",
+                status: "doesnt_suit",
+                reasonText: "רועש מדי",
+              },
+            ],
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(await screen.findByText("הפגישה הזו תקועה")).toBeInTheDocument();
+  expect(screen.getByText("ההצעה הטובה ביותר שמצאנו")).toBeInTheDocument();
+  expect(screen.getByText(/דני: "רועש מדי"/)).toBeInTheDocument();
+});
+
+test("a meeting that is not stuck shows no stuck panel", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(jsonResponse(detail())))
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+  await screen.findByText("בית קפה נורדאו");
+
+  expect(screen.queryByText("הפגישה הזו תקועה")).not.toBeInTheDocument();
 });

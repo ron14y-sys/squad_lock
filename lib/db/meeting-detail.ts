@@ -71,6 +71,10 @@ export type MeetingDetailDTO = {
   viewerId: string;
   /** Cycles left before the meeting goes `stuck` — shown before "something doesn't work" spends one. */
   remainingCycles: number;
+  /** The stored status is `stuck` — separate from `status`, because a clash outranks it on the card. */
+  isStuck: boolean;
+  /** Whether the viewer started this meeting — the only one who can cancel it when stuck. */
+  isInitiator: boolean;
   /** Undismissed clashes with this viewer's other open meetings (spec §5.7). */
   conflicts: ConflictDTO[];
   initiatorName: string;
@@ -245,6 +249,8 @@ export async function getMeetingDetail(
     status,
     viewerId,
     remainingCycles: Math.max(0, CYCLE_CAP - meeting.cycleCount),
+    isStuck: row.status === "stuck",
+    isInitiator: row.initiatorId === viewerId,
     conflicts,
     initiatorName: row.initiator.name,
     pinnedVenue: meeting.pinnedVenue,

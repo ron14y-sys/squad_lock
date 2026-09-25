@@ -46,6 +46,8 @@ type LoadState = "loading" | "ready" | "signed-out" | "not-found" | "error";
 const OPEN_MEETING_CAP = 3;
 
 function summaryLine(card: MeetingCard): string {
+  // A stuck meeting must say so in the feed rather than quietly sit there (spec §3.1).
+  if (card.status === "stuck") return "לא מצאנו הצעה — צריך להחליט ידנית";
   if (card.occasion) return card.occasion;
   const time =
     card.currentDatetime && ` בשעה ${meetingTimeLabel(card.currentDatetime)}`;
