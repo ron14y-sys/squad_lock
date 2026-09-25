@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-import { APP_TIME_ZONE } from "@/lib/types/primitives";
+import { meetingDateLabel, meetingTimeLabel } from "@/lib/format/meeting-when";
 import {
-  MEETING_CARD_STATUS_LABELS,
   RESPONSE_STATUS_LABELS,
+  meetingStatusLabel,
 } from "@/lib/format/hebrew-labels";
+import { ConflictBanner } from "@/app/_components/ConflictBanner";
 
 type ResponseStatus = "pending" | "approved" | "cant_make_it" | "doesnt_suit";
 
@@ -44,44 +45,10 @@ type LoadState = "loading" | "ready" | "signed-out" | "not-found" | "error";
 
 const OPEN_MEETING_CAP = 3;
 
-const DATE_FMT = new Intl.DateTimeFormat("he-IL", {
-  timeZone: APP_TIME_ZONE,
-  day: "2-digit",
-  month: "2-digit",
-});
-
-const TIME_FMT = new Intl.DateTimeFormat("he-IL", {
-  timeZone: APP_TIME_ZONE,
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-
-/** `"2026-09-15"` → `"15/09"`. Already local wall clock, so no zone conversion belongs here. */
-function formatLocalDate(date: string): string {
-  const [, month, day] = date.split("-");
-  return `${day}/${month}`;
-}
-
-function dateBlockLabel(card: MeetingCard): string {
-  if (card.currentDatetime)
-    return DATE_FMT.format(new Date(card.currentDatetime));
-  if (card.pinnedWhen) return formatLocalDate(card.pinnedWhen.date);
-  return "טרם נקבע";
-}
-
-function statusLabel(card: MeetingCard): string {
-  if (card.status === "waiting_on_others" && card.waitingOn !== null) {
-    return `ממתין לעוד ${card.waitingOn}`;
-  }
-  return MEETING_CARD_STATUS_LABELS[card.status];
-}
-
 function summaryLine(card: MeetingCard): string {
   if (card.occasion) return card.occasion;
   const time =
-    card.currentDatetime &&
-    ` בשעה ${TIME_FMT.format(new Date(card.currentDatetime))}`;
+    card.currentDatetime && ` בשעה ${meetingTimeLabel(card.currentDatetime)}`;
   const venue = card.pinnedVenue ? ` ב${card.pinnedVenue}` : "";
   return `${card.approvedCount} מתוך ${card.totalCount} אישרו${venue}${time ?? ""}`;
 }
@@ -138,7 +105,7 @@ function MeetingCardRow({ card }: { card: MeetingCard }) {
             : "bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
         }`}
       >
-        {dateBlockLabel(card)}
+        {meetingDateLabel(card)}
       </div>
 
       <div className="min-w-0 flex-1">
@@ -150,7 +117,7 @@ function MeetingCardRow({ card }: { card: MeetingCard }) {
                 : "text-zinc-500"
             }`}
           >
-            {statusLabel(card)}
+            {meetingStatusLabel(card.status, card.waitingOn)}
           </span>
         </div>
         <p className="truncate text-sm text-zinc-900 dark:text-zinc-50">
@@ -266,6 +233,10 @@ export function GroupFeed({ groupId }: { groupId: string }) {
 
       {feed.meetings.length === 0 && (
         <p className="text-sm text-zinc-500">אין עדיין פגישות בקבוצה הזו.</p>
+      )}
+
+      {feed.meetings.some((m) => m.status === "conflicting") && (
+        <ConflictBanner />
       )}
 
       <div className="flex flex-col gap-2">

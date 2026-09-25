@@ -10,6 +10,7 @@ import {
   unverifiedNote,
 } from "@/lib/format/hebrew-labels";
 import { ResponseControls } from "./respond/ResponseControls";
+import { ConflictWarning, type Conflict } from "./respond/ConflictWarning";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
 
 type MeetingCardStatus =
@@ -62,6 +63,7 @@ type MeetingDetail = {
   status: MeetingCardStatus;
   viewerId: string;
   remainingCycles: number;
+  conflicts: Conflict[];
   initiatorName: string;
   pinnedVenue: string | null;
   occasion: string | null;
@@ -321,6 +323,18 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
         remainingCycles={detail.remainingCycles}
         disabled={detail.status === "closed"}
         onResponded={refresh}
+        aboveApprove={
+          detail.conflicts.length > 0 ? (
+            <ConflictWarning
+              meetingId={detail.id}
+              thisMeetingName={
+                detail.proposal?.venueName ?? detail.occasion ?? "ללא שם"
+              }
+              conflicts={detail.conflicts}
+              onResolved={refresh}
+            />
+          ) : undefined
+        }
       />
       <StatusBlock detail={detail} />
       <TimelineBlock timeline={detail.timeline} />
