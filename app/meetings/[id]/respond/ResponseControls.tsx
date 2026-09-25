@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 type ResponseStatus = "pending" | "approved" | "cant_make_it" | "doesnt_suit";
 
@@ -39,12 +39,15 @@ export function ResponseControls({
   remainingCycles,
   disabled,
   onResponded,
+  aboveApprove,
 }: {
   meetingId: string;
   myStatus: ResponseStatus;
   remainingCycles: number;
   disabled: boolean;
   onResponded: () => void;
+  /** Rendered directly above the approve button — the conflict warning lives here (spec §5.7). */
+  aboveApprove?: ReactNode;
 }) {
   const [open, setOpen] = useState<Open>("none");
   const [reasonText, setReasonText] = useState("");
@@ -110,6 +113,8 @@ export function ResponseControls({
       <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
         התגובה שלך
       </h2>
+
+      {aboveApprove}
 
       <div className="flex flex-wrap gap-2">
         <button

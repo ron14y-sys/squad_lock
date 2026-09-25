@@ -10,6 +10,10 @@ import { OPEN_MEETING_STATUSES } from "./meetings";
 import { getPrisma } from "./client";
 
 import type {
+  MeetingModel,
+  ResponseModel,
+} from "@/lib/generated/prisma/models";
+import type {
   Meeting,
   MeetingCardStatus,
   MeetingCardStatusInput,
@@ -89,7 +93,7 @@ function sortKey(card: Pick<MeetingCardDTO, "currentDatetime">): number {
  * first; the feed renders the divider at the first `isPast` card rather than
  * this function returning two separate arrays.
  */
-function sortMeetingCards(cards: MeetingCardDTO[]): MeetingCardDTO[] {
+function sortMeetingCards<T extends MeetingCardDTO>(cards: T[]): T[] {
   const upcoming = cards
     .filter((c) => !c.isPast)
     .sort((a, b) => sortKey(a) - sortKey(b));
@@ -97,6 +101,70 @@ function sortMeetingCards(cards: MeetingCardDTO[]): MeetingCardDTO[] {
     .filter((c) => c.isPast)
     .sort((a, b) => sortKey(b) - sortKey(a));
   return [...upcoming, ...past];
+}
+
+type MeetingRowWithResponses = MeetingModel & {
+  responses: (ResponseModel & { user: { name: string } })[];
+};
+
+/** One meeting row → the card the feed and the all-groups timeline both draw. */
+function toMeetingCardDTO(
+  row: MeetingRowWithResponses,
+  viewerId: string,
+  conflictingIds: Set<string>,
+  now: number
+): MeetingCardDTO {
+  const meeting: Meeting = meetingFromRow(row);
+  const responses: Response[] = row.responses.map((r) => ({
+    id: r.id,
+    meetingId: r.meetingId,
+    userId: r.userId,
+    status: r.status,
+    reasonText: r.reasonText,
+    respondedAt: r.respondedAt,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  }));
+
+  const status = deriveMeetingCardStatus({
+    meeting,
+    responses,
+    viewerId,
+    hasConflict: conflictingIds.has(meeting.id),
+  });
+
+  const pendingCount = responses.filter((r) => r.status === "pending").length;
+  const approvedCount = responses.filter((r) => r.status === "approved").length;
+
+  return {
+    id: meeting.id,
+    status,
+    waitingOn: status === "waiting_on_others" ? pendingCount : null,
+    currentDatetime: meeting.currentDatetime?.toISOString() ?? null,
+    pinnedWhen: meeting.pinnedWhen,
+    pinnedVenue: meeting.pinnedVenue,
+    occasion: meeting.occasion,
+    createdAt: meeting.createdAt.toISOString(),
+    approvedCount,
+    totalCount: responses.length,
+    isPast:
+      meeting.currentDatetime !== null &&
+      meeting.currentDatetime.getTime() < now,
+    participants: row.responses.map((r) => ({
+      userId: r.userId,
+      name: r.user.name,
+      status: r.status,
+    })),
+  };
+}
+
+async function conflictingMeetingIds(viewerId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  for (const pair of await findConflictingMeetings(viewerId)) {
+    ids.add(pair.meetingA.id);
+    ids.add(pair.meetingB.id);
+  }
+  return ids;
 }
 
 export async function listMeetingCardsForGroup(
@@ -110,65 +178,59 @@ export async function listMeetingCardsForGroup(
     include: { responses: { include: { user: { select: { name: true } } } } },
   });
 
-  const conflictPairs = await findConflictingMeetings(viewerId);
-  const conflictingIds = new Set<string>();
-  for (const pair of conflictPairs) {
-    conflictingIds.add(pair.meetingA.id);
-    conflictingIds.add(pair.meetingB.id);
-  }
-
+  const conflictingIds = await conflictingMeetingIds(viewerId);
   const openCount = rows.filter((row) =>
     (OPEN_MEETING_STATUSES as string[]).includes(row.status)
   ).length;
 
   const now = Date.now();
-
-  const cards: MeetingCardDTO[] = rows.map((row) => {
-    const meeting: Meeting = meetingFromRow(row);
-    const responses: Response[] = row.responses.map((r) => ({
-      id: r.id,
-      meetingId: r.meetingId,
-      userId: r.userId,
-      status: r.status,
-      reasonText: r.reasonText,
-      respondedAt: r.respondedAt,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    }));
-
-    const status = deriveMeetingCardStatus({
-      meeting,
-      responses,
-      viewerId,
-      hasConflict: conflictingIds.has(meeting.id),
-    });
-
-    const pendingCount = responses.filter((r) => r.status === "pending").length;
-    const approvedCount = responses.filter(
-      (r) => r.status === "approved"
-    ).length;
-
-    return {
-      id: meeting.id,
-      status,
-      waitingOn: status === "waiting_on_others" ? pendingCount : null,
-      currentDatetime: meeting.currentDatetime?.toISOString() ?? null,
-      pinnedWhen: meeting.pinnedWhen,
-      pinnedVenue: meeting.pinnedVenue,
-      occasion: meeting.occasion,
-      createdAt: meeting.createdAt.toISOString(),
-      approvedCount,
-      totalCount: responses.length,
-      isPast:
-        meeting.currentDatetime !== null &&
-        meeting.currentDatetime.getTime() < now,
-      participants: row.responses.map((r) => ({
-        userId: r.userId,
-        name: r.user.name,
-        status: r.status,
-      })),
-    };
-  });
+  const cards = rows.map((row) =>
+    toMeetingCardDTO(row, viewerId, conflictingIds, now)
+  );
 
   return { meetings: sortMeetingCards(cards), openCount };
+}
+
+/** A card plus which group it lives in — the all-groups timeline mixes groups. */
+export type AllGroupsCardDTO = MeetingCardDTO & {
+  groupId: string;
+  groupName: string;
+};
+
+/**
+ * Every open meeting this viewer is a participant in, across every group
+ * (spec §5.6 "All groups"): the source for the per-group "what awaits you"
+ * counts and the single cross-group timeline. Only open meetings — a closed
+ * one is history, and the group's own feed is where that lives.
+ */
+export async function listOpenMeetingCardsForUser(
+  viewerId: string
+): Promise<{ meetings: AllGroupsCardDTO[] }> {
+  const prisma = getPrisma();
+
+  const myResponses = await prisma.response.findMany({
+    where: {
+      userId: viewerId,
+      meeting: { status: { in: OPEN_MEETING_STATUSES } },
+    },
+    include: {
+      meeting: {
+        include: {
+          group: { select: { id: true, name: true } },
+          responses: { include: { user: { select: { name: true } } } },
+        },
+      },
+    },
+  });
+
+  const conflictingIds = await conflictingMeetingIds(viewerId);
+  const now = Date.now();
+
+  const cards: AllGroupsCardDTO[] = myResponses.map(({ meeting }) => ({
+    ...toMeetingCardDTO(meeting, viewerId, conflictingIds, now),
+    groupId: meeting.group.id,
+    groupName: meeting.group.name,
+  }));
+
+  return { meetings: sortMeetingCards(cards) };
 }

@@ -55,6 +55,14 @@ export type TimelineEvent =
       reasonText: string | null;
     };
 
+/** The other side of a clash — enough to say what approving here would undo. */
+export type ConflictDTO = {
+  meetingId: string;
+  groupName: string;
+  venueName: string | null;
+  start: string | null;
+};
+
 export type MeetingDetailDTO = {
   id: string;
   groupId: string;
@@ -63,6 +71,8 @@ export type MeetingDetailDTO = {
   viewerId: string;
   /** Cycles left before the meeting goes `stuck` — shown before "something doesn't work" spends one. */
   remainingCycles: number;
+  /** Undismissed clashes with this viewer's other open meetings (spec §5.7). */
+  conflicts: ConflictDTO[];
   initiatorName: string;
   pinnedVenue: string | null;
   occasion: string | null;
@@ -114,9 +124,34 @@ export async function getMeetingDetail(
   const meeting: Meeting = meetingFromRow(row);
 
   const conflictPairs = await findConflictingMeetings(viewerId);
-  const hasConflict = conflictPairs.some(
-    (pair) => pair.meetingA.id === meeting.id || pair.meetingB.id === meeting.id
-  );
+  const otherMeetingIds = conflictPairs.flatMap((pair) => {
+    if (pair.meetingA.id === meeting.id) return [pair.meetingB.id];
+    if (pair.meetingB.id === meeting.id) return [pair.meetingA.id];
+    return [];
+  });
+  const hasConflict = otherMeetingIds.length > 0;
+
+  const otherMeetings =
+    otherMeetingIds.length === 0
+      ? []
+      : await prisma.meeting.findMany({
+          where: { id: { in: otherMeetingIds } },
+          include: {
+            group: { select: { name: true } },
+            matchRuns: {
+              orderBy: { cycleNumber: "desc" },
+              take: 1,
+              include: { options: { where: { rank: 1 } } },
+            },
+          },
+        });
+  const conflicts: ConflictDTO[] = otherMeetings.map((other) => ({
+    meetingId: other.id,
+    groupName: other.group.name,
+    venueName:
+      other.matchRuns[0]?.options[0]?.venueName ?? other.pinnedVenue ?? null,
+    start: other.currentDatetime?.toISOString() ?? null,
+  }));
 
   const responses = row.responses.map((r) => ({
     id: r.id,
@@ -210,6 +245,7 @@ export async function getMeetingDetail(
     status,
     viewerId,
     remainingCycles: Math.max(0, CYCLE_CAP - meeting.cycleCount),
+    conflicts,
     initiatorName: row.initiator.name,
     pinnedVenue: meeting.pinnedVenue,
     occasion: meeting.occasion,

@@ -18,6 +18,7 @@ function detail(overrides: Record<string, unknown> = {}) {
     status: "waiting_on_you",
     viewerId: "u2",
     remainingCycles: 3,
+    conflicts: [],
     initiatorName: "אלדד",
     pinnedVenue: null,
     occasion: null,
@@ -229,4 +230,50 @@ test("shows a not-found message for a meeting the user isn't part of", async () 
   expect(
     await screen.findByText("הפגישה הזו לא נמצאה, או שאתה לא משתתף בה.")
   ).toBeInTheDocument();
+});
+
+test("puts the conflict warning above the approve button when the viewer has a clash", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            status: "conflicting",
+            conflicts: [
+              {
+                meetingId: "meeting-2",
+                groupName: "סועדים בשקט",
+                venueName: null,
+                start: null,
+              },
+            ],
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  const warning = await screen.findByText(/יש לך פגישה נוספת באותו ערב/);
+  const approve = screen.getByRole("button", { name: "מאשר/ת" });
+  // DOCUMENT_POSITION_FOLLOWING: the approve button comes after the warning.
+  expect(
+    warning.compareDocumentPosition(approve) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
+});
+
+test("shows no conflict warning when there is no clash", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(jsonResponse(detail())))
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+  await screen.findByText("בית קפה נורדאו");
+
+  expect(
+    screen.queryByText(/יש לך פגישה נוספת באותו ערב/)
+  ).not.toBeInTheDocument();
 });
