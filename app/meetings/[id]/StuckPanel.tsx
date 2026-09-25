@@ -63,8 +63,8 @@ export function StuckPanel({
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-amber-500 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-      <h2 className="font-semibold">הפגישה הזו תקועה</h2>
+    <section className="sl-warn flex flex-col gap-3">
+      <h2 className="sl-sec">הפגישה הזו תקועה</h2>
       <p>
         ניסינו שלוש פעמים ולא מצאנו הצעה שמתאימה לכולם, אז המערכת מפסיקה לחפש
         ומעבירה את ההחלטה אליכם.
@@ -72,7 +72,7 @@ export function StuckPanel({
 
       {rejections.length > 0 && (
         <div className="flex flex-col gap-1">
-          <p className="font-medium">מה נאמר בדרך:</p>
+          <p className="font-bold">מה נאמר בדרך:</p>
           <ul className="list-disc ps-5">
             {rejections.map((r, i) => (
               <li key={i}>
@@ -84,7 +84,7 @@ export function StuckPanel({
       )}
 
       <div className="flex flex-col gap-1">
-        <p className="font-medium">איך מסיימים את זה:</p>
+        <p className="font-bold">איך מסיימים את זה:</p>
         <ol className="list-decimal ps-5">
           {hasProposal && (
             <li>
@@ -115,7 +115,7 @@ export function StuckPanel({
                 type="button"
                 disabled={submitting}
                 onClick={cancel}
-                className="rounded-md bg-amber-700 px-3 py-1.5 text-white disabled:opacity-50"
+                className="sl-btn go"
               >
                 כן, בטל
               </button>
@@ -123,7 +123,7 @@ export function StuckPanel({
                 type="button"
                 disabled={submitting}
                 onClick={() => setConfirming(false)}
-                className="rounded-md border border-amber-600 px-3 py-1.5 disabled:opacity-50"
+                className="sl-btn"
               >
                 לא
               </button>
@@ -132,7 +132,7 @@ export function StuckPanel({
             <button
               type="button"
               onClick={() => setConfirming(true)}
-              className="self-start rounded-md border border-amber-600 px-3 py-1.5"
+              className="sl-btn self-start"
             >
               בטל את הפגישה
             </button>
@@ -142,7 +142,7 @@ export function StuckPanel({
         <p>רק {initiatorName}, שפתח/ה את הפגישה, יכול/ה לבטל אותה.</p>
       )}
 
-      {message && <p className="text-red-600">{message}</p>}
+      {message && <p className="sl-note">{message}</p>}
     </section>
   );
 }

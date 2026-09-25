@@ -1,16 +1,29 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Heebo, Rubik, Secular_One } from "next/font/google";
+import Script from "next/script";
 import { AppHeader } from "./_components/AppHeader";
+import { THEME_INIT_SCRIPT } from "./_components/theme";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+// Hebrew-capable fonts (Geist has no Hebrew). Light theme: Secular One for
+// headings + Rubik for text. Dark theme: Heebo for both.
+const secular = Secular_One({
+  variable: "--font-secular",
+  subsets: ["hebrew", "latin"],
+  weight: "400",
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const rubik = Rubik({
+  variable: "--font-rubik",
+  subsets: ["hebrew", "latin"],
+  display: "swap",
+});
+
+const heebo = Heebo({
+  variable: "--font-heebo",
+  subsets: ["hebrew", "latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -19,7 +32,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  themeColor: "#ffede3",
 };
 
 export default function RootLayout({
@@ -28,14 +41,28 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    // suppressHydrationWarning: the inline script below sets data-theme
+    // before React runs, so the attribute may differ from the server HTML.
     <html
       lang="he"
       dir="rtl"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      data-theme="light"
+      suppressHydrationWarning
+      className={`${secular.variable} ${rubik.variable} ${heebo.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col overflow-x-hidden">
+        <Script id="theme-init" strategy="beforeInteractive">
+          {THEME_INIT_SCRIPT}
+        </Script>
+        <div className="sl-glows" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </div>
         <AppHeader />
-        <main className="safe-bottom flex flex-1 flex-col">{children}</main>
+        <main className="safe-bottom relative z-[1] flex flex-1 flex-col">
+          {children}
+        </main>
       </body>
     </html>
   );

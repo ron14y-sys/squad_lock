@@ -8,7 +8,7 @@ export default async function InvitationPage({
   const { token } = await params;
 
   return (
-    <div className="flex flex-1 flex-col bg-zinc-50 dark:bg-black">
+    <div className="flex flex-1 flex-col">
       <AcceptInvitation token={token} />
     </div>
   );

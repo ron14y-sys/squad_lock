@@ -68,27 +68,23 @@ export function HardConstraintsForm() {
   }
 
   if (loadState === "loading") {
-    return <p className="p-6 text-sm text-zinc-500">טוען את הפרופיל שלך…</p>;
+    return <p className="sl-page sl-sub">טוען את הפרופיל שלך…</p>;
   }
 
   if (loadState === "signed-out") {
-    return (
-      <p className="p-6 text-sm text-zinc-500">
-        התחבר כדי להגדיר את האילוצים שלך.
-      </p>
-    );
+    return <p className="sl-page sl-sub">התחבר כדי להגדיר את האילוצים שלך.</p>;
   }
 
   if (loadState === "error") {
     return (
-      <p className="p-6 text-sm text-red-600">
+      <p className="sl-page sl-sub">
         לא הצלחנו לטעון את הפרופיל. נסה לרענן את הדף.
       </p>
     );
   }
 
   return (
-    <div className="flex flex-col gap-8 p-6">
+    <div className="sl-page">
       <TagSection
         title="דרישות תזונה"
         presets={DIETARY_PRESETS}
@@ -115,17 +111,13 @@ export function HardConstraintsForm() {
           type="button"
           onClick={save}
           disabled={saveState === "saving"}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
+          className="sl-btn go"
         >
           {saveState === "saving" ? "שומר…" : "שמור"}
         </button>
-        {saveState === "saved" && (
-          <span className="text-sm text-emerald-600">נשמר.</span>
-        )}
+        {saveState === "saved" && <span className="sl-note">נשמר.</span>}
         {saveState === "error" && (
-          <span className="text-sm text-red-600">
-            לא הצלחנו לשמור. נסה שוב.
-          </span>
+          <span className="sl-note">לא הצלחנו לשמור. נסה שוב.</span>
         )}
       </div>
     </div>
@@ -167,9 +159,7 @@ function TagSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-        {title}
-      </h2>
+      <h2 className="sl-sec">{title}</h2>
       <div className="flex flex-wrap gap-2">
         {allOptions.map((option) => {
           const active = values.includes(option);
@@ -179,11 +169,7 @@ function TagSection({
               type="button"
               onClick={() => toggle(option)}
               aria-pressed={active}
-              className={
-                active
-                  ? "rounded-full border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-sm text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-black"
-                  : "rounded-full border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-              }
+              className={active ? "sl-chip on" : "sl-chip"}
             >
               {option}
             </button>
@@ -202,13 +188,9 @@ function TagSection({
             }
           }}
           placeholder="הוסף עוד"
-          className="flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-black"
+          className="sl-field flex-1"
         />
-        <button
-          type="button"
-          onClick={addCustom}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-        >
+        <button type="button" onClick={addCustom} className="sl-btn">
           הוסף
         </button>
       </div>
@@ -250,22 +232,17 @@ function UnavailableSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-        שעות קבועות שאינך זמין/ה
-      </h2>
+      <h2 className="sl-sec">שעות קבועות שאינך זמין/ה</h2>
 
       {windows.map((w, i) => (
-        <div
-          key={i}
-          className="flex items-center justify-between rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
-        >
+        <div key={i} className="sl-card justify-between">
           <span>
             {describeDays(w.weekdays)} · {w.from}–{w.to}
           </span>
           <button
             type="button"
             onClick={() => removeWindow(i)}
-            className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-50"
+            className="sl-sub"
           >
             הסר
           </button>
@@ -281,11 +258,7 @@ function UnavailableSection({
               type="button"
               onClick={() => toggleDay(day)}
               aria-pressed={active}
-              className={
-                active
-                  ? "rounded-md border border-zinc-900 bg-zinc-900 px-2.5 py-1 text-xs text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-black"
-                  : "rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-              }
+              className={active ? "sl-chip on" : "sl-chip"}
             >
               {WEEKDAY_LABELS[day]}
             </button>
@@ -298,20 +271,16 @@ function UnavailableSection({
           type="time"
           value={from}
           onChange={(e) => setFrom(e.target.value)}
-          className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-black"
+          className="sl-field w-auto"
         />
-        <span className="text-sm text-zinc-500">עד</span>
+        <span className="sl-sub">עד</span>
         <input
           type="time"
           value={to}
           onChange={(e) => setTo(e.target.value)}
-          className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-black"
+          className="sl-field w-auto"
         />
-        <button
-          type="button"
-          onClick={addWindow}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-        >
+        <button type="button" onClick={addWindow} className="sl-btn">
           הוסף
         </button>
       </div>

@@ -109,19 +109,17 @@ export function ResponseControls({
     !originLabel.trim() && !unavailableMode && !note.trim();
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-        התגובה שלך
-      </h2>
+    <section className="sl-page !p-0">
+      <h2 className="sl-sec">התגובה שלך</h2>
 
       {aboveApprove}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="sl-row">
         <button
           type="button"
           disabled={disabled || submitting || myStatus === "approved"}
           onClick={() => send({ kind: "approve" })}
-          className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="sl-btn go"
         >
           מאשר/ת
         </button>
@@ -129,7 +127,7 @@ export function ResponseControls({
           type="button"
           disabled={disabled || submitting || myStatus === "cant_make_it"}
           onClick={() => send({ kind: "cant_make_it" })}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
+          className="sl-btn"
         >
           לא יכול/ה להגיע
         </button>
@@ -139,7 +137,7 @@ export function ResponseControls({
           onClick={() =>
             setOpen(open === "doesnt_suit" ? "none" : "doesnt_suit")
           }
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
+          className="sl-btn"
         >
           משהו כאן לא מתאים לי
         </button>
@@ -147,22 +145,22 @@ export function ResponseControls({
           type="button"
           disabled={disabled || submitting}
           onClick={() => setOpen(open === "amendment" ? "none" : "amendment")}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
+          className="sl-btn"
         >
           המצב שלי הערב שונה
         </button>
       </div>
 
       {open === "doesnt_suit" && (
-        <div className="flex flex-col gap-2 rounded-md bg-zinc-100 p-3 dark:bg-zinc-900">
-          <p className="text-xs text-zinc-500">
+        <div className="sl-panel">
+          <p className="sl-sub">
             נותרו {remainingCycles} ניסיונות למצוא הצעה חלופית.
           </p>
           <textarea
             value={reasonText}
             onChange={(e) => setReasonText(e.target.value)}
             placeholder="מה לא מתאים?"
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-black"
+            className="sl-field"
           />
           <button
             type="button"
@@ -170,7 +168,7 @@ export function ResponseControls({
             onClick={() =>
               send({ kind: "doesnt_suit", reasonText: reasonText.trim() })
             }
-            className="self-start rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
+            className="sl-btn go self-start"
           >
             שלח
           </button>
@@ -178,30 +176,26 @@ export function ResponseControls({
       )}
 
       {open === "amendment" && (
-        <div className="flex flex-col gap-2 rounded-md bg-zinc-100 p-3 dark:bg-zinc-900">
-          <p className="text-xs text-zinc-500">
+        <div className="sl-panel">
+          <p className="sl-sub">
             זה לא דחייה — ההצעה תישקל מחדש עם המידע הזה, ולא ייספר לך כניסיון.
           </p>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-700 dark:text-zinc-300">
-              מגיע/ה מ... (אופציונלי)
-            </span>
+            <span className="sl-sub">מגיע/ה מ... (אופציונלי)</span>
             <input
               type="text"
               value={originLabel}
               onChange={(e) => setOriginLabel(e.target.value)}
               placeholder="לדוגמה: מהעבודה"
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-black"
+              className="sl-field"
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-700 dark:text-zinc-300">
-              אין לי הערב (אופציונלי)
-            </span>
+            <span className="sl-sub">אין לי הערב (אופציונלי)</span>
             <select
               value={unavailableMode}
               onChange={(e) => setUnavailableMode(e.target.value as Mode | "")}
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-black"
+              className="sl-field"
             >
               <option value="">—</option>
               {(Object.keys(MODE_LABELS) as Mode[]).map((mode) => (
@@ -212,28 +206,26 @@ export function ResponseControls({
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-700 dark:text-zinc-300">
-              הערה חופשית (אופציונלי)
-            </span>
+            <span className="sl-sub">הערה חופשית (אופציונלי)</span>
             <input
               type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-black"
+              className="sl-field"
             />
           </label>
           <button
             type="button"
             disabled={submitting || amendmentEmpty}
             onClick={submitAmendment}
-            className="self-start rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
+            className="sl-btn go self-start"
           >
             עדכן
           </button>
         </div>
       )}
 
-      {message && <p className="text-sm text-red-600">{message}</p>}
+      {message && <p className="sl-note">{message}</p>}
     </section>
   );
 }
