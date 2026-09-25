@@ -268,3 +268,24 @@ test("shows no conflict banner when nothing in the feed clashes", async () => {
     screen.queryByText(/יש לך פגישות שמתנגשות באותו ערב/)
   ).not.toBeInTheDocument();
 });
+
+test("a stuck meeting stays in the feed and says what to do", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          meetings: [card({ status: "stuck", currentDatetime: null })],
+          openCount: 1,
+        })
+      )
+    )
+  );
+
+  render(<GroupFeed groupId="group-1" />);
+
+  expect(await screen.findByText("תקוע")).toBeInTheDocument();
+  expect(
+    screen.getByText("לא מצאנו הצעה — צריך להחליט ידנית")
+  ).toBeInTheDocument();
+});
