@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { ConflictBanner } from "@/app/_components/ConflictBanner";
+import { stickerClass, tiltClass } from "@/app/_components/meeting-style";
 import { meetingStatusLabel } from "@/lib/format/hebrew-labels";
 import { meetingDateLabel, meetingTimeLabel } from "@/lib/format/meeting-when";
 
@@ -113,20 +114,16 @@ export function GroupsList() {
   }
 
   if (loadState === "loading") {
-    return <p className="p-6 text-sm text-zinc-500">טוען את הקבוצות שלך…</p>;
+    return <p className="sl-page sl-sub">טוען את הקבוצות שלך…</p>;
   }
 
   if (loadState === "signed-out") {
-    return (
-      <p className="p-6 text-sm text-zinc-500">
-        התחבר כדי לראות את הקבוצות שלך.
-      </p>
-    );
+    return <p className="sl-page sl-sub">התחבר כדי לראות את הקבוצות שלך.</p>;
   }
 
   if (loadState === "error") {
     return (
-      <p className="p-6 text-sm text-red-600">
+      <p className="sl-page sl-sub">
         לא הצלחנו לטעון את הקבוצות. נסה לרענן את הדף.
       </p>
     );
@@ -138,33 +135,26 @@ export function GroupsList() {
     ).length;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="sl-page">
       {meetings.some((m) => m.status === "conflicting") && <ConflictBanner />}
 
-      <div className="flex flex-col gap-3">
-        {groups.length === 0 && (
-          <p className="text-sm text-zinc-500">עדיין אין לך קבוצות.</p>
-        )}
-        {groups.map((group) => {
+      <div className="flex flex-col gap-4">
+        {groups.length === 0 && <p className="sl-sub">עדיין אין לך קבוצות.</p>}
+        {groups.map((group, index) => {
           const awaiting = awaitingCount(group.id);
           return (
             <Link
               key={group.id}
               href={`/groups/${group.id}`}
-              className="flex items-center justify-between rounded-md border border-zinc-300 px-4 py-3 dark:border-zinc-700"
+              className={`sl-card ${tiltClass(index)}`}
             >
-              <div>
-                <div className="font-medium text-zinc-900 dark:text-zinc-50">
-                  {group.name}
-                </div>
-                <div className="text-xs text-zinc-500">
-                  {group.members.length} חברים
-                </div>
+              <div className="sl-sq">{group.name.charAt(0)}</div>
+              <div className="sl-body">
+                <div className="sl-ttl">{group.name}</div>
+                <div className="sl-line">{group.members.length} חברים</div>
               </div>
               {awaiting > 0 && (
-                <span className="rounded-full bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white">
-                  {awaiting} ממתינים לך
-                </span>
+                <span className="sl-cnt">{awaiting} ממתינים לך</span>
               )}
             </Link>
           );
@@ -172,45 +162,23 @@ export function GroupsList() {
       </div>
 
       {meetings.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            היומן שלך
-          </h2>
-          <div className="flex flex-col gap-2">
-            {meetings.map((meeting) => {
-              const highlighted = meeting.status === "waiting_on_you";
+        <section className="flex flex-col gap-4">
+          <h2 className="sl-sec">היומן שלך</h2>
+          <div className="flex flex-col gap-4">
+            {meetings.map((meeting, index) => {
+              const isYou = meeting.status === "waiting_on_you";
               return (
                 <Link
                   key={meeting.id}
                   href={`/meetings/${meeting.id}`}
-                  className={`flex items-center gap-3 rounded-md border px-3 py-2 ${
-                    highlighted
-                      ? "border-indigo-600 dark:border-indigo-400"
-                      : "border-zinc-300 dark:border-zinc-700"
-                  }`}
+                  className={`sl-card ${isYou ? "is-you" : tiltClass(index)}`}
                 >
-                  <div
-                    className={`flex h-10 w-12 shrink-0 items-center justify-center rounded text-xs font-semibold ${
-                      highlighted
-                        ? "bg-indigo-600 text-white"
-                        : "bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
-                    }`}
-                  >
-                    {meetingDateLabel(meeting)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div
-                      className={`text-xs font-medium ${
-                        highlighted
-                          ? "text-indigo-600 dark:text-indigo-400"
-                          : "text-zinc-500"
-                      }`}
-                    >
+                  <div className="sl-date">{meetingDateLabel(meeting)}</div>
+                  <div className="sl-body">
+                    <span className={`sl-stk ${stickerClass(meeting.status)}`}>
                       {meetingStatusLabel(meeting.status, meeting.waitingOn)}
-                    </div>
-                    <p className="truncate text-sm text-zinc-900 dark:text-zinc-50">
-                      {summaryLine(meeting)}
-                    </p>
+                    </span>
+                    <p className="sl-line truncate">{summaryLine(meeting)}</p>
                   </div>
                 </Link>
               );
@@ -219,10 +187,8 @@ export function GroupsList() {
         </section>
       )}
 
-      <div className="flex flex-col gap-2 border-t border-zinc-300 pt-6 dark:border-zinc-700">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          קבוצה חדשה
-        </h2>
+      <div className="flex flex-col gap-2">
+        <h2 className="sl-sec">קבוצה חדשה</h2>
         <div className="flex gap-2">
           <input
             type="text"
@@ -235,18 +201,18 @@ export function GroupsList() {
               }
             }}
             placeholder="שם הקבוצה"
-            className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-black"
+            className="sl-field flex-1"
           />
           <button
             type="button"
             onClick={createGroup}
             disabled={creating}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
+            className="sl-btn go"
           >
             {creating ? "יוצר…" : "צור"}
           </button>
         </div>
-        {createError && <p className="text-sm text-red-600">{createError}</p>}
+        {createError && <p className="sl-note">{createError}</p>}
       </div>
     </div>
   );

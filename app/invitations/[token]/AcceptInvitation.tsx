@@ -45,10 +45,8 @@ export function AcceptInvitation({ token }: { token: string }) {
 
   if (state.status === "success") {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-        <p className="text-sm text-zinc-900 dark:text-zinc-50">
-          הצטרפת לקבוצה!
-        </p>
+      <div className="sl-page flex-1 items-center justify-center text-center">
+        <p className="font-bold">הצטרפת לקבוצה!</p>
         <Link
           href={`/groups/${state.groupId}`}
           className="text-sm font-medium underline"
@@ -61,28 +59,24 @@ export function AcceptInvitation({ token }: { token: string }) {
 
   if (state.status === "signed-out") {
     return (
-      <p className="p-6 text-center text-sm text-zinc-500">
+      <p className="sl-page sl-sub text-center">
         התחבר עם Google כדי להצטרף לקבוצה.
       </p>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-      <p className="text-sm text-zinc-900 dark:text-zinc-50">
-        הוזמנת להצטרף לקבוצה.
-      </p>
+    <div className="sl-page flex-1 items-center justify-center text-center">
+      <p className="font-bold">הוזמנת להצטרף לקבוצה.</p>
       <button
         type="button"
         onClick={accept}
         disabled={state.status === "accepting"}
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
+        className="sl-btn go"
       >
         {state.status === "accepting" ? "מצטרף…" : "הצטרף לקבוצה"}
       </button>
-      {state.status === "error" && (
-        <p className="text-sm text-red-600">{state.message}</p>
-      )}
+      {state.status === "error" && <p className="sl-note">{state.message}</p>}
     </div>
   );
 }

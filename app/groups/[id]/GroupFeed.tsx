@@ -9,6 +9,11 @@ import {
   meetingStatusLabel,
 } from "@/lib/format/hebrew-labels";
 import { ConflictBanner } from "@/app/_components/ConflictBanner";
+import {
+  avatarClass,
+  stickerClass,
+  tiltClass,
+} from "@/app/_components/meeting-style";
 
 type ResponseStatus = "pending" | "approved" | "cant_make_it" | "doesnt_suit";
 
@@ -55,76 +60,41 @@ function summaryLine(card: MeetingCard): string {
   return `${card.approvedCount} מתוך ${card.totalCount} אישרו${venue}${time ?? ""}`;
 }
 
-function avatarClasses(status: ResponseStatus): string {
-  switch (status) {
-    case "approved":
-      return "bg-zinc-900 text-white dark:bg-zinc-50 dark:text-black";
-    case "pending":
-      return "border border-zinc-400 text-zinc-500 dark:border-zinc-600";
-    default:
-      return "border border-dashed border-zinc-300 text-zinc-400 opacity-60 dark:border-zinc-700";
-  }
-}
-
 function MeetingAvatars({
   participants,
 }: {
   participants: MeetingCard["participants"];
 }) {
   return (
-    <div className="flex -space-x-2 rtl:space-x-reverse">
+    <div className="sl-av">
       {participants.map((p) => (
-        <div
+        <span
           key={p.userId}
           title={`${p.name} — ${RESPONSE_STATUS_LABELS[p.status]}`}
-          className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${avatarClasses(
-            p.status
-          )}`}
+          className={avatarClass(p.status)}
         >
           {p.name.charAt(0)}
-        </div>
+        </span>
       ))}
     </div>
   );
 }
 
-function MeetingCardRow({ card }: { card: MeetingCard }) {
-  const highlighted = card.status === "waiting_on_you";
+function MeetingCardRow({ card, index }: { card: MeetingCard; index: number }) {
+  const isYou = card.status === "waiting_on_you";
 
   return (
     <Link
       href={`/meetings/${card.id}`}
-      className={`flex items-center gap-3 rounded-md border px-3 py-2 ${
-        highlighted
-          ? "border-indigo-600 dark:border-indigo-400"
-          : "border-zinc-300 dark:border-zinc-700"
-      }`}
+      className={`sl-card ${isYou ? "is-you" : tiltClass(index)}`}
     >
-      <div
-        className={`flex h-10 w-12 shrink-0 flex-col items-center justify-center rounded text-xs font-semibold ${
-          highlighted
-            ? "bg-indigo-600 text-white"
-            : "bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
-        }`}
-      >
-        {meetingDateLabel(card)}
-      </div>
+      <div className="sl-date">{meetingDateLabel(card)}</div>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span
-            className={`text-xs font-medium ${
-              highlighted
-                ? "text-indigo-600 dark:text-indigo-400"
-                : "text-zinc-500"
-            }`}
-          >
-            {meetingStatusLabel(card.status, card.waitingOn)}
-          </span>
-        </div>
-        <p className="truncate text-sm text-zinc-900 dark:text-zinc-50">
-          {summaryLine(card)}
-        </p>
+      <div className="sl-body">
+        <span className={`sl-stk ${stickerClass(card.status)}`}>
+          {meetingStatusLabel(card.status, card.waitingOn)}
+        </span>
+        <p className="sl-line truncate">{summaryLine(card)}</p>
       </div>
 
       <MeetingAvatars participants={card.participants} />
@@ -204,21 +174,19 @@ export function GroupFeed({ groupId }: { groupId: string }) {
   }, [groupId]);
 
   if (loadState === "loading") {
-    return <p className="p-6 text-sm text-zinc-500">טוען פגישות…</p>;
+    return <p className="sl-page sl-sub">טוען פגישות…</p>;
   }
   if (loadState === "signed-out") {
-    return <p className="p-6 text-sm text-zinc-500">התחבר כדי לראות פגישות.</p>;
+    return <p className="sl-page sl-sub">התחבר כדי לראות פגישות.</p>;
   }
   if (loadState === "not-found") {
     return (
-      <p className="p-6 text-sm text-zinc-500">
-        הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.
-      </p>
+      <p className="sl-page sl-sub">הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.</p>
     );
   }
   if (loadState === "error" || !feed) {
     return (
-      <p className="p-6 text-sm text-red-600">
+      <p className="sl-page sl-sub">
         לא הצלחנו לטעון את הפגישות. נסה לרענן את הדף.
       </p>
     );
@@ -228,54 +196,41 @@ export function GroupFeed({ groupId }: { groupId: string }) {
   let dividerShown = false;
 
   return (
-    <section className="flex flex-col gap-3 border-t border-zinc-300 p-6 pt-6 dark:border-zinc-700">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-        פגישות ({feed.openCount} פתוחות)
-      </h2>
+    <section className="sl-page">
+      <h2 className="sl-sec">פגישות ({feed.openCount} פתוחות)</h2>
 
       {feed.meetings.length === 0 && (
-        <p className="text-sm text-zinc-500">אין עדיין פגישות בקבוצה הזו.</p>
+        <p className="sl-sub">אין עדיין פגישות בקבוצה הזו.</p>
       )}
 
       {feed.meetings.some((m) => m.status === "conflicting") && (
         <ConflictBanner />
       )}
 
-      <div className="flex flex-col gap-2">
-        {feed.meetings.map((card) => {
+      <div className="flex flex-col gap-4">
+        {feed.meetings.map((card, index) => {
           const showDivider = card.isPast && !dividerShown;
           if (showDivider) dividerShown = true;
           return (
-            <div key={card.id} className="flex flex-col gap-2">
-              {showDivider && (
-                <div className="border-t border-dashed border-zinc-300 pt-2 text-xs text-zinc-400 dark:border-zinc-700">
-                  פגישות שעברו
-                </div>
-              )}
-              <MeetingCardRow card={card} />
+            <div key={card.id} className="flex flex-col gap-3">
+              {showDivider && <div className="sl-sec">פגישות שעברו</div>}
+              <MeetingCardRow card={card} index={index} />
             </div>
           );
         })}
       </div>
 
       {atCap ? (
-        <button
-          type="button"
-          disabled
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
-        >
+        <button type="button" disabled className="sl-btn">
           פתח פגישה חדשה
         </button>
       ) : (
-        <Link
-          href={`/groups/${groupId}/new`}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-center text-sm font-medium text-white dark:bg-zinc-50 dark:text-black"
-        >
+        <Link href={`/groups/${groupId}/new`} className="sl-btn go">
           פתח פגישה חדשה
         </Link>
       )}
       {atCap && (
-        <p className="text-xs text-zinc-500">
+        <p className="sl-note">
           אי אפשר לפתוח פגישה נוספת — יש כבר {OPEN_MEETING_CAP} פגישות פתוחות
           בקבוצה. סגור או השלם אחת מהן כדי לפתוח חדשה.
         </p>

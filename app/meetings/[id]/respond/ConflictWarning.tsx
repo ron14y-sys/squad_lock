@@ -84,23 +84,20 @@ function ConflictItem({
   }
 
   return (
-    <div
-      role="alert"
-      className="flex flex-col gap-2 rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"
-    >
-      <p className="font-medium">
+    <div role="alert" className="sl-warn flex flex-col gap-2">
+      <p className="font-bold">
         יש לך פגישה נוספת באותו ערב: {describe(conflict)}
       </p>
       <p>אם תאשר את הפגישה הזו, הפגישה ההיא תחזור לשקלול בלעדייך.</p>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="sl-row">
         <button
           type="button"
           disabled={submitting}
           onClick={() =>
             send({ kind: "keep_both", otherMeetingId: conflict.meetingId })
           }
-          className="rounded-md border border-amber-600 px-3 py-1.5 text-sm disabled:opacity-50"
+          className="sl-btn"
         >
           אלה לא מתנגשות — השאר את שתיהן
         </button>
@@ -108,7 +105,7 @@ function ConflictItem({
           type="button"
           disabled={submitting}
           onClick={() => setChoosing((c) => !c)}
-          className="rounded-md border border-amber-600 px-3 py-1.5 text-sm disabled:opacity-50"
+          className="sl-btn"
         >
           אחת מהן צריכה להשתנות
         </button>
@@ -117,14 +114,14 @@ function ConflictItem({
       {choosing && (
         <div className="flex flex-col gap-2">
           <p>איזו מהן לשנות? היא תחזור לשקלול מחדש.</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="sl-row">
             <button
               type="button"
               disabled={submitting}
               onClick={() =>
                 send({ kind: "send_back", targetMeetingId: meetingId })
               }
-              className="rounded-md bg-amber-700 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              className="sl-btn go"
             >
               שנה את הפגישה הזו ({thisMeetingName})
             </button>
@@ -137,7 +134,7 @@ function ConflictItem({
                   targetMeetingId: conflict.meetingId,
                 })
               }
-              className="rounded-md bg-amber-700 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              className="sl-btn go"
             >
               שנה את הפגישה ב{conflict.groupName}
             </button>
@@ -145,7 +142,7 @@ function ConflictItem({
         </div>
       )}
 
-      {message && <p className="text-red-600">{message}</p>}
+      {message && <p className="sl-note">{message}</p>}
     </div>
   );
 }
