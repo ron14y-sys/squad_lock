@@ -230,9 +230,10 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 
 ### Milestone 2 (weeks 4–6)
 
-- [ ] **C8 — All-groups screen and conflict warnings**
+- [x] **C8 — All-groups screen and conflict warnings**
   - Acceptance: every group with a count of what awaits the user, plus one timeline of all open meetings across groups. Conflicts surface in **three** places: a feed banner, a `conflicting` row label, and a warning strip **directly above the approve button**. The strip offers **two ways out** — _"these don't clash — keep both"_ (persisted as a `ConflictDismissal`) and _"one of these needs to change"_. Exact shape of the two controls to be refined when built.
   - Verify: a user with colliding meetings cannot reach approve without passing the warning; approving shows what happens to the other meeting **before** the press; a dismissal survives a reload and the next poll
+  - Merged in #133 (`GroupsList.tsx`, `ConflictWarning.tsx`, `lib/db/conflict-actions.ts`, `GET /api/meetings`, `POST /api/meetings/[id]/conflict`). "One of these needs to change" sends the chosen meeting back to `weighing` and clears its void `currentDatetime`; the re-run is B11's. A `stuck` meeting cannot be sent back (it would be a way round the cycle cap). A signed-in `/` redirects to the all-groups screen.
 - [ ] **C8b — The `stuck` state has a screen** — best option found, why it stopped, and a way for the group to settle it. It does not silently vanish from the feed.
 
 ### Weeks 7–8
