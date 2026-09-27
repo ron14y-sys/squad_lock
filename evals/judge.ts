@@ -17,7 +17,6 @@ import type {
   ObjectionKind,
 } from "@/lib/extraction/constraint-updater";
 import type { SoftPreferences } from "@/lib/types";
-import type { MatchRunDraft } from "@/lib/matching/agent";
 import { APP_TIME_ZONE } from "@/lib/types";
 
 /* -------------------------------------------------------------------------
@@ -29,17 +28,35 @@ import { APP_TIME_ZONE } from "@/lib/types";
  * depends on has not been built, so a wrong answer here measures the gap and
  * not the model.
  *
- * | Scenario   | Waiting on           | Because                                            |
- * | ---------- | -------------------- | -------------------------------------------------- |
- * | `04`       | A12 Context Resolver | leximin on a bare straight line picks the other venue |
- * | `07`, `08` | A8                   | `expected` is the proposal *after* a rejection     |
+ * | Scenario | Waiting on           | Because                                               |
+ * | -------- | -------------------- | ----------------------------------------------------- |
+ * | `04`     | A12 Context Resolver | leximin on a bare straight line picks the other venue |
  *
- * **`07` and `08` have an answer today**, under `npm run eval -- --followup`:
- * A7 extracts the constraint and the agent answers it, and both reach the
- * venue we agreed on. They stay `deferred` here anyway, because that harness
- * is not the loop — no cap, no `stuck`, nothing persisted — and spec §12.5's
- * pass rate may only carry the claim the product can make. A8 is what moves
- * them.
+ * **`08` is `deferred` for a different reason than it used to be.** It waited
+ * on A8; A8 landed, and `npm run eval -- --followup` now runs the real loop
+ * through `runCycle` (`evals/loop.ts`) instead of imitating it. But the sweep
+ * above runs **cycle 1**, and `08`'s `expected` is the answer to the proposal
+ * in cycle 2 — so the sweep has no oracle for it and must not spend a call
+ * pretending to. Scoring it in the sweep was tried and it *passed*, which is
+ * the worst outcome available: cycle 1 happened to choose the venue the
+ * fixture expects of cycle 2, so a meaningless verdict came out green. The
+ * judgement is deferred to the follow-up table, which is the measurement that
+ * exists — `blockedReason` says so, and `07`, whose whole subject had no
+ * source in the product, was dropped rather than rewritten.
+ *
+ * ⚠️ **What `08` proves is the chain, not the discrimination.** It has two
+ * candidate venues, and a `soft` rejection blocks the whole rejected one
+ * (`blockedByRejections`) — so exactly one candidate is left and the agent
+ * cannot answer wrongly. What passing means is that extraction, the
+ * correction, the blocking, the re-run and the persistence all happened; it
+ * is not evidence that a stated budget changed anybody's mind. A scenario
+ * that measured *that* would need three or more survivors, only one of which
+ * matches the stated preference — and it would need venues to carry the
+ * preference at all, which nothing fetches
+ * ([#139](https://github.com/ron14y-sys/squad_lock/issues/139)). The old
+ * noise scenario had the same two-candidate shape and the same gap, with no
+ * Places field that could ever close it, so it was dropped rather than
+ * rewritten.
  *
  * **`03` and `05` used to be here too**, waiting on the trimming. The adapter
  * now trims, so they are scored — and `05` is the one that mattered most: its
@@ -76,7 +93,8 @@ export function classify(scenario: Scenario): Classification {
  * a bug in the caller.
  */
 export function blockedReason(scenario: Scenario): string {
-  if (scenario.trap === "rejection-loop") return "needs A8";
+  // Not a missing stage any more — a different table. See the note above.
+  if (scenario.trap === "rejection-loop") return "judged under --followup";
   if (scenario.trap === "semantic-geography") return "needs A12";
   throw new Error(
     `judge: "${scenario.id}" is scored, not blocked — it has no missing stage`
@@ -130,7 +148,22 @@ const CLOCK = new Intl.DateTimeFormat("en-GB", {
  * (`evals/README.md`), which is when the answer is a `(venue, time)` pair
  * rather than a venue.
  */
-export function judge(scenario: Scenario, draft: MatchRunDraft): Verdict {
+/**
+ * Everything `judge` reads: a `MatchRunDraft` fresh from the agent, or a run
+ * read back out of the database. The follow-up harness passes the second,
+ * because what a participant is shown is the persisted row and not the draft
+ * — a run that was answered correctly and written wrongly should not pass.
+ */
+export type JudgeableRun = {
+  options: {
+    rank: number;
+    venue: { placeId: string | null; name: string };
+    proposedDatetime: Date;
+    proposedEnd: Date;
+  }[];
+};
+
+export function judge(scenario: Scenario, draft: JudgeableRun): Verdict {
   const option = draft.options.find((candidate) => candidate.rank === 1);
   if (!option) return { pass: false, reason: "no rank-1 option" };
 

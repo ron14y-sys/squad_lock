@@ -10,6 +10,24 @@
  * The cast back to the real types here is safe *because* `/api/preferences`
  * is the only writer and it validates every write against the same shapes
  * (`lib/preferences/schema.ts`) before it reaches this table.
+ *
+ * ⚠️ **Except that it is not the only writer, and `hardConstraints` needed
+ * the three arrays filled in.** The column is `@default("{}")`, so a profile
+ * row that nobody has written to carries an empty object — which is every
+ * user who signed up and has not opened C3's hard-constraints screen. The
+ * cast then promises three arrays that are not there, and the first thing to
+ * iterate one crashes: `participantViolations` in `lib/matching/constraints.ts`
+ * does `for (const window of hardConstraints.unavailable)`, which A8's
+ * verification script hit on its first run against the real database.
+ *
+ * Filling them here is the same job this file already does for
+ * `homeLat`/`homeLng`: hide a difference between what SQL stores and what the
+ * app speaks. An absent list means "nothing stated", which is exactly `[]` —
+ * and unlike the origin, there is no meaningful `null` for it.
+ *
+ * `softPreferences` needs none of this (every field is optional, and `{}` is
+ * a real state — [#86](https://github.com/ron14y-sys/squad_lock/issues/86)),
+ * and `recurringMobilityRules` defaults to `[]` in the column already.
  */
 
 import type { PreferenceProfileModel } from "@/lib/generated/prisma/models";
@@ -27,7 +45,12 @@ export function preferenceProfileFromRow(
   return {
     id: row.id,
     userId: row.userId,
-    hardConstraints: row.hardConstraints as HardConstraints,
+    hardConstraints: {
+      dietary: [],
+      allergies: [],
+      unavailable: [],
+      ...(row.hardConstraints as Partial<HardConstraints>),
+    },
     softPreferences: row.softPreferences as SoftPreferences,
     home:
       row.homeLat !== null && row.homeLng !== null

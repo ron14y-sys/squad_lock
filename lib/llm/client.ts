@@ -286,19 +286,70 @@ export type LlmRequest = {
  * the token accounting and the cost line are the parts most likely to drift
  * apart if written twice, and they are the parts A1 exists to get right.
  */
+/** Vertex serves this project's models here and nowhere else — see `connect`. */
+const DEFAULT_VERTEX_LOCATION = "global";
+
+/**
+ * The same models, through whichever of Google's two front doors this
+ * environment is set up for.
+ *
+ * They are genuinely two products over one set of models, and the difference
+ * that matters is **who pays**:
+ *
+ * | | Gemini Developer API | Vertex AI |
+ * | --- | --- | --- |
+ * | Console | AI Studio | Google Cloud |
+ * | Auth | an API key | Application Default Credentials |
+ * | Billing | its own prepay credit balance | the project's Cloud billing account |
+ *
+ * F2 chose the first because its free tier needs no billing account
+ * ([runtime-budget.md](../../docs/decisions/runtime-budget.md)). What that
+ * decision could not anticipate: attaching *any* billing account moves an AI
+ * Studio project off the free tier onto "Paid 1", where calls are drawn from
+ * a prepay balance — and **Google Cloud free-trial credits are not eligible
+ * for it.** So a project can hold hundreds of shekels of Cloud credit and
+ * still answer every call with `402 Payment Required`, which is exactly what
+ * happened here on 2026-09-27 and what blocked A8's verification.
+ *
+ * Vertex bills the Cloud account those credits live in, so the same key-less
+ * models become reachable again.
+ *
+ * **Both, not one.** Switching outright would break every teammate still on
+ * an API key, and Vercel has no ADC to offer — that needs a service account,
+ * which is its own piece of work. `GOOGLE_CLOUD_PROJECT` is the switch: set
+ * it and this talks to Vertex, leave it unset and nothing changes.
+ *
+ * `location` defaults to `global` because that is where these models are.
+ * `us-central1`, the usual first guess, returns 404 for both of them —
+ * measured, not assumed.
+ */
+function connect(): GoogleGenAI {
+  const project = process.env.GOOGLE_CLOUD_PROJECT?.trim();
+  if (project) {
+    return new GoogleGenAI({
+      vertexai: true,
+      project,
+      location:
+        process.env.GOOGLE_CLOUD_LOCATION?.trim() || DEFAULT_VERTEX_LOCATION,
+    });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new LlmConfigError(
+      "No Gemini credentials. Either set GEMINI_API_KEY (https://aistudio.google.com/apikey) or, to bill a Google Cloud project instead, set GOOGLE_CLOUD_PROJECT and run `gcloud auth application-default login`. See .env.example."
+    );
+  }
+
+  return new GoogleGenAI({ apiKey });
+}
+
 export async function generate(request: LlmRequest): Promise<LlmResult> {
   const config = resolveConfig(request.task);
   const stream = request.stream ?? config.stream;
   const started = performance.now();
 
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new LlmConfigError(
-      "GEMINI_API_KEY is not set. Copy .env.example to .env.local and put a key in it — https://aistudio.google.com/apikey."
-    );
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = connect();
 
   const params = {
     model: config.model,

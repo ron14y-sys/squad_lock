@@ -177,18 +177,56 @@ scan (spec §5.7): index on `userId`, joined to `meetings` by primary key.
 Verified with `EXPLAIN ANALYZE` at realistic data volume — see
 [`prisma/verify-conflict-index.sql`](../prisma/verify-conflict-index.sql).
 
-| Column                  | Type             | Notes                                                                            |
-| ----------------------- | ---------------- | -------------------------------------------------------------------------------- |
-| `id`                    | `String`         | PK                                                                               |
-| `meetingId`             | `String`         | FK → `meetings.id`, cascade delete                                               |
-| `userId`                | `String`         | FK → `users.id`, cascade delete                                                  |
-| `status`                | `ResponseStatus` | enum: `pending` / `approved` / `cant_make_it` / `doesnt_suit`; default `pending` |
-| `reasonText`            | `String?`        | free text for `doesnt_suit`                                                      |
-| `respondedAt`           | `DateTime?`      |                                                                                  |
-| `createdAt`/`updatedAt` | `DateTime`       |                                                                                  |
+| Column                  | Type                 | Notes                                                                            |
+| ----------------------- | -------------------- | -------------------------------------------------------------------------------- |
+| `id`                    | `String`             | PK                                                                               |
+| `meetingId`             | `String`             | FK → `meetings.id`, cascade delete                                               |
+| `userId`                | `String`             | FK → `users.id`, cascade delete                                                  |
+| `status`                | `ResponseStatus`     | enum: `pending` / `approved` / `cant_make_it` / `doesnt_suit`; default `pending` |
+| `reasonText`            | `String?`            | free text for `doesnt_suit`. **The latest one only** — see below                 |
+| `respondedAt`           | `DateTime?`          | likewise the latest                                                              |
+| `extractionOutcome`     | `ExtractionOutcome?` | what A7 made of the latest `reasonText`, or why it made nothing of it            |
+| `createdAt`/`updatedAt` | `DateTime`           |                                                                                  |
 
 **Indexes:** unique on `(meetingId, userId)`; index on `userId` (the
 conflict-query join key).
+
+> ### ⚠️ This row is a _state_, not a _history_ — and the difference bit us
+>
+> There is exactly one row per `(meeting, user)` and `respondToMeeting`
+> **updates** it. So `status`, `reasonText`, `respondedAt` and
+> `extractionOutcome` always describe that person's **latest** response, and
+> every earlier one is gone. Dana rejecting three times leaves one row
+> carrying her third sentence and the time she wrote it.
+>
+> That is the right shape for the question this table answers — _"where does
+> each person stand right now?"_ — and the wrong shape for two things that
+> were built on top of it anyway:
+>
+> - **The next proposal.** "No Asian food" has no `SoftPreferences` field to
+>   land in, so the sentence was its only record — and it was destroyed the
+>   moment the same person wrote "no Italian either". The matching agent could
+>   then walk straight back into the objection it had already been given.
+> - **The timeline.** C6's _"what happened so far"_ and C8b's `stuck` screen
+>   built one event per **person** from this row. Because `respondedAt` is also
+>   the latest, Dana's single event was stamped 21:50 while the re-weighing it
+>   caused sat at 20:32 — **the cause rendered after its effect**, on the two
+>   screens whose entire job is to explain what happened.
+>
+> **What to do instead.** Every rejection now appends a row to
+> `participant_meeting_contexts` (`rejectionText`, `rejectionOutcome`), where
+> each one keeps its own words, its own outcome and its own `createdAt`. Read
+> the history from there; read "where they stand" from here.
+>
+> **The rule worth carrying to the next column.** Before adding a column to a
+> row that is updated, ask whether anything will ever need the value it
+> replaces. If the answer is yes — a timeline, an audit, an agent's memory —
+> it belongs on an append-only table instead, however convenient the updated
+> row looks. And a reader that draws a _sequence_ from an _updated_ row does
+> not merely lose detail: it puts events in the wrong order, which is worse,
+> because it still looks correct.
+>
+> Found while wiring A8 ([tasks/a8-plan.md](../tasks/a8-plan.md), step 3).
 
 ### `participant_meeting_contexts`
 
@@ -197,17 +235,34 @@ Sparse per-meeting correction — "no car tonight", "coming from work" (spec
 appends a new row** rather than overwriting the last one, so the timeline
 can show which amendment triggered which re-weighing (spec §5.6).
 
-| Column                                  | Type                        | Notes                                                        |
-| --------------------------------------- | --------------------------- | ------------------------------------------------------------ |
-| `id`                                    | `String`                    | PK                                                           |
-| `meetingId`                             | `String`                    | FK → `meetings.id`, cascade delete                           |
-| `userId`                                | `String`                    | FK → `users.id`, cascade delete                              |
-| `originLat`, `originLng`, `originLabel` | `Float?`/`Float?`/`String?` | origin override for this one meeting                         |
-| `mobilityWindows`                       | `Json`                      | mode-tagged windows — `car` / `transit` / `walk` (spec §6.2) |
-| `note`                                  | `String?`                   | free text                                                    |
-| `createdAt`                             | `DateTime`                  |                                                              |
+| Column                                  | Type                        | Notes                                                                                                                                                    |
+| --------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                    | `String`                    | PK                                                                                                                                                       |
+| `meetingId`                             | `String`                    | FK → `meetings.id`, cascade delete                                                                                                                       |
+| `userId`                                | `String`                    | FK → `users.id`, cascade delete                                                                                                                          |
+| `originLat`, `originLng`, `originLabel` | `Float?`/`Float?`/`String?` | origin override for this one meeting                                                                                                                     |
+| `mobilityWindows`                       | `Json`                      | mode-tagged windows — `car` / `transit` / `walk` (spec §6.2)                                                                                             |
+| `softPreferences`                       | `Json?`                     | A7's correction. `NULL` is "no correction"; `{}` would read as "corrected to nothing"                                                                    |
+| `rejectionText`                         | `String?`                   | the objection in the person's own words (A8)                                                                                                             |
+| `rejectionOutcome`                      | `ExtractionOutcome?`        | what A7 made of **this** objection, kept per row because A8 blocks a venue wholesale for `soft`/`venue_identity` and only the hour for `time`/`distance` |
+| `note`                                  | `String?`                   | free text                                                                                                                                                |
+| `createdAt`                             | `DateTime`                  |                                                                                                                                                          |
 
-**Relations:** many `MatchRunSeenContext` (which runs saw this row).
+**Three kinds of row, told apart by which columns are set** — and the one
+free amendment per participant (spec §3.1) is counted as rows with _neither_
+a correction nor a rejection, so adding a third kind here means revisiting
+that count in `respondToMeeting`:
+
+| Row                                                                     | `softPreferences` | `rejectionText` |
+| ----------------------------------------------------------------------- | ----------------- | --------------- |
+| an amendment                                                            | `NULL`            | `NULL`          |
+| a rejection A7 could turn into a correction                             | set               | set             |
+| a rejection it could not (`time`, `distance`, `venue_identity`, `none`) | `NULL`            | set             |
+
+**Relations:** many `MatchRunSeenContext` (which runs saw this row) — which is
+also how A8 tells an answered rejection from one written while a run was in
+flight, since a `MatchRun` is stamped when it is _written_ and no timestamp
+comparison can separate the two.
 
 **Indexes:** composite `(meetingId, userId, createdAt)`.
 

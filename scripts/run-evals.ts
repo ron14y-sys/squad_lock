@@ -7,7 +7,7 @@
  *   npm run eval -- --replay <dir>   # re-judge a recorded sweep. No key, no quota
  *   npm run eval -- --include-blocked
  *   npm run eval -- --followup       # and A7's corrected cycle, in its own table
- *   npm run eval -- --followup 07    # just that one: 1 extraction + 1 matching call
+ *   npm run eval -- --followup 08    # just that one: 1 extraction + 1 matching call
  *
  * **Quota is the scarcest thing here.** `gemini-3.6-flash` allows 20 requests
  * a day on the free tier (spec §6.4), and five scenarios can be scored today,
@@ -26,13 +26,12 @@ import { join } from "node:path";
 
 import {
   loadScenarios,
-  rejectionCases,
   scenarioAgentInput,
-  scenarioFollowupInput,
   type Scenario,
 } from "@/evals/adapter";
 import { blockedReason, classify, judge, type Verdict } from "@/evals/judge";
-import { runConstraintUpdater } from "@/lib/extraction/constraint-updater";
+import { rejectAndRerun, seedScenario } from "@/evals/loop";
+import { getPrisma } from "@/lib/db/client";
 import {
   countViolations,
   distinctJustifications,
@@ -181,28 +180,29 @@ async function run(scenario: Scenario): Promise<Row> {
  * ---------------------------------------------------------------------- */
 
 /**
- * The rejection loop, minus the loop: extract the constraint from what
- * somebody wrote, hand it back to the agent with the rejected venue gone, and
- * ask whether the follow-up is the proposal we agreed on.
+ * The rejection loop, for real: seed the scenario as a meeting, let somebody
+ * reject the proposal it says was on the table, and ask whether what the loop
+ * proposes next is what we agreed on.
  *
- * **This is the only thing that shows success criterion 4 before A8 exists** —
- * "a free-text rejection produces a materially different next proposal that
- * visibly addresses the stated reason". There is no cap here, nothing is
- * persisted, and no cycle is spent; A8 owns all three, and this goes away when
- * it lands.
+ * This is success criterion 4 — "a free-text rejection produces a materially
+ * different next proposal that visibly addresses the stated reason" — measured
+ * through the code that ships. `respondToMeeting` records the rejection, A7
+ * extracts from it, `blockedByRejections` blocks the venue, `mergeContexts`
+ * carries the correction, `runCycle` re-runs, and the row it persists is what
+ * gets judged. Nothing is imitated; `evals/loop.ts` says what is injected and
+ * why.
  *
- * **Its own table, deliberately.** `07` and `08` stay `deferred` in the sweep
- * above, because "the follow-up is right" is a claim about a loop that does
- * not exist yet, and spec §12.5's pass rate may only carry the claim the
- * product can actually make today.
+ * **Its own table, still.** The follow-up is a second cycle with its own cost,
+ * its own duration and its own failure modes, and averaging it into the sweep
+ * would hide which of the two a number came from.
  *
  * The constraint comes from a **live** A7 call, so what is measured is the
  * chain rather than half of it. When that call cannot be made — the free tier
  * is a shared resource and this model has whole afternoons of 503 — `--agreed`
- * feeds the constraint the fixture already states, which measures the agent
- * alone and still produces a number. Attribution is free either way: the
- * constraint table in `npm run eval:constraints` is what says whether A7 was
- * right.
+ * writes the constraint the fixture already states straight onto the context
+ * row, which measures the loop and the agent alone and still produces a
+ * number. Attribution is free either way: the constraint table in
+ * `npm run eval:constraints` is what says whether A7 was right.
  */
 type FollowupRow = {
   id: string;
@@ -214,10 +214,7 @@ type FollowupRow = {
 };
 
 async function followUp(scenario: Scenario): Promise<FollowupRow> {
-  const one = rejectionCases().find(
-    (rejection) => rejection.id === scenario.id
-  );
-  if (!one || !scenario.expectedConstraint) {
+  if (!scenario.rejection || !scenario.expectedConstraint) {
     return {
       id: scenario.id,
       from: "—",
@@ -226,58 +223,86 @@ async function followUp(scenario: Scenario): Promise<FollowupRow> {
     };
   }
 
-  let correction = scenario.expectedConstraint.softPreferences;
-  let from: FollowupRow["from"] = "agreed";
-  let ms = 0;
-
-  if (!agreed) {
-    try {
-      const { update, call } = await withRetries(
-        () =>
-          runConstraintUpdater({
-            reasonText: one.text,
-            rejected: one.rejected,
-          }),
-        { paceMs: PACE_MS }
-      );
-      correction = update.softPreferences;
-      from = "live";
-      ms += call.ms;
-    } catch (error) {
-      // Not a failure of the follow-up. The chain could not be run, so the
-      // agreed constraint stands in and the table says so.
-      console.log(
-        `  … ${scenario.id}: extraction unavailable (${(error instanceof Error ? error.message : String(error)).split("\n")[0]}), using the agreed constraint`
-      );
-    }
-  }
-
-  const input = scenarioFollowupInput(scenario, correction, one.text);
-
+  let seeded;
   try {
-    const { draft, call } = await withRetries(() => runMatchingAgent(input), {
-      paceMs: PACE_MS,
-    });
-    const verdict = judge(scenario, draft);
-    return {
-      id: scenario.id,
-      from,
-      state: verdict.pass ? "pass" : "fail",
-      detail: verdict.reason ?? draft.options[0].venue.name,
-      cost: call.cost,
-      ms: ms + call.ms,
-    };
+    seeded = await seedScenario(scenario);
   } catch (error) {
     return {
       id: scenario.id,
-      from,
+      from: "—",
       state: "error",
       detail: (error instanceof Error ? error.message : String(error)).split(
         "\n"
       )[0],
-      ms,
     };
   }
+
+  const started = Date.now();
+  try {
+    const run = await rejectAndRerun(seeded, scenario, {
+      correction: agreed
+        ? scenario.expectedConstraint.softPreferences
+        : undefined,
+    });
+    const ms = Date.now() - started;
+
+    if (!run) {
+      // `runCycle` never throws — a fault leaves the meeting in `weighing`
+      // and logs one line. So "no second run" is the whole diagnosis here,
+      // and the line above it is the detail.
+      return {
+        id: scenario.id,
+        from: agreed ? "agreed" : "live",
+        state: "error",
+        detail: "no second cycle was written — see the [a8] line above",
+        ms,
+      };
+    }
+
+    const verdict = judge(scenario, run);
+    return {
+      id: scenario.id,
+      from: agreed ? "agreed" : "live",
+      state: verdict.pass ? "pass" : "fail",
+      detail: verdict.reason ?? run.options[0].venue.name,
+      cost: await costOfLatestRun(seeded.meetingId),
+      ms,
+    };
+  } catch (error) {
+    return {
+      id: scenario.id,
+      from: agreed ? "agreed" : "live",
+      state: "error",
+      detail: (error instanceof Error ? error.message : String(error)).split(
+        "\n"
+      )[0],
+      ms: Date.now() - started,
+    };
+  } finally {
+    await seeded.cleanup();
+  }
+}
+
+/**
+ * What the follow-up cost, read off the run rather than returned by it.
+ *
+ * `runCycle` persists the call's cost on the `MatchRun` — which is why A4 put
+ * those columns there — so the number in this table is the same one §6.4's
+ * cost-per-decision figure will be totalled from, and not a second
+ * measurement of it.
+ */
+async function costOfLatestRun(meetingId: string): Promise<Cost | undefined> {
+  const run = await getPrisma().matchRun.findFirst({
+    where: { meetingId },
+    orderBy: { cycleNumber: "desc" },
+  });
+  if (!run?.model || run.costUsd === null) return undefined;
+
+  return {
+    model: run.model,
+    usd: Number(run.costUsd),
+    basis: (run.costBasis ?? "unknown") as Cost["basis"],
+  };
 }
 
 function printFollowups(rows: FollowupRow[]): void {

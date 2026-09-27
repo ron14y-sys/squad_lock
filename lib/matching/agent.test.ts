@@ -694,13 +694,13 @@ describe("what the model is shown", () => {
             YOAV,
           ]
         ),
-        rejections: { "u-shani": "רועש לי מדי שם" },
+        rejections: { "u-shani": ["רועש לי מדי שם"] },
       })
     );
 
     expect(people.Shani.stated_preferences).toEqual({ budget: "modest" });
     expect(people.Shani.tonight_correction).toEqual({ noiseLevel: "quiet" });
-    expect(people.Shani.in_their_own_words).toBe("רועש לי מדי שם");
+    expect(people.Shani.in_their_own_words).toEqual(["רועש לי מדי שם"]);
 
     // Nobody else carries either field, so a justification cannot borrow one.
     expect(people.Yoav.tonight_correction).toBeNull();

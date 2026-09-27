@@ -114,6 +114,15 @@ export async function getMeetingDetail(
     include: {
       initiator: { select: { name: true } },
       responses: { include: { user: { select: { name: true } } } },
+      // Every rejection, each with its own words and its own time. A
+      // `Response` row is *updated*, so its `reasonText` and `respondedAt`
+      // only ever hold the last one — see the note on `responses` in
+      // docs/database-schema.md.
+      participantContexts: {
+        where: { NOT: { rejectionText: null } },
+        orderBy: { createdAt: "asc" },
+        include: { user: { select: { name: true } } },
+      },
       matchRuns: {
         orderBy: { cycleNumber: "asc" },
         include: {
@@ -229,8 +238,37 @@ export async function getMeetingDetail(
     }
   }
 
+  // Everything somebody said when rejecting, one event each. A person who
+  // objected three times belongs in the timeline three times, at the three
+  // moments they did it — those are the moments that caused the re-weighings
+  // around them.
+  const rejectionsByUser = new Map<string, number>();
+  for (const context of row.participantContexts) {
+    rejectionsByUser.set(
+      context.userId,
+      (rejectionsByUser.get(context.userId) ?? 0) + 1
+    );
+    timeline.push({
+      kind: "response",
+      at: context.createdAt.toISOString(),
+      by: context.user.name,
+      status: "doesnt_suit",
+      reasonText: context.rejectionText,
+    });
+  }
+
   for (const response of responses) {
     if (response.status === "pending" || !response.respondedAt) continue;
+    // A standing `doesnt_suit` is the newest rejection row, already above.
+    // Any other status is a different fact and still belongs here: somebody
+    // who objected and then approved the next proposal has to be shown
+    // approving it.
+    if (
+      response.status === "doesnt_suit" &&
+      rejectionsByUser.has(response.userId)
+    ) {
+      continue;
+    }
     const user = row.responses.find((r) => r.id === response.id)!.user;
     timeline.push({
       kind: "response",

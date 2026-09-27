@@ -70,9 +70,9 @@ The burden formula is defined on a straight line with a detour factor. **The sys
 
 `rejection-loop` scenarios add `initialProposal`, `rejection` (who, free text), and `expectedConstraint` (the structured constraint the Constraint Updater should extract) alongside `expected` (the follow-up proposal).
 
-**`rejections.json` is the second half of A7's measurement.** `07` and `08`
-keep their rejections, so the constraint and the follow-up proposal they expect
-cannot drift apart; `rejections.json` holds the cases a whole scenario would be
+**`rejections.json` is the second half of A7's measurement.** `08` keeps its
+rejection, so the constraint and the follow-up proposal it expects cannot drift
+apart; `rejections.json` holds the cases a whole scenario would be
 waste for — a sentence and an expected answer, no venues, calendars or
 coordinates. That is where the two failure modes that matter live: a field the
 model invented, and an objection this vocabulary cannot hold ("too far", "too
@@ -115,10 +115,18 @@ And the things that **were** wrong, fixed in [#86](https://github.com/ron14y-sys
 | 4   | `04-semantic-geography-trap.json`             | semantic-geography  | Straight-line distance alone picks the wrong venue across a highway barrier — measures the Context Resolver's detour factor.                                      |
 | 5   | `05-no-perfect-solution-diet-conflict.json`   | no-perfect-solution | Conflicting hard/soft requirements; the answer is agreed, not computed.                                                                                           |
 | 6   | `06-no-perfect-solution-dispersed-group.json` | no-perfect-solution | Every candidate leaves someone over their tolerance, and leximin picks the lower-rated venue anyway.                                                              |
-| 7   | `07-rejection-loop-noise.json`                | rejection-loop      | A rejection about atmosphere must produce a visibly quieter follow-up.                                                                                            |
-| 8   | `08-rejection-loop-budget.json`               | rejection-loop      | A rejection about cost must produce a visibly cheaper follow-up.                                                                                                  |
+| 7   | `08-rejection-loop-budget.json`               | rejection-loop      | A rejection about cost must produce a visibly cheaper follow-up.                                                                                                  |
 
-8 of 8–12 required, all agreed by the team.
+7 of 8–12 required, all agreed by the team.
+
+⚠️ **The numbers are positional, and `07` is gone.** It asked for a visibly
+_quieter_ follow-up, which requires knowing how loud a venue is — and there is
+no Places field, at any SKU tier, that says so
+([#139](https://github.com/ron14y-sys/squad_lock/issues/139)). The scenario was
+measuring something the product cannot do, so it was dropped rather than
+rewritten. Its filename number is not reused, so `--followup 07` no longer
+selects anything: **filter by id** (`npm run eval -- --followup budget`) rather
+than by number.
 
 ## The six questions, and how they were answered
 
@@ -154,12 +162,14 @@ It performs only the _spellings_ in the table above; anything a scenario says th
 
 **Measured as of 16 Sep 2026: 5 scored, 5 passed, 0 hard-constraint violations** — `01`, `02`, `03`, `05`, `06`, one live run each. Full table in [docs/decisions/eval-runner.md](../docs/decisions/eval-runner.md).
 
-**Three of the eight are waiting on a stage rather than on the model**, and the runner reports them as such rather than counting them as failures. There were five: `03` and `05` waited on the meeting shortening to fit the venue, and became scored when the trimming landed.
+**Two of the seven are not scored in this table**, and the runner reports why rather than counting them as failures. There were five: `03` and `05` waited on the meeting shortening to fit the venue, and became scored when the trimming landed.
 
-| Scenario   | Waiting on               | Because                                               |
-| ---------- | ------------------------ | ----------------------------------------------------- |
-| `04`       | **A12** Context Resolver | leximin on a bare straight line picks the other venue |
-| `07`, `08` | **A7 + A8**              | `expected` is the proposal _after_ a rejection        |
+| Scenario | Not here because                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------- |
+| `04`     | waiting on **A12**: leximin on a bare straight line picks the other venue                               |
+| `08`     | **measured in the follow-up table instead.** This sweep runs cycle 1; `08`'s oracle is cycle 2's answer |
+
+`08` used to say "waiting on A7 + A8". Both landed, and `npm run eval -- --followup` now drives A8's real loop (`evals/loop.ts`) rather than a harness that imitated it — but the sweep still has no oracle for it, because the answer it states is the one _after_ a rejection. Scoring it here was tried and it **passed**, which is the worst available outcome: cycle 1 happened to choose the venue cycle 2 was expected to, and a meaningless verdict came out green. ⚠️ And read the note on `08` in [`judge.ts`](judge.ts) before quoting the follow-up number: with two candidates and the rejected one blocked, exactly one survives, so what a pass proves is that the chain ran — not that a stated budget changed anybody's mind.
 
 `04` is the one to know about, because it is the only one that produces a **legal, plausible, wrong** answer rather than an obviously missing one — which is exactly what its own `expected.reasoning` predicts: _"a naive straight-line-only implementation is expected to get this one wrong."_ It was reclassified, **not** rewritten. `classify` in [`judge.ts`](judge.ts) derives every one of these from `trap` and `needsTrim`, so a scenario becomes scored on its own when its stage lands, and a scenario added tomorrow is classified by rule.
 

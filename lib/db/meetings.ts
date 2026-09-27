@@ -235,16 +235,32 @@ export type RespondToMeetingResult = {
  * - `cant_make_it` — updates this user's Response row. Does not spend a
  *   cycle.
  * - `doesnt_suit` — updates the Response row with the free-text reason and
- *   always spends a cycle: it rejects the *output*.
+ *   puts the meeting back into `weighing`, which is what the next feed poll
+ *   picks up to start a new run. It **spends no cycle here**: a cycle is a
+ *   **rematch**, not a complaint ([#125](https://github.com/ron14y-sys/squad_lock/issues/125)),
+ *   and the run that answers it is what counts one. Three people rejecting
+ *   the same proposal within a minute used to reach the cap having produced
+ *   one corrected proposal or none.
+ *
+ *   Spec §3.1 caps "**reject-and-rematch** cycles" at three, and the opening
+ *   proposal is not one — nobody had rejected anything yet. So a meeting gets
+ *   four proposals in all, and all three rejections are answered.
  * - `amendment` — appends a ParticipantMeetingContext row rather than
  *   touching Response at all, because it corrects the *input*, not the
  *   output (see that type's own comment). The first one for a given
  *   (meeting, user) is free; the second and every one after costs a cycle.
  *
- * Spending a cycle that pushes `cycleCount` to the cap flips the meeting to
- * `stuck` (spec §3.1) — "the best option is shown with an explanation and
- * the group decides manually." Actually re-running the match on a spent
- * cycle (the batching window, the agent call) is B11's job, not this one's.
+ * The cap is reached from two directions, and `stuck` means the same thing
+ * in both (spec §3.1 — "the best option is shown with an explanation and the
+ * group decides manually"): a rejection arriving when three proposals have
+ * already been made has nowhere to go, and an amendment past the free one
+ * still spends a cycle directly.
+ *
+ * ⚠️ That second path is why `cycleCount` currently carries two meanings —
+ * proposals made, and amendment penalties. A8 changed only the rejection
+ * path, because §3.2's amendment batching window is B11's. Whoever writes
+ * B11 decides what "the first amendment is free" means once every
+ * re-weighing costs a proposal (tasks/a8-plan.md, §6).
  */
 export async function respondToMeeting(
   meetingId: string,
@@ -268,6 +284,7 @@ export async function respondToMeeting(
     let response: Response | null = null;
     let participantContext: ParticipantMeetingContext | null = null;
     let cycleSpent = false;
+    let backToWeighing = false;
     let cancelledConflicts: MeetingModel[] = [];
 
     switch (input.kind) {
@@ -307,20 +324,26 @@ export async function respondToMeeting(
             respondedAt: new Date(),
           },
         });
-        cycleSpent = true;
+        backToWeighing = true;
         break;
 
       case "amendment": {
         // Only amendment rows count against the one free amendment (spec
-        // §3.1). A7 appends correction rows to this same table, and counting
-        // those would silently charge a cycle for somebody's *first* real
-        // amendment — a rejection they made would come out of an allowance
-        // that was never about rejections.
+        // §3.1). A7 and A8 append rejection rows to this same table, and
+        // counting those would silently charge a cycle for somebody's *first*
+        // real amendment — a rejection they made would come out of an
+        // allowance that was never about rejections.
+        //
+        // Both clauses are load-bearing. `softPreferences IS NULL` alone was
+        // enough while only a `soft` rejection wrote a row; now that every
+        // rejection writes one, a "too far" or "not that place" row is also
+        // NULL there and would be miscounted as an amendment.
         const priorAmendments = await tx.participantMeetingContext.count({
           where: {
             meetingId,
             userId,
             softPreferences: { equals: Prisma.DbNull },
+            rejectionText: null,
           },
         });
         const contextRow = await tx.participantMeetingContext.create({
@@ -351,6 +374,28 @@ export async function respondToMeeting(
           cycleCount,
           status:
             cycleCount >= CYCLE_CAP ? MeetingStatus.stuck : meetingRow.status,
+        },
+      });
+    }
+    if (backToWeighing) {
+      meetingRow = await tx.meeting.update({
+        where: { id: meetingId },
+        data: {
+          // `weighing` is what the feed renders as "re-weighing"
+          // (`meeting-cards.ts`), and what the poll looks for when it decides
+          // whether a run is due. Until now a rejection left the meeting on
+          // `awaiting`, so the feed said "waiting on others" while the system
+          // was in fact about to weigh again — and nothing looked for it.
+          //
+          // No `+ 1` here: this rejection is answered by a run, and the run
+          // counts itself. The cap is read, not written.
+          //
+          // `cycleCount` is rematches, so the comparison is exact: after the
+          // opening proposal it is 0 and three rejections still fit.
+          status:
+            meetingRow.cycleCount >= CYCLE_CAP
+              ? MeetingStatus.stuck
+              : MeetingStatus.weighing,
         },
       });
     }
@@ -411,31 +456,40 @@ export async function findRejectedOption(
 }
 
 /**
- * Records what A7 made of one rejection: the correction, when there is one,
- * and the outcome either way.
+ * Records what A7 made of one rejection: the sentence, the correction when
+ * there is one, and the outcome either way.
  *
  * One transaction, because a correction that lands without its outcome — or
  * an outcome recorded for a correction that was never written — would each be
  * a lie about what the next weighing is working from.
  *
- * A correction **appends** a row rather than updating one, on the same rule
- * amendments follow: the timeline has to be able to say which objection
- * triggered which re-weighing (spec §5.7).
+ * **A row is appended for every rejection now, not only for a `soft` one**
+ * (A8). It used to be written only when there was a correction to put in it,
+ * which meant "no Asian food" — an objection this vocabulary cannot hold —
+ * left no trace anywhere except `Response.reasonText`, and that column is
+ * *updated*: the same person writing "no Italian either" overwrote it. Both
+ * the next weighing and the timeline were left with one sentence per person,
+ * forever. These rows append, so the history keeps itself.
  */
 export async function recordRejectionOutcome(
   meetingId: string,
   userId: string,
   outcome: ExtractionOutcome,
-  correction: SoftPreferences | null
+  correction: SoftPreferences | null,
+  reasonText: string
 ): Promise<void> {
   const prisma = getPrisma();
 
   await prisma.$transaction(async (tx) => {
-    if (correction) {
-      await tx.participantMeetingContext.create({
-        data: { meetingId, userId, softPreferences: correction },
-      });
-    }
+    await tx.participantMeetingContext.create({
+      data: {
+        meetingId,
+        userId,
+        softPreferences: correction ?? Prisma.DbNull,
+        rejectionText: reasonText,
+        rejectionOutcome: outcome,
+      },
+    });
 
     await tx.response.update({
       where: { meetingId_userId: { meetingId, userId } },

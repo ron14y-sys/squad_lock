@@ -6,7 +6,6 @@ import {
   loadScenarios,
   openingWindows,
   rejectionCases,
-  scenarioFollowupInput,
   type Scenario,
 } from "@/evals/adapter";
 
@@ -95,7 +94,7 @@ const round = (v: number[]) => v.map((x) => Number(x.toFixed(3)));
 
 describe("every eval scenario", () => {
   it("has at least one file to check, so a moved folder fails loudly", () => {
-    expect(scenarios.length).toBeGreaterThanOrEqual(8);
+    expect(scenarios.length).toBeGreaterThanOrEqual(7);
   });
 
   it.each(scenarios.map((s) => [s.id, s] as const))(
@@ -402,16 +401,6 @@ describe("a venue need not be open for the whole evening", () => {
     ).toMatchObject({ start: "19:30", end: "22:30" });
   });
 
-  it("shortens the evening at 07, so the rejection loop has a follow-up", () => {
-    // Quiet Corner shuts at midnight and the group is free until 01:00. It is
-    // the only candidate left after Beer Bazaar is rejected, so dropping it
-    // would leave the loop with nothing to propose.
-    expect(trim(byId("rejection-loop-noise"), "Quiet Corner")).toMatchObject({
-      start: "21:00",
-      end: "00:00",
-    });
-  });
-
   it("still drops a venue shut for the whole window, which is 02's trap", () => {
     const scenario = byId("closed-on-the-night-trap");
 
@@ -479,8 +468,8 @@ describe("the fixtures speak the engine's vocabulary", () => {
   it.each(scenarios.map((s) => [s.id, s] as const))(
     "%s names a date that really is the weekday it claims",
     (_id, scenario) => {
-      // `TimeSlot` is instants, so a weekday name alone cannot build one —
-      // and 07's window crosses midnight, so the date is not cosmetic.
+      // `TimeSlot` is instants, so a weekday name alone cannot build one,
+      // and a window that crosses midnight needs the date to place it.
       for (const free of scenario.availability) {
         expect(WEEKDAY.format(instantOf(free.date, "12:00"))).toBe(free.day);
       }
@@ -679,20 +668,19 @@ describe("the six answers from #86", () => {
 describe("the rejections A7 is measured on", () => {
   const cases = rejectionCases();
 
-  it("takes 07 and 08 from the scenarios that own their answers", () => {
+  it("takes 08 from the scenario that owns its answer", () => {
     const fromScenarios = cases.filter((one) => one.source === "scenario");
 
-    expect(fromScenarios.map((one) => one.id).sort()).toEqual([
+    expect(fromScenarios.map((one) => one.id)).toEqual([
       "rejection-loop-budget",
-      "rejection-loop-noise",
     ]);
     // The venue the person was reacting to, with what the fixture says it is
-    // like — which is what makes "too loud" readable at all.
+    // like — which is what makes "too expensive" readable at all.
     expect(
-      fromScenarios.find((one) => one.id === "rejection-loop-noise")?.rejected
+      fromScenarios.find((one) => one.id === "rejection-loop-budget")?.rejected
     ).toMatchObject({
-      venueName: "Beer Bazaar",
-      venueIs: { noiseLevel: "lively" },
+      venueName: "Herbert Samuel Tasting Menu",
+      venueIs: { budget: "splurge" },
     });
   });
 
@@ -711,41 +699,5 @@ describe("the rejections A7 is measured on", () => {
     expect(new Set(cases.map((one) => one.expected.objection))).toEqual(
       new Set(["soft", "distance", "time", "venue_identity", "none"])
     );
-  });
-});
-
-/**
- * The second cycle, without A8: what changes between the proposal that was
- * rejected and the one that answers it.
- */
-describe("the follow-up input", () => {
-  const scenario = loadScenario("rejection-loop-noise");
-  const input = scenarioFollowupInput(
-    scenario,
-    { noiseLevel: "quiet" },
-    scenario.rejection!.text
-  );
-
-  it("puts the correction on the person who made it, and on nobody else", () => {
-    const shani = input.participants.find((p) => p.userId === "Shani");
-    expect(shani?.context?.softPreferences).toEqual({ noiseLevel: "quiet" });
-
-    for (const other of input.participants.filter(
-      (p) => p.userId !== "Shani"
-    )) {
-      expect(other.context?.softPreferences ?? null).toBeNull();
-    }
-  });
-
-  it("drops the rejected venue and keeps the rest", () => {
-    const venues = new Set(input.viable.map((pair) => pair.candidatePlaceId));
-
-    expect(venues.has("place-07-beer-bazaar")).toBe(false);
-    expect(venues.has("place-07-quiet-corner")).toBe(true);
-  });
-
-  it("carries the words themselves, and counts a second cycle", () => {
-    expect(input.rejections).toEqual({ Shani: scenario.rejection!.text });
-    expect(input.cycleNumber).toBe(2);
   });
 });

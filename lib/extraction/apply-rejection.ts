@@ -56,9 +56,11 @@ export async function applyRejection(
       meetingId,
       userId,
       update.objection,
-      // A correction row exists only when there is a correction. The other
-      // four outcomes are recorded on the response and nowhere else.
-      update.objection === "soft" ? update.softPreferences : null
+      // A correction only exists for a `soft` objection. The row itself is
+      // written either way, because the sentence has to survive this
+      // person's next rejection overwriting `Response.reasonText` (A8).
+      update.objection === "soft" ? update.softPreferences : null,
+      reasonText
     );
   } catch (error) {
     // One line, greppable, in the shape A1's cost log already uses.
@@ -72,7 +74,11 @@ export async function applyRejection(
         meetingId,
         userId,
         failureOutcome(error),
-        null
+        null,
+        // The extraction failed; the sentence did not. It still reaches the
+        // next weighing verbatim, which for some objections is all there
+        // ever was (tasks/a8-plan.md, step 3).
+        reasonText
       );
     } catch (writeError) {
       // The database is what just failed, so there is nowhere left to record
