@@ -1,6 +1,6 @@
 # A8 — Cycle loop: decisions
 
-**Task:** A8 / A8b ([tasks/todo.md](../../tasks/todo.md), [#17](https://github.com/ron14y-sys/squad_lock/issues/17), [#125](https://github.com/ron14y-sys/squad_lock/issues/125)) · **Built on:** A2/A3/A4 (the engine), A7 (the correction), B5 (the rejection is stored), B6 (calendars), B7 (venues) · **Inherited by:** A12 (the resolver runs before the search), B11 (amendment batching), C6/C7 (what a person sees)
+**Task:** A8 / A8b ([tasks/todo.md](../../tasks/todo.md), [#16](https://github.com/ron14y-sys/squad_lock/issues/16), [#17](https://github.com/ron14y-sys/squad_lock/issues/17), [#125](https://github.com/ron14y-sys/squad_lock/issues/125)) · **Built on:** A2/A3/A4 (the engine), A7 (the correction), B5 (the rejection is stored), B6 (calendars), B7 (venues) · **Inherited by:** A12 (the resolver runs before the search), B11 (amendment batching), C6/C7 (what a person sees)
 **Status:** complete. Plan, steps and measurements: [tasks/a8-plan.md](../../tasks/a8-plan.md).
 
 Everything before A8 could answer "what should this group do tonight?" once.
