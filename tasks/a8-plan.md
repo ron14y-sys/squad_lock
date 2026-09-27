@@ -433,10 +433,32 @@ creates its own group, meeting and participants, and deletes them in a
 4. Run cycle 2. Assert: the rejected venue is gone, the correction is in the
    payload, ranks 2–3 of cycle 1 are in cycle 2's shortlist, `cycleCount = 2`.
 5. Reject twice more. Assert `stuck` at exactly three proposals.
-6. `npm run eval -- --followup` still reaches the agreed venue on `07` and
-   `08`, now through `runCycle` rather than `scenarioFollowupInput`, which is
-   deleted. `classify` drops the `rejection-loop` line and both move from
-   `deferred` to `scored`.
+6. `npm run eval -- --followup` still reaches the agreed venue, now through
+   `runCycle` rather than `scenarioFollowupInput`, which is deleted.
+
+⚠️ **This item was written wrong, and the correction is worth more than the
+item.** It said both scenarios would move from `deferred` to `scored`. Two
+things turned out to be false.
+
+`07` was about noise, and its agreed answer was _"the only remaining candidate
+whose own `soft.noiseLevel` is quiet"_ — a fact about a venue that **nothing in
+the product can know**, at any Places SKU tier
+([#139](https://github.com/ron14y-sys/squad_lock/issues/139)). It was measuring
+something we cannot do, so it was dropped rather than rewritten.
+
+`08` did move onto the real loop, and it does pass — but it must stay out of
+the sweep, because **the sweep runs cycle 1 and `08`'s oracle is cycle 2's
+answer.** Marking it `scored` was tried: cycle 1 happened to choose the venue
+cycle 2 was expected to, and a meaningless verdict came out green. Its
+judgement belongs to the follow-up table, and `blockedReason` now says
+`judged under --followup` instead of the no-longer-true `needs A8`.
+
+And what a pass there proves is narrower than it looks: with two candidate
+venues and the rejected one blocked, **exactly one survives and the agent
+cannot answer wrongly.** It proves extraction, the correction, the blocking,
+the re-run and the persistence all happened. Measuring whether a stated
+preference changes a proposal needs three or more survivors and venues that
+carry the preference — neither of which exists yet.
 
 **Candidates are injected for runs 1–5.** Exactly one real Places run at the
 end, on one neighbourhood, with the call count reported. See §5.
@@ -454,8 +476,15 @@ Everything below needs no database, no network and no key.
 | Three rejections inside one window produce **one** run and **one** cycle (#125's own test line)          | same                             |
 | The rejected option is absent from `viable`, per `objection`                                             | same                             |
 | Re-proposing the rejected option raises (#17's verify line)                                              | same                             |
-| Ranks 2–3 carried forward are present, and a deterministically dropped one is reported, not forced       | same                             |
-| No solution → `stuck`; fault → `weighing`                                                                | same                             |
+| The complement of a scenario's stated availability round-trips through `commonFreeWindows`               | `__tests__/eval-loop.test.ts`    |
+
+⚠️ Two rows were planned here and are **not** unit tests, because they cannot
+be: "ranks 2–3 carried forward" and "no solution → `stuck`, fault →
+`weighing`" both live inside `assembleRun` and `runCycle`, which are database
+calls from their first line to their last. Extracting a helper purely to give
+a test something pure to hold would add code with no other caller. Both are
+proven instead by `npm run verify:a8` against the real database, which is the
+stronger claim — see §3 step 8.
 
 ---
 

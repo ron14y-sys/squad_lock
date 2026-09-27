@@ -63,7 +63,9 @@ describe("classify", () => {
     // 03 and 05 became scored the moment the adapter started trimming — the
     // rule reads `trap`, so no edit was needed here. 04 stays blocked despite
     // needing no trimming: its own reasoning says a straight-line-only engine
-    // is expected to pick the other venue.
+    // is expected to pick the other venue. 08 stays out of the sweep, but for
+    // a new reason: the sweep runs cycle 1 and 08's oracle is cycle 2's
+    // answer, so it is judged in the follow-up table instead.
     expect(actual).toEqual({
       "hard-constraint-trap": "scored",
       "closed-on-the-night-trap": "scored",
@@ -71,7 +73,6 @@ describe("classify", () => {
       "semantic-geography-trap": "blocked",
       "no-perfect-solution-diet-conflict": "scored",
       "no-perfect-solution-dispersed-group": "scored",
-      "rejection-loop-noise": "deferred",
       "rejection-loop-budget": "deferred",
     });
   });
@@ -82,8 +83,10 @@ describe("blockedReason", () => {
     expect(blockedReason(loadScenario("semantic-geography-trap"))).toBe(
       "needs A12"
     );
-    expect(blockedReason(loadScenario("rejection-loop-noise"))).toBe(
-      "needs A8"
+    // It used to answer "needs A8". A stage that has landed must not still
+    // have a reason to be waiting for it.
+    expect(blockedReason(loadScenario("rejection-loop-budget"))).toBe(
+      "judged under --followup"
     );
   });
 

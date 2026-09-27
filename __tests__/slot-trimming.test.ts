@@ -23,7 +23,7 @@ import type { Candidate, Participant, TimeSlot } from "@/lib/types";
  *
  * Defined before it was built — `evals/README.md`, B6's acceptance, spec §5.4
  * and #86 all say the same thing — and asserted here against the three eval
- * scenarios whose agreed answers it makes reachable: `03`, `05` and `07`.
+ * scenarios whose agreed answers it makes reachable: `03` and `05`.
  *
  * Every case is pure: no model, no network, no database.
  */
@@ -78,14 +78,6 @@ describe("opening hours shorten the meeting", () => {
     expect(slots.map(reads)).toEqual(["19:30–22:30"]);
   });
 
-  it("07 — Quiet Corner shuts at midnight, so the evening ends at midnight", () => {
-    const pair = pairFrom("rejection-loop-noise", "place-07-quiet-corner");
-    expect(pair.free).toBe("21:00–01:00");
-
-    const slots = trimPairToViableSlots(pair);
-    expect(slots.map(reads)).toEqual(["21:00–00:00"]);
-  });
-
   it("02 — an empty intersection is the one case that drops the pair", () => {
     // Anna Loulou shuts at 20:00; the group is not free until 20:00.
     const pair = pairFrom("closed-on-the-night-trap", "place-02-anna-loulou");
@@ -100,7 +92,6 @@ describe("opening hours shorten the meeting", () => {
   it("every slot it returns survives windowsCoverSlot, which runs after it", () => {
     for (const [scenario, placeId] of [
       ["no-perfect-solution-diet-conflict", "place-05-hakosem-kerem"],
-      ["rejection-loop-noise", "place-07-quiet-corner"],
       ["mobility-window-trap", "place-03-bicicletta"],
     ] as const) {
       const pair = pairFrom(scenario, placeId);
@@ -215,9 +206,9 @@ describe("the adapter now trims, so the pipeline offers the agreed hours", () =>
    *
    * `needsTrim` is true for exactly the scenarios whose agreed answer states a
    * window narrower than the one the group was free for. Before the wiring
-   * those were unreachable — and in `05` and `07` the agreed venue was
-   * filtered out altogether while a *different* one survived and was proposed,
-   * which is a missing stage arriving as a confident wrong answer.
+   * those were unreachable — and in `05` the agreed venue was filtered out
+   * altogether while a *different* one survived and was proposed, which is a
+   * missing stage arriving as a confident wrong answer.
    *
    * This asserts the fixture's own `expected` is now on the table: the right
    * venue, at the right hours, among the pairs the agent is offered.
@@ -227,7 +218,6 @@ describe("the adapter now trims, so the pipeline offers the agreed hours", () =>
     expect(trimmed.map((s) => s.id)).toEqual([
       "mobility-window-trap",
       "no-perfect-solution-diet-conflict",
-      "rejection-loop-noise",
     ]);
 
     for (const scenario of trimmed) {
