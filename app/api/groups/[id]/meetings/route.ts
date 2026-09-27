@@ -3,11 +3,21 @@
 // the all-blank case is the default path, not a degraded one, so an absent
 // body is treated the same as `{}`, not as malformed input.
 
+import { after } from "next/server";
+
 import { auth } from "@/auth";
 import { getPrisma } from "@/lib/db/client";
+import { runDueMeetings } from "@/lib/matching/run-cycle";
 import { initiateMeeting, OpenMeetingCapReachedError } from "@/lib/db/meetings";
 import { listMeetingCardsForGroup } from "@/lib/db/meeting-cards";
 import { initiateMeetingSchema } from "@/lib/meetings/schema";
+
+// The Hobby plan's ceiling, and the reason it is here: the matching run A8
+// starts from this route's `after()` callback runs inside this route's budget,
+// not the client's. F2 measured a run at 6-23s against A1's 290s deadline, and
+// the platform default would cut it off after ten. The GET itself still
+// answers in milliseconds — nothing waits for the run.
+export const maxDuration = 300;
 
 // The group feed (C5, spec §5.6, issue #40): every meeting in the group, as
 // a card carrying the viewer's own status. B5 never added this — it only
@@ -34,6 +44,15 @@ export async function GET(
   }
 
   const feed = await listMeetingCardsForGroup(groupId, userId);
+
+  // A8: this poll is the clock. C5 already asks every ~3 seconds while a
+  // meeting on screen is re-weighing, so no cron and no background job is
+  // needed — which is what spec §3.2 requires. `after` runs the callback once
+  // the response has been sent, inside this route's maxDuration, so the poll
+  // stays fast and the next one sees the result. `runDueMeetings` decides
+  // whether anything is actually due, claims it, and never throws.
+  after(() => runDueMeetings(groupId));
+
   return Response.json(feed);
 }
 

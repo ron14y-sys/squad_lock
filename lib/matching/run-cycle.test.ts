@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   blockedByRejections,
+  isDue,
+  MIN_PROPOSAL_LIFETIME_MS,
+  REJECTION_BATCH_MS,
+  RUN_ATTEMPT_COOLDOWN_MS,
   searchWindow,
+  type DueInput,
   type PriorProposal,
   type RecordedRejection,
 } from "./run-cycle";
@@ -179,5 +184,99 @@ describe("searchWindow", () => {
     const window = searchWindow(at("2026-09-24T00:00:00.000Z"), midday);
 
     expect(window.start).toEqual(midday);
+  });
+});
+
+/**
+ * The three timers, without a database or a clock.
+ *
+ * `NOW` is the moment a poll arrives. Everything else is expressed as an
+ * offset from it, so a change to one of the constants moves the tests with it
+ * rather than breaking them.
+ */
+describe("isDue", () => {
+  const NOW = at("2026-09-27T20:00:00.000Z");
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+
+  const long = 10 * 60_000; // comfortably past every window
+
+  const due: DueInput = {
+    updatedAt: ago(long),
+    lastRunAt: ago(long),
+    firstRejectionAt: ago(REJECTION_BATCH_MS + 1000),
+  };
+
+  it("runs a meeting whose batch window has closed", () => {
+    expect(isDue(due, NOW)).toBe(true);
+  });
+
+  // The guard against C5's own polling: a run takes 6-23s and the feed asks
+  // every 3s, so without this about five polls would each start their own.
+  it("leaves a meeting alone while another poll may still be running it", () => {
+    expect(isDue({ ...due, updatedAt: ago(1000) }, NOW)).toBe(false);
+    expect(
+      isDue({ ...due, updatedAt: ago(RUN_ATTEMPT_COOLDOWN_MS - 1) }, NOW)
+    ).toBe(false);
+  });
+
+  it("waits out the batch window so several rejections are answered together", () => {
+    expect(
+      isDue({ ...due, firstRejectionAt: ago(REJECTION_BATCH_MS - 1) }, NOW)
+    ).toBe(false);
+  });
+
+  // The window is anchored to the FIRST unanswered rejection, so a later one
+  // cannot push the answer further away.
+  it("does not restart the window when a second rejection arrives", () => {
+    const first = ago(REJECTION_BATCH_MS + 60_000);
+
+    expect(isDue({ ...due, firstRejectionAt: first }, NOW)).toBe(true);
+  });
+
+  // A rejection written while a run was in flight is OLDER than the run that
+  // never saw it, so no timestamp comparison finds it. `runDueMeetings` asks
+  // MatchRunSeenContext instead, and `runCycle` leaves such a meeting in
+  // `weighing` on purpose — this is that meeting arriving at the next poll,
+  // with a proposal already out and a rejection still unanswered.
+  it("answers a rejection that arrived mid-run, though it predates the run", () => {
+    const runFinished = ago(MIN_PROPOSAL_LIFETIME_MS + 1000);
+    const rejectedDuringIt = new Date(runFinished.getTime() - 10_000);
+
+    expect(
+      isDue(
+        {
+          updatedAt: ago(RUN_ATTEMPT_COOLDOWN_MS + 1000),
+          lastRunAt: runFinished,
+          firstRejectionAt: rejectedDuringIt,
+        },
+        NOW
+      )
+    ).toBe(true);
+  });
+
+  it("gives every proposal its time on screen before replacing it", () => {
+    const fresh = ago(MIN_PROPOSAL_LIFETIME_MS - 1);
+
+    expect(
+      isDue(
+        { updatedAt: ago(long), lastRunAt: fresh, firstRejectionAt: ago(1) },
+        NOW
+      )
+    ).toBe(false);
+  });
+
+  it("is not due when a proposal is out and nobody has objected", () => {
+    expect(isDue({ ...due, firstRejectionAt: null }, NOW)).toBe(false);
+  });
+
+  // Normally step 7 runs the first cycle at initiation. Reaching here with no
+  // run at all means that one failed, so this is the retry.
+  it("retries a meeting that has never had a run", () => {
+    expect(
+      isDue(
+        { updatedAt: ago(long), lastRunAt: null, firstRejectionAt: null },
+        NOW
+      )
+    ).toBe(true);
   });
 });

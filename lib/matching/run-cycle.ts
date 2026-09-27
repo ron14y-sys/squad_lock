@@ -561,10 +561,28 @@ async function weigh(meetingId: string, now: Date) {
       });
     }
 
+    // A rejection written while this run was in flight was never in front of
+    // the model — `assembleRun` read the rows 6-23 seconds ago. Leaving the
+    // meeting in `weighing` is what gets it answered, by the next poll.
+    //
+    // "In flight" is not a window of time here: a `MatchRun`'s `createdAt` is
+    // stamped when it is *written*, at the end, so a rejection made during the
+    // run is older than the run that did not see it and no timestamp
+    // comparison can tell them apart. The rows this run saw were just recorded
+    // above, so the question is simply whether any rejection is still unseen.
+    const unanswered = await tx.participantMeetingContext.count({
+      where: {
+        meetingId,
+        NOT: { rejectionText: null },
+        seenByRuns: { none: {} },
+      },
+    });
+
     await tx.meeting.update({
       where: { id: meetingId },
       data: {
-        status: MeetingStatus.awaiting,
+        status:
+          unanswered > 0 ? MeetingStatus.weighing : MeetingStatus.awaiting,
         // A cycle is a proposal (#125), so this is the one place it is
         // counted. `MatchRun` is unique on (meetingId, cycleNumber), so two
         // runs racing for the same number make the second transaction fail
@@ -576,4 +594,160 @@ async function weigh(meetingId: string, now: Date) {
 
     return run;
   });
+}
+
+/* -------------------------------------------------------------------------
+ * The trigger — which meetings are due, and one poll at a time
+ * ---------------------------------------------------------------------- */
+
+/**
+ * How long rejections of one proposal are collected before it is answered.
+ *
+ * Measured from the **first** rejection since the last run, not the latest:
+ * a fixed window is a thing that can be explained to somebody, and one that
+ * reset on every rejection could keep sliding while objections trickle in.
+ *
+ * This is what makes the cap mean anything. "A cycle is a proposal" (#125)
+ * bounds nothing on its own, because every run produces something new to
+ * reject — three rejections twenty seconds apart would otherwise reach the
+ * cap in under a minute, with three proposals nobody read.
+ */
+export const REJECTION_BATCH_MS = 90_000;
+
+/**
+ * Every proposal gets this long on screen before it can be replaced.
+ *
+ * The other half of bounding the cap, and the more useful half: the wait is
+ * longest exactly when the proposal is newest, which is when the rest of the
+ * group is most likely still to join the same batch. A proposal two hours old
+ * that somebody rejects waits only `REJECTION_BATCH_MS`, because there is
+ * nobody left to wait for.
+ */
+export const MIN_PROPOSAL_LIFETIME_MS = 5 * 60_000;
+
+/**
+ * How long a meeting is left alone after somebody last touched it.
+ *
+ * Not a product rule — a guard against the feed's own polling. C5 polls every
+ * three seconds while a meeting on screen is `weighing`, and a run takes 6-23
+ * seconds, so without this roughly five polls would each start their own run
+ * of the same cycle. `MatchRun` is unique on `(meetingId, cycleNumber)` so
+ * only one could ever be written, but all five would pay: five calls out of
+ * Gemini's twenty a day, and five times the Places quota.
+ *
+ * It doubles as the retry interval. A fault leaves the meeting in `weighing`
+ * for the next poll (step 5), and without a cooldown "the next poll" is three
+ * seconds later, forever.
+ */
+export const RUN_ATTEMPT_COOLDOWN_MS = 90_000;
+
+export type DueInput = {
+  /** Last time anything wrote to the meeting — including a claim. */
+  updatedAt: Date;
+  /** When the current proposal was made, or null if there is none yet. */
+  lastRunAt: Date | null;
+  /**
+   * The earliest rejection **no run has seen yet**, if any.
+   *
+   * Not "since the last run": a `MatchRun` is stamped when it is written, so
+   * a rejection made while a run was in flight is older than the run that
+   * never saw it. `MatchRunSeenContext` records what each run read, which
+   * answers the question exactly instead of approximately.
+   */
+  firstRejectionAt: Date | null;
+};
+
+/**
+ * Is this meeting waiting for a run right now?
+ *
+ * Pure, so the three timers above can be tested without a database, a clock
+ * or a model. The caller has already narrowed to `status === "weighing"` —
+ * `awaiting` means a proposal is out and nobody has objected, and `stuck`,
+ * `closed` and `cancelled` are not weighed again.
+ */
+export function isDue(meeting: DueInput, now: Date): boolean {
+  if (now.getTime() - meeting.updatedAt.getTime() < RUN_ATTEMPT_COOLDOWN_MS) {
+    return false;
+  }
+
+  // Nothing has ever been proposed. Normally step 7 runs the first cycle at
+  // initiation; reaching here means that run failed, so this is the retry.
+  if (!meeting.lastRunAt) return true;
+
+  // A proposal is out and the meeting is in `weighing`, which only a
+  // rejection does. Nothing unanswered means A7 has not written it down yet.
+  if (!meeting.firstRejectionAt) return false;
+
+  return (
+    now.getTime() >= meeting.firstRejectionAt.getTime() + REJECTION_BATCH_MS &&
+    now.getTime() >= meeting.lastRunAt.getTime() + MIN_PROPOSAL_LIFETIME_MS
+  );
+}
+
+/**
+ * Run whatever this group is waiting on, at most one attempt per meeting.
+ *
+ * Called from the feed's own `GET` through `after()`, so the poll answers
+ * immediately and the work happens behind it — no cron and no background job,
+ * which is what spec §3.2 asks for. The next poll, three seconds later, sees
+ * the result.
+ *
+ * Claiming is an optimistic lock on `updatedAt`: the conditional write
+ * succeeds for exactly one caller, and it moves the timestamp the cooldown
+ * reads. No new column, and no way for two polls to weigh the same cycle.
+ *
+ * Meetings are run one after another rather than in parallel — two runs at
+ * once is two Gemini calls at once, out of twenty a day.
+ */
+export async function runDueMeetings(
+  groupId: string,
+  now: Date = new Date()
+): Promise<void> {
+  const prisma = getPrisma();
+
+  const candidates = await prisma.meeting.findMany({
+    where: { groupId, status: MeetingStatus.weighing },
+    select: {
+      id: true,
+      updatedAt: true,
+      matchRuns: {
+        orderBy: { cycleNumber: "desc" },
+        take: 1,
+        select: { createdAt: true },
+      },
+      participantContexts: {
+        // The oldest rejection no run has read yet. Letting the database
+        // answer "unseen" beats filtering by time in here, which cannot tell
+        // a rejection made during a run from one made before it.
+        where: { NOT: { rejectionText: null }, seenByRuns: { none: {} } },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: { createdAt: true },
+      },
+    },
+  });
+
+  for (const meeting of candidates) {
+    const lastRunAt = meeting.matchRuns[0]?.createdAt ?? null;
+    const firstRejectionAt = meeting.participantContexts[0]?.createdAt ?? null;
+
+    if (
+      !isDue({ updatedAt: meeting.updatedAt, lastRunAt, firstRejectionAt }, now)
+    ) {
+      continue;
+    }
+
+    const claimed = await prisma.meeting.updateMany({
+      where: {
+        id: meeting.id,
+        status: MeetingStatus.weighing,
+        updatedAt: meeting.updatedAt,
+      },
+      // A write that changes nothing, for the `updatedAt` it moves.
+      data: { status: MeetingStatus.weighing },
+    });
+    if (claimed.count === 0) continue;
+
+    await runCycle(meeting.id, now);
+  }
 }

@@ -345,6 +345,33 @@ newest — which is when more people are still likely to join the same batch.
 Both constants live here, **not** in `runCycle`, so the eval runner and the
 verification script call `runCycle` directly and wait for nothing.
 
+**A third constant, and it is not a product rule.** C5 polls every three
+seconds while a meeting on screen is `weighing`, and a run takes 6–23 seconds,
+so about five polls would each start their own run of the same cycle.
+`MatchRun`'s unique `(meetingId, cycleNumber)` means only one could ever be
+_written_ — but all five would pay: five calls out of Gemini's twenty a day,
+and 120 Enterprise Places calls out of a thousand a month. So a run is claimed
+before it starts, with an optimistic lock on `updatedAt`:
+
+```ts
+where: { id, status: "weighing", updatedAt: whatWeRead },
+data:  { status: "weighing" },   // a write that changes nothing, for the timestamp it moves
+```
+
+The conditional `where` makes it atomic — exactly one caller gets
+`count === 1` — and the timestamp it moves is what
+`RUN_ATTEMPT_COOLDOWN_MS` reads, so a **fault** is not retried three seconds
+later for ever either. No new column, no new status.
+
+A browser cannot do this job, though `GroupFeed`'s poll already serialises its
+own requests with an `await`: `after()` means the response returns long before
+the run ends, and three participants watching the same feed are three
+browsers that cannot see each other. "A run is in progress" is shared between
+people, so only the database can hold it.
+
+**`maxDuration = 300` on that route**, or the platform kills the `after()`
+callback after about ten seconds and the run dies before it writes.
+
 ### Step 7 — the first run
 
 **File:** `app/api/groups/[id]/meetings/route.ts` (the `POST`).
@@ -442,9 +469,14 @@ Written into `.env.example` as well, since that is the file everyone opens.
 
 ## 7. Known risks
 
-- **A rejection arriving mid-run** (a run takes 6–23s) is attributed to the
-  next proposal. Guard: if a `doesnt_suit` was recorded after the run began,
-  leave the meeting in `weighing` so the next poll answers it too.
+- ✅ **A rejection arriving mid-run** (a run takes 6–23s) — **handled, and not
+  the way this plan first said.** "If a rejection was recorded after the run
+  began" cannot be asked: a `MatchRun` is stamped when it is _written_, at the
+  end, so a rejection made during the run is **older** than the run that never
+  saw it. `MatchRunSeenContext` — which step 4 writes anyway — answers it
+  exactly: a rejection no run has read is unanswered, whatever its timestamp.
+  `runCycle` leaves such a meeting in `weighing`, and `runDueMeetings` asks
+  the database for "unseen" rather than filtering by time.
 - **Nothing runs if nobody opens the app.** Inherent to a poll-driven
   window, and the price of §3.2's "no cron, no background job".
 - **`fetchBusyForUsers` fails the whole computation** when any participant
