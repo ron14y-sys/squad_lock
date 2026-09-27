@@ -237,10 +237,14 @@ export type RespondToMeetingResult = {
  * - `doesnt_suit` — updates the Response row with the free-text reason and
  *   puts the meeting back into `weighing`, which is what the next feed poll
  *   picks up to start a new run. It **spends no cycle here**: a cycle is a
- *   proposal, not a complaint ([#125](https://github.com/ron14y-sys/squad_lock/issues/125)),
+ *   **rematch**, not a complaint ([#125](https://github.com/ron14y-sys/squad_lock/issues/125)),
  *   and the run that answers it is what counts one. Three people rejecting
  *   the same proposal within a minute used to reach the cap having produced
  *   one corrected proposal or none.
+ *
+ *   Spec §3.1 caps "**reject-and-rematch** cycles" at three, and the opening
+ *   proposal is not one — nobody had rejected anything yet. So a meeting gets
+ *   four proposals in all, and all three rejections are answered.
  * - `amendment` — appends a ParticipantMeetingContext row rather than
  *   touching Response at all, because it corrects the *input*, not the
  *   output (see that type's own comment). The first one for a given
@@ -385,6 +389,9 @@ export async function respondToMeeting(
           //
           // No `+ 1` here: this rejection is answered by a run, and the run
           // counts itself. The cap is read, not written.
+          //
+          // `cycleCount` is rematches, so the comparison is exact: after the
+          // opening proposal it is 0 and three rejections still fit.
           status:
             meetingRow.cycleCount >= CYCLE_CAP
               ? MeetingStatus.stuck

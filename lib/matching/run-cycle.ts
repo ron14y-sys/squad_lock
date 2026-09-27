@@ -444,10 +444,15 @@ export async function assembleRun(
     );
   }
 
+  // Which run this is, counted from the runs themselves. It cannot come from
+  // `Meeting.cycleCount`, which counts something else — see `runCycle`.
+  const cycleNumber =
+    (meeting.matchRuns[meeting.matchRuns.length - 1]?.cycleNumber ?? 0) + 1;
+
   return {
     input: {
       meetingId,
-      cycleNumber: meeting.cycleCount + 1,
+      cycleNumber,
       occasion: meeting.occasion,
       participants,
       candidates: ranked.map((score) => score.candidate),
@@ -583,11 +588,21 @@ async function weigh(meetingId: string, now: Date) {
       data: {
         status:
           unanswered > 0 ? MeetingStatus.weighing : MeetingStatus.awaiting,
-        // A cycle is a proposal (#125), so this is the one place it is
-        // counted. `MatchRun` is unique on (meetingId, cycleNumber), so two
-        // runs racing for the same number make the second transaction fail
-        // rather than writing two histories of one weighing.
-        cycleCount: draft.cycleNumber,
+        // **`cycleCount` counts rematches, `cycleNumber` counts runs**, and
+        // the two are deliberately one apart. Spec §3.1 caps
+        // "**reject-and-rematch** cycles" at three, and the first proposal is
+        // not a rematch — nobody had rejected anything. So a meeting gets the
+        // opening proposal plus three more, and three rejections are all
+        // answered rather than two.
+        //
+        // This is what `remainingCycles` in `meeting-detail.ts` shows C7, and
+        // it now reads correctly the moment the first proposal lands: three
+        // left, not two.
+        //
+        // (Spec §6.3's aside that "cycles 2 and 3 of a meeting are pure cache
+        // hits" is a remark about caching written against the other reading.
+        // With this it is cycles 2, 3 and 4. §3.1 defines the cap.)
+        cycleCount: draft.cycleNumber - 1,
         currentDatetime: top.proposedDatetime,
       },
     });

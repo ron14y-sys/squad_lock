@@ -236,17 +236,33 @@ left, so it lives in the rejection branch below:
 
 ```
 created  → weighing
-run      → proposal 1, awaiting
+run #1   → proposal 1, awaiting      cycleCount 0   ← not a rematch
+reject   → 0 < 3 → weighing
+run #2   → proposal 2, awaiting      cycleCount 1
 reject   → 1 < 3 → weighing
-run      → proposal 2, awaiting
+run #3   → proposal 3, awaiting      cycleCount 2
 reject   → 2 < 3 → weighing
-run      → proposal 3, awaiting     ← a real proposal, and it is shown
+run #4   → proposal 4, awaiting      cycleCount 3   ← a real proposal, shown
 reject   → 3 ≥ 3 → stuck
 ```
 
-Three proposals and then `stuck`, which is §3.1. Today it is three
-_complaints_ and then `stuck`, with possibly no corrected proposal at all —
-that is [#125](https://github.com/ron14y-sys/squad_lock/issues/125).
+**Four proposals, and all three rejections answered.** §3.1 caps
+"**reject-and-rematch** cycles" at three, and the opening proposal is not one —
+nobody had rejected anything. An earlier draft of this plan counted proposals
+instead, which quietly refused the third rejection.
+
+So `Meeting.cycleCount` counts **rematches** while `MatchRun.cycleNumber`
+counts **runs**, one apart on purpose — which is why `cycleNumber` comes from
+the runs themselves rather than from `cycleCount`. `remainingCycles` in
+`meeting-detail.ts` then reads correctly the moment the first proposal lands:
+three left, not two.
+
+⚠️ **Spec §6.3 has a stale aside** — "cycles 2 and 3 of a meeting are pure
+cache hits", written against the other reading. With this it is cycles 2, 3 and 4. §3.1 is where the cap is defined; that line is a remark about caching.
+
+Today, before any of this, it is three _complaints_ and then `stuck`, with
+possibly no corrected proposal at all — that is
+[#125](https://github.com/ron14y-sys/squad_lock/issues/125).
 
 And in `respondToMeeting`, the `doesnt_suit` branch:
 
@@ -471,6 +487,19 @@ Written into `.env.example` as well, since that is the file everyone opens.
 - **Streaming progress** — `onText` exists in A4, but behind `after()` there
   is nobody to stream to. C10.
 - **The second half of B7c** — the rating list. Track B.
+- **Telling the model to lean less on soft preferences for the opening
+  proposal.** Considered and declined. What the request behind it actually
+  needs is already true: hard constraints are enforced deterministically by A2
+  in every cycle and the model cannot overrule them (§4.1b); every soft field
+  is optional, C2 lets each question be declined, and the prompt already
+  forbids reading a silence as a preference ([#86](https://github.com/ron14y-sys/squad_lock/issues/86)),
+  which scenario `05` measures. The first run already differs from a rematch
+  through its data rather than its wording — `tonight_correction` and
+  `in_their_own_words` are both `null` — so the lines about them simply do not
+  apply. Deliberately weighting a _stated_ preference less on the one proposal
+  that has nothing else to go on would make C2's preference game pointless on
+  the run it exists for, and would invalidate A5's and A6's measurements for a
+  change nothing has shown is needed.
 - **The soft-preference vocabulary.** `noiseLevel` cannot be verified from
   any data we hold, and a cuisine _type_ — Italian, Asian, pizza — has no
   field at all, so "not Asian tonight" survives only as the verbatim
