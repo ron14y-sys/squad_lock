@@ -292,6 +292,26 @@ The same separation A7 made between `failed_quota` and `failed_call`, and the
 same shape as [`apply-rejection.ts`](../lib/extraction/apply-rejection.ts). No
 new column: if this needs a screen, that is C8b's.
 
+One class, `NoSolutionError`, raised by the three places that genuinely mean
+it. Everything else is a fault **by default**, so there is no list of error
+types from four other modules to keep up to date.
+
+`runCycle` never throws — its caller is `after()` inside a feed poll, where an
+unhandled rejection is another user's request falling over. Failure comes back
+as `null` and what it meant is left in the meeting's status.
+
+**A fault costs no cycle, and that needed no code**: step 4 made the run the
+thing that counts one, and a run that failed wrote nothing. The order inside
+`assembleRun` is what keeps a _repeating_ fault cheap — profiles, origins and
+calendars all resolve before the first Places call, so a group that cannot be
+weighed is never billed for being retried.
+
+**Not unit-testable, and step 8 is where it is proved.** Both paths are one
+`instanceof` over errors raised deep inside database work. The script forces
+each with no quota and no model: a group whose calendars are full the whole
+window has no shared window and must end `stuck`, and a participant with no
+home location is a fault and must leave the meeting in `weighing`.
+
 ### Step 6 — the trigger
 
 **Files:** `app/api/groups/[id]/meetings/route.ts` (the `GET` C5 already

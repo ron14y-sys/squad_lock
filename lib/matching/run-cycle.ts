@@ -64,6 +64,32 @@ import { buildShortlist } from "./funnel";
 import type { MatchAgentInput } from "./agent";
 
 /**
+ * The group cannot be given an evening, and that is the answer.
+ *
+ * Distinct from every other way a cycle can fail, because the two need
+ * opposite handling: this one is written down as `stuck` — spec §3.1's "the
+ * best option is shown with an explanation and the group decides manually",
+ * and B6's rule that an empty intersection is `stuck` and not a bad proposal
+ * — while a missing API key, an unconnected calendar or a model that timed
+ * out leave the meeting in `weighing` for the next poll to retry.
+ *
+ * A meeting left in `weighing` after a real no-solution would be retried
+ * forever, and one marked `stuck` after a fault would tell a group their
+ * evening is impossible because somebody forgot an environment variable.
+ *
+ * Only three things raise it; everything else is a fault by default, so
+ * there is no list of error types to keep up to date. The same shape as A7's
+ * `failureOutcome`, which separates `failed_quota` from `failed_call` for
+ * the same reason.
+ */
+export class NoSolutionError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "NoSolutionError";
+  }
+}
+
+/**
  * How far ahead to look when the initiator pinned no date.
  *
  * Nothing in the spec fixes this, so it is a constant rather than a decision
@@ -283,7 +309,7 @@ export async function assembleRun(
     (response) => response.status !== "cant_make_it"
   );
   if (attending.length === 0) {
-    throw new Error(`a8: nobody is still coming to ${meetingId}`);
+    throw new NoSolutionError(`nobody is still coming to ${meetingId}`);
   }
 
   const contextRows = new Map<string, ParticipantMeetingContext[]>();
@@ -346,7 +372,9 @@ export async function assembleRun(
 
   const slots = commonFreeWindows(participants, window);
   if (slots.length === 0) {
-    throw new Error(`a8: no window ${meetingId}'s group shares`);
+    throw new NoSolutionError(
+      `no window ${meetingId}'s group shares in the search period`
+    );
   }
 
   // `originOf` throws for anyone with no home location, and that is its own
@@ -369,7 +397,9 @@ export async function assembleRun(
     .flat()
     .filter((candidate) => !blocked.venues.has(candidate.placeId));
   if (found.length === 0) {
-    throw new Error(`a8: no venue was found near ${meetingId}'s group`);
+    throw new NoSolutionError(
+      `no venue near ${meetingId}'s group is still on the table`
+    );
   }
 
   // First pass — no hours anywhere, so every candidate looks open all window.
@@ -409,8 +439,8 @@ export async function assembleRun(
   );
 
   if (ranked.length === 0) {
-    throw new Error(
-      `a8: nothing survived the filter for ${meetingId} — ${shortlisted.droppedPairs.length} pairs dropped, ${shortlisted.gatedOut.length} gated out, ${blocked.venues.size} venues and ${blocked.pairs.size} pairs already rejected`
+    throw new NoSolutionError(
+      `nothing survived the filter for ${meetingId} — ${shortlisted.droppedPairs.length} pairs dropped, ${shortlisted.gatedOut.length} gated out, ${blocked.venues.size} venues and ${blocked.pairs.size} pairs already rejected`
     );
   }
 
@@ -462,8 +492,51 @@ export async function assembleRun(
  * `stuck` as it lands would hand the group an answer they are not allowed to
  * look at. `stuck` belongs to the moment a re-weighing is *asked for* and
  * there is none left, which is `respondToMeeting`'s rejection branch.
+ *
+ * ## It never throws
+ *
+ * Its caller is `after()` inside the feed poll, where an unhandled rejection
+ * is somebody else's request falling over. Same decision, same reason, as
+ * A7's `applyRejection`. Failure comes back as `null`, and what it *meant*
+ * is left in the meeting's status:
+ *
+ * | | Examples | Left as |
+ * | --- | --- | --- |
+ * | **No solution** — an answer | no window the group shares, nothing survived the filter, nobody still coming | `stuck`, so the group is told instead of being retried at forever |
+ * | **Fault** — no answer was reached | no Places key, a participant with no home location ([#132](https://github.com/ron14y-sys/squad_lock/issues/132)), a rejected calendar token, the model failing or timing out, two runs racing for one cycle number | `weighing`, so the next poll tries again |
+ *
+ * **A fault costs no cycle, and that needs no code**: the run is what counts
+ * one, and a run that failed wrote nothing.
+ *
+ * The order of `assembleRun`'s steps is what keeps a repeating fault cheap —
+ * profiles, origins and calendars are all resolved before the first Places
+ * call, so a group that cannot be weighed is not billed for being retried.
  */
 export async function runCycle(meetingId: string, now: Date = new Date()) {
+  try {
+    return await weigh(meetingId, now);
+  } catch (error) {
+    if (error instanceof NoSolutionError) {
+      // Conditional on the status, so a meeting somebody closed or cancelled
+      // while this was running is not dragged back to `stuck`.
+      await getPrisma().meeting.updateMany({
+        where: { id: meetingId, status: MeetingStatus.weighing },
+        data: { status: MeetingStatus.stuck },
+      });
+      console.warn(`[a8] stuck meeting=${meetingId}`, error.message);
+      return null;
+    }
+
+    // One line, greppable, in the shape A1's cost log and A7's extraction
+    // failure already use. The meeting stays in `weighing`, so the next poll
+    // picks it up again — a missing key is fixed in a minute, and a group
+    // should not be told their evening is impossible because of one.
+    console.error(`[a8] cycle failed meeting=${meetingId}`, error);
+    return null;
+  }
+}
+
+async function weigh(meetingId: string, now: Date) {
   const { input, contextIds } = await assembleRun(meetingId, now);
   const { draft, call } = await runMatchingAgent(input);
 
