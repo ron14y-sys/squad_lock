@@ -7,7 +7,7 @@ import { after } from "next/server";
 
 import { auth } from "@/auth";
 import { getPrisma } from "@/lib/db/client";
-import { runDueMeetings } from "@/lib/matching/run-cycle";
+import { runCycle, runDueMeetings } from "@/lib/matching/run-cycle";
 import { initiateMeeting, OpenMeetingCapReachedError } from "@/lib/db/meetings";
 import { listMeetingCardsForGroup } from "@/lib/db/meeting-cards";
 import { initiateMeetingSchema } from "@/lib/meetings/schema";
@@ -101,6 +101,24 @@ export async function POST(
 
   try {
     const meeting = await initiateMeeting(groupId, userId, parsed.data);
+
+    // A8: weigh it now. Until this line a meeting was created and nothing
+    // ever proposed anything, so every screen said "no proposal yet" — and
+    // the rejection loop had nothing to reject.
+    //
+    // `runCycle` directly rather than `runDueMeetings`: there is nothing to
+    // batch on a meeting a second old, and the three timers that guard the
+    // rejection path would only make the initiator wait. The poll cannot
+    // collide with this either — `isDue` leaves a meeting alone for
+    // `RUN_ATTEMPT_COOLDOWN_MS`, by which time this run has finished and set
+    // the status. If it *failed*, that same cooldown is when the poll picks
+    // it up and retries, which is the one path `isDue`'s "no run at all"
+    // branch exists for.
+    //
+    // `runCycle` never throws, so a group still gets the meeting they asked
+    // for even when the first weighing cannot be done yet.
+    after(() => runCycle(meeting.id));
+
     return Response.json(meeting, { status: 201 });
   } catch (error) {
     if (error instanceof OpenMeetingCapReachedError) {

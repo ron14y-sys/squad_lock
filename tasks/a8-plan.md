@@ -385,6 +385,21 @@ A meeting is created in `weighing` with no run, so `cycleNumber` is 1 and
 new meeting gets a real proposal, and C5, C6 and C7 have content for the
 first time.
 
+`runCycle` directly, not `runDueMeetings`: nothing needs batching on a meeting
+a second old, and the three timers would only make the initiator wait. Nothing
+can collide either — `isDue` leaves a meeting alone for
+`RUN_ATTEMPT_COOLDOWN_MS`, by which time this run has set the status. If it
+failed, that same cooldown is when the poll retries it, which is exactly what
+`isDue`'s "no run at all" branch is for.
+
+`maxDuration = 300` needed no second copy: route segment config applies to the
+whole file, so step 6's export already covers this handler.
+
+⚠️ **One piece of copy is now slightly wrong, and it is C10's.** `weighing`
+renders through `hebrew-labels.ts` as _"משוקלל מחדש"_ — re-weighed. True of
+every cycle after the first and not of the first, which a brand-new meeting now
+reaches. Nothing is broken; the word is just one cycle ahead of itself.
+
 ### Step 8 — seeing it work, and the one real run
 
 **Files:** `scripts/verify-a8.ts`, `package.json`.
