@@ -278,9 +278,29 @@ export type AssembledRun = {
   contextIds: string[];
 };
 
+/**
+ * Where busy blocks come from. Defaulted to B6's real one, and taken as an
+ * argument for the same reason `persistMatchRun` takes its client: so
+ * something without credentials can drive the whole path.
+ *
+ * It is the only seam here. Places needs none — seeding
+ * `place_search_cache` and `place_details_cache` makes
+ * `searchNeighbourhoodCached` and `fetchPlaceDetailsCached` return without
+ * going out, which exercises the real code rather than bypassing it. A
+ * calendar cannot be faked that way: `fetchBusyForUsers` raises for a
+ * participant with no usable refresh token **on purpose** (B6 — treating an
+ * unread calendar as "free" is the one mistake §5.7 names), so there is no
+ * legitimate state in which it quietly returns nothing.
+ */
+export type BusyLookup = (
+  userIds: string[],
+  window: TimeSlot
+) => Promise<Map<string, TimeSlot[]>>;
+
 export async function assembleRun(
   meetingId: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  busyFor: BusyLookup = fetchBusyForUsers
 ): Promise<AssembledRun> {
   const prisma = getPrisma();
 
@@ -343,7 +363,7 @@ export async function assembleRun(
   );
 
   const window = searchWindow(meeting.pinnedDate, now);
-  const busyByUser = await fetchBusyForUsers(
+  const busyByUser = await busyFor(
     attending.map((response) => response.userId),
     window
   );
@@ -517,9 +537,13 @@ export async function assembleRun(
  * profiles, origins and calendars are all resolved before the first Places
  * call, so a group that cannot be weighed is not billed for being retried.
  */
-export async function runCycle(meetingId: string, now: Date = new Date()) {
+export async function runCycle(
+  meetingId: string,
+  now: Date = new Date(),
+  busyFor: BusyLookup = fetchBusyForUsers
+) {
   try {
-    return await weigh(meetingId, now);
+    return await weigh(meetingId, now, busyFor);
   } catch (error) {
     if (error instanceof NoSolutionError) {
       // Conditional on the status, so a meeting somebody closed or cancelled
@@ -541,8 +565,8 @@ export async function runCycle(meetingId: string, now: Date = new Date()) {
   }
 }
 
-async function weigh(meetingId: string, now: Date) {
-  const { input, contextIds } = await assembleRun(meetingId, now);
+async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
+  const { input, contextIds } = await assembleRun(meetingId, now, busyFor);
   const { draft, call } = await runMatchingAgent(input);
 
   const top = draft.options.find((option) => option.rank === 1);

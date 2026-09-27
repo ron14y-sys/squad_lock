@@ -24,7 +24,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "eval:constraints": "tsx --env-file-if-exists=.env.local scripts/run-constraint-evals.ts",
-    "verify:a7-db": "tsx --env-file-if-exists=.env.local scripts/verify-a7-db.ts"
+    "verify:a7-db": "tsx --env-file-if-exists=.env.local scripts/verify-a7-db.ts",
+    "verify:a8": "tsx --env-file-if-exists=.env.local scripts/verify-a8.ts"
   },
   "dependencies": {
     "@google/genai": "^2.18.0",
