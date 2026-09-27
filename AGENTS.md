@@ -77,6 +77,8 @@ Individual gates: `npm run format` (writes) · `format:check` (reads) · `lint` 
 
 **Async Server Components cannot be unit-tested** — Vitest does not support them yet. Test synchronous components directly and cover the async ones end-to-end.
 
+**A green suite is not the same as a measured one.** [docs/lessons.md](docs/lessons.md) collects the twelve mistakes this project has already made, written up as classes rather than incidents — nine of them passed every check that existed when they were introduced, and none was caught by a type error, a lint rule or a failing test. Read it before adding a column, a fixture or a test. The three that cost the most: a test that cannot fail, a fixture that predicts what the code will do, and a column on an updated row that something will later want the previous value of.
+
 **Setup for a new participant** is `npm install` and nothing else. Two lifecycle scripts do the rest: `prepare` points git at `.husky/`, so the hooks are live from the first clone, and `postinstall` generates the Prisma client.
 
 **The Prisma client is generated, never committed.** `lib/generated/prisma` is a build artifact, kept out of git and rebuilt by `postinstall` on every `npm install` and `npm ci` — one line that covers a fresh clone, CI and the Vercel build together. Two traps here have already been sprung once (#71), and both were invisible until the first file imported the client:
