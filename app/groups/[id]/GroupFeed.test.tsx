@@ -232,3 +232,60 @@ test("refreshes immediately when the tab returns to the foreground", async () =>
 
   await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 });
+
+test("shows the conflict banner when a meeting in the feed clashes", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          meetings: [card({ status: "conflicting" })],
+          openCount: 1,
+        })
+      )
+    )
+  );
+
+  render(<GroupFeed groupId="group-1" />);
+
+  expect(
+    await screen.findByText(/יש לך פגישות שמתנגשות באותו ערב/)
+  ).toBeInTheDocument();
+});
+
+test("shows no conflict banner when nothing in the feed clashes", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(jsonResponse({ meetings: [card()], openCount: 1 }))
+    )
+  );
+
+  render(<GroupFeed groupId="group-1" />);
+
+  await screen.findByText("ממתין לך");
+  expect(
+    screen.queryByText(/יש לך פגישות שמתנגשות באותו ערב/)
+  ).not.toBeInTheDocument();
+});
+
+test("a stuck meeting stays in the feed and says what to do", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          meetings: [card({ status: "stuck", currentDatetime: null })],
+          openCount: 1,
+        })
+      )
+    )
+  );
+
+  render(<GroupFeed groupId="group-1" />);
+
+  expect(await screen.findByText("תקוע")).toBeInTheDocument();
+  expect(
+    screen.getByText("לא מצאנו הצעה — צריך להחליט ידנית")
+  ).toBeInTheDocument();
+});

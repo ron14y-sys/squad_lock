@@ -107,26 +107,22 @@ export function GroupDetail({ groupId }: { groupId: string }) {
   }
 
   if (loadState === "loading") {
-    return <p className="p-6 text-sm text-zinc-500">טוען את הקבוצה…</p>;
+    return <p className="sl-page sl-sub">טוען את הקבוצה…</p>;
   }
 
   if (loadState === "signed-out") {
-    return (
-      <p className="p-6 text-sm text-zinc-500">התחבר כדי לראות את הקבוצה.</p>
-    );
+    return <p className="sl-page sl-sub">התחבר כדי לראות את הקבוצה.</p>;
   }
 
   if (loadState === "not-found") {
     return (
-      <p className="p-6 text-sm text-zinc-500">
-        הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.
-      </p>
+      <p className="sl-page sl-sub">הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.</p>
     );
   }
 
   if (loadState === "error" || !group) {
     return (
-      <p className="p-6 text-sm text-red-600">
+      <p className="sl-page sl-sub">
         לא הצלחנו לטעון את הקבוצה. נסה לרענן את הדף.
       </p>
     );
@@ -135,25 +131,16 @@ export function GroupDetail({ groupId }: { groupId: string }) {
   const pendingInvitations = invitations.filter((i) => i.status === "pending");
 
   return (
-    <div className="flex flex-col gap-8 p-6">
-      <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-        {group.name}
-      </h1>
+    <div className="sl-page">
+      <h1 className="sl-sec">{group.name}</h1>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          חברים ({group.members.length})
-        </h2>
+        <h2 className="sl-sec">חברים ({group.members.length})</h2>
         <div className="flex flex-col gap-2">
           {group.members.map((member) => (
-            <div
-              key={member.userId}
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
-            >
-              <div className="text-zinc-900 dark:text-zinc-50">
-                {member.user.name}
-              </div>
-              <div className="text-xs text-zinc-500">{member.user.email}</div>
+            <div key={member.userId} className="sl-field">
+              <div className="font-bold">{member.user.name}</div>
+              <div className="sl-sub">{member.user.email}</div>
             </div>
           ))}
         </div>
@@ -161,15 +148,12 @@ export function GroupDetail({ groupId }: { groupId: string }) {
 
       {pendingInvitations.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          <h2 className="sl-sec">
             ממתינים לאישור ({pendingInvitations.length})
           </h2>
           <div className="flex flex-col gap-2">
             {pendingInvitations.map((invitation) => (
-              <div
-                key={invitation.id}
-                className="rounded-md border border-dashed border-zinc-300 px-3 py-2 text-sm text-zinc-500 dark:border-zinc-700"
-              >
+              <div key={invitation.id} className="sl-panel sl-sub">
                 {invitation.email}
               </div>
             ))}
@@ -177,10 +161,8 @@ export function GroupDetail({ groupId }: { groupId: string }) {
         </section>
       )}
 
-      <section className="flex flex-col gap-2 border-t border-zinc-300 pt-6 dark:border-zinc-700">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          הזמן חבר
-        </h2>
+      <section className="flex flex-col gap-2">
+        <h2 className="sl-sec">הזמן חבר</h2>
         <div className="flex gap-2">
           <input
             type="email"
@@ -193,20 +175,18 @@ export function GroupDetail({ groupId }: { groupId: string }) {
               }
             }}
             placeholder="כתובת אימייל"
-            className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-black"
+            className="sl-field flex-1"
           />
           <button
             type="button"
             onClick={invite}
             disabled={inviting}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
+            className="sl-btn go"
           >
             {inviting ? "שולח…" : "הזמן"}
           </button>
         </div>
-        {inviteMessage && (
-          <p className="text-sm text-zinc-500">{inviteMessage}</p>
-        )}
+        {inviteMessage && <p className="sl-sub">{inviteMessage}</p>}
       </section>
     </div>
   );

@@ -96,12 +96,12 @@ export function LocationForm() {
   }
 
   if (loadState === "loading") {
-    return <p className="p-6 text-sm text-zinc-500">טוען את הפרופיל שלך…</p>;
+    return <p className="sl-page sl-sub">טוען את הפרופיל שלך…</p>;
   }
 
   if (loadState === "signed-out") {
     return (
-      <p className="p-6 text-sm text-zinc-500">
+      <p className="sl-page sl-sub">
         התחבר כדי להגדיר את המיקום שלך ומרחק הנסיעה.
       </p>
     );
@@ -109,35 +109,31 @@ export function LocationForm() {
 
   if (loadState === "error") {
     return (
-      <p className="p-6 text-sm text-red-600">
+      <p className="sl-page sl-sub">
         לא הצלחנו לטעון את הפרופיל. נסה לרענן את הדף.
       </p>
     );
   }
 
   return (
-    <div className="flex flex-col gap-8 p-6">
+    <div className="sl-page">
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          שכונת מגורים
-        </h2>
+        <h2 className="sl-sec">שכונת מגורים</h2>
         <input
           type="text"
           value={homeNeighbourhood}
           onChange={(e) => setHomeNeighbourhood(e.target.value)}
           placeholder="לדוגמה: רוטשילד, תל אביב"
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-black"
+          className="sl-field"
         />
-        <p className="text-xs text-zinc-500">
+        <p className="sl-sub">
           אנחנו שומרים רק את האזור שלך, אף פעם לא כתובת מדויקת — זה גלוי לכל מי
           שנמצא איתך בקבוצות.
         </p>
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          עד כמה אתה מוכן לנסוע
-        </h2>
+        <h2 className="sl-sec">עד כמה אתה מוכן לנסוע</h2>
         <div className="flex flex-wrap gap-2">
           {TOLERANCE_OPTIONS.map((option) => {
             const active = option.km === toleranceKm;
@@ -147,18 +143,14 @@ export function LocationForm() {
                 type="button"
                 onClick={() => setToleranceKm(option.km)}
                 aria-pressed={active}
-                className={
-                  active
-                    ? "rounded-full border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-sm text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-black"
-                    : "rounded-full border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-                }
+                className={active ? "sl-chip on" : "sl-chip"}
               >
                 {option.label}
               </button>
             );
           })}
         </div>
-        <p className="text-xs text-zinc-500">נשמר כ-{toleranceKm} ק״מ.</p>
+        <p className="sl-sub">נשמר כ-{toleranceKm} ק״מ.</p>
       </section>
 
       <RecurringRulesSection rules={rules} onChange={setRules} />
@@ -168,17 +160,13 @@ export function LocationForm() {
           type="button"
           onClick={save}
           disabled={saveState === "saving"}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-black"
+          className="sl-btn go"
         >
           {saveState === "saving" ? "שומר…" : "שמור"}
         </button>
-        {saveState === "saved" && (
-          <span className="text-sm text-emerald-600">נשמר.</span>
-        )}
+        {saveState === "saved" && <span className="sl-note">נשמר.</span>}
         {saveState === "error" && (
-          <span className="text-sm text-red-600">
-            לא הצלחנו לשמור. נסה שוב.
-          </span>
+          <span className="sl-note">לא הצלחנו לשמור. נסה שוב.</span>
         )}
       </div>
     </div>
@@ -231,20 +219,15 @@ function RecurringRulesSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-        כללי ניידות קבועים
-      </h2>
+      <h2 className="sl-sec">כללי ניידות קבועים</h2>
 
       {rules.map((rule, i) => (
-        <div
-          key={i}
-          className="flex items-center justify-between rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
-        >
+        <div key={i} className="sl-card justify-between">
           <span>{describe(rule)}</span>
           <button
             type="button"
             onClick={() => removeRule(i)}
-            className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-50"
+            className="sl-sub"
           >
             הסר
           </button>
@@ -256,11 +239,7 @@ function RecurringRulesSection({
           type="button"
           onClick={() => setKind("mode_unavailable")}
           aria-pressed={kind === "mode_unavailable"}
-          className={
-            kind === "mode_unavailable"
-              ? "rounded-md border border-zinc-900 bg-zinc-900 px-2.5 py-1 text-xs text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-black"
-              : "rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-          }
+          className={kind === "mode_unavailable" ? "sl-chip on" : "sl-chip"}
         >
           אין אמצעי תחבורה מסוים בימים...
         </button>
@@ -268,11 +247,7 @@ function RecurringRulesSection({
           type="button"
           onClick={() => setKind("origin_override")}
           aria-pressed={kind === "origin_override"}
-          className={
-            kind === "origin_override"
-              ? "rounded-md border border-zinc-900 bg-zinc-900 px-2.5 py-1 text-xs text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-black"
-              : "rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-          }
+          className={kind === "origin_override" ? "sl-chip on" : "sl-chip"}
         >
           אני מגיע/ה ממקום אחר בימים...
         </button>
@@ -287,11 +262,7 @@ function RecurringRulesSection({
               type="button"
               onClick={() => toggleDay(day)}
               aria-pressed={active}
-              className={
-                active
-                  ? "rounded-md border border-zinc-900 bg-zinc-900 px-2.5 py-1 text-xs text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-black"
-                  : "rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-              }
+              className={active ? "sl-chip on" : "sl-chip"}
             >
               {WEEKDAY_LABELS[day]}
             </button>
@@ -303,7 +274,7 @@ function RecurringRulesSection({
         <select
           value={mode}
           onChange={(e) => setMode(e.target.value as MobilityMode)}
-          className="w-fit rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-black"
+          className="sl-field w-fit"
         >
           {MOBILITY_MODES.map((m) => (
             <option key={m} value={m}>
@@ -317,15 +288,11 @@ function RecurringRulesSection({
           value={originLabel}
           onChange={(e) => setOriginLabel(e.target.value)}
           placeholder="לדוגמה: עבודה"
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-black"
+          className="sl-field"
         />
       )}
 
-      <button
-        type="button"
-        onClick={addRule}
-        className="w-fit rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-      >
+      <button type="button" onClick={addRule} className="sl-btn w-fit">
         הוסף
       </button>
     </section>

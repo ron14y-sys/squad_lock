@@ -32,6 +32,21 @@ export const MEETING_CARD_STATUS_LABELS: Record<MeetingCardStatus, string> = {
   closed: "סגור",
 };
 
+/**
+ * The label a card wears (spec §5.6). "Waiting on others" carries the number
+ * still to answer when it is known — "waiting on 2 others" says more than
+ * "waiting on others".
+ */
+export function meetingStatusLabel(
+  status: MeetingCardStatus,
+  waitingOn: number | null
+): string {
+  if (status === "waiting_on_others" && waitingOn !== null) {
+    return `ממתין לעוד ${waitingOn}`;
+  }
+  return MEETING_CARD_STATUS_LABELS[status];
+}
+
 export const RESPONSE_STATUS_LABELS: Record<ResponseStatus, string> = {
   pending: "טרם הגיב",
   approved: "אישר",

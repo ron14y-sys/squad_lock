@@ -1,28 +1,97 @@
 @import "tailwindcss";
+@import "./theme-components.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* One structure, two themes. Every colour, shadow and effect below comes
+   from a variable; <html data-theme="light|dark"> swaps the whole set.
+   Light = "Tilted Cards" (coral / teal / cream, hard shadows, tilted cards).
+   Dark = "Nightfall" (glass, drifting glow, spotlight on what waits for you). */
+
+:root,
+html[data-theme="light"] {
+  color-scheme: light;
+  --sl-bg: #ffede3;
+  --sl-ink: #14161c;
+  --sl-mut: #14161cb0;
+  --sl-card: #fff;
+  --sl-cb: 3px solid #14161c;
+  --sl-cs: 6px 7px 0 #14161c;
+  --sl-r: 18px;
+  --sl-acc: #ffb199;
+  --sl-acc2: #ff7a55;
+  --sl-onacc: #14161c;
+  --sl-datebg: #ffede3;
+  --sl-pill: #ffede3;
+  --sl-pillink: #14161c;
+  --sl-pillb: 2px solid #14161c;
+  --sl-warnbg: #ffd84d;
+  --sl-warnb: 3px solid #14161c;
+  --sl-warnink: #14161c;
+  --sl-ok: #1c4e4a;
+  --sl-okink: #ffede3;
+  --sl-btn: #fff;
+  --sl-btnb: 3px solid #14161c;
+  --sl-btns: 4px 5px 0 #14161c;
+  --sl-ta: rotate(-1.1deg);
+  --sl-tb: rotate(0.9deg);
+  --sl-ty: rotate(-1.8deg) translateY(-2px);
+  --sl-tys: 8px 9px 0 #14161c;
+  --sl-hl: #ff7a55;
+  --sl-dw: 400;
+  --sl-disp: var(--font-secular), var(--font-rubik), sans-serif;
+  --sl-body: var(--font-rubik), sans-serif;
+  --sl-glow: none;
+  --sl-theme-color: #ffede3;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --sl-bg: #070c0b;
+  --sl-ink: #f1eee8;
+  --sl-mut: #9aa6a1;
+  --sl-card: linear-gradient(160deg, #ffffff14, #ffffff05);
+  --sl-cb: 1px solid #ffffff1c;
+  --sl-cs: 0 22px 44px -22px #000;
+  --sl-r: 22px;
+  --sl-onacc: #2a130b;
+  --sl-datebg: #ffffff0d;
+  --sl-pill: #ffffff14;
+  --sl-pillink: #c7d0cc;
+  --sl-pillb: 0 solid transparent;
+  --sl-warnbg: #e8615a1c;
+  --sl-warnb: 1px solid #e8615a55;
+  --sl-warnink: #ffd2ce;
+  --sl-ok: #2e6f63;
+  --sl-okink: #e7fff6;
+  --sl-btn: #ffffff10;
+  --sl-btnb: 1px solid #ffffff26;
+  --sl-btns: none;
+  --sl-ta: perspective(900px) rotateX(2deg) rotateY(-3deg);
+  --sl-tb: perspective(900px) rotateX(2deg) rotateY(3deg);
+  --sl-ty: perspective(900px) rotateX(3deg) rotateY(-4deg) scale(1.02);
+  --sl-tys: 0 26px 60px -18px #ff7a5566;
+  --sl-hl: #ffb199;
+  --sl-dw: 900;
+  --sl-disp: var(--font-heebo), sans-serif;
+  --sl-body: var(--font-heebo), sans-serif;
+  --sl-glow: block;
+  --sl-theme-color: #070c0b;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-background: var(--sl-bg);
+  --color-foreground: var(--sl-ink);
+  --font-sans: var(--sl-body);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  background: var(--sl-bg);
+  color: var(--sl-ink);
+  font-family: var(--sl-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+html[data-theme="light"] body {
+  background-image: radial-gradient(#14161c22 1.2px, transparent 1.4px);
+  background-size: 18px 18px;
 }
 
 /* Phones with a notch or a home indicator (iPhone, some Android) reserve
@@ -34,4 +103,149 @@ body {
 
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ---- dark-only decoration: three drifting blurred lights -------------- */
+.sl-glows {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  display: var(--sl-glow);
+}
+.sl-glows i {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(64px);
+}
+.sl-glows i:nth-child(1) {
+  width: 340px;
+  height: 340px;
+  top: -110px;
+  right: -90px;
+  background: radial-gradient(circle, #1c6a62, transparent 70%);
+  opacity: 0.7;
+  animation: sl-d1 14s ease-in-out infinite;
+}
+.sl-glows i:nth-child(2) {
+  width: 280px;
+  height: 280px;
+  bottom: 40px;
+  left: -100px;
+  background: radial-gradient(circle, #ff8a61, transparent 70%);
+  opacity: 0.3;
+  animation: sl-d2 18s ease-in-out infinite;
+}
+.sl-glows i:nth-child(3) {
+  width: 260px;
+  height: 260px;
+  top: 42%;
+  left: 20%;
+  background: radial-gradient(circle, #4b3f8f, transparent 70%);
+  opacity: 0.35;
+  animation: sl-d1 22s ease-in-out infinite reverse;
+}
+@keyframes sl-d1 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-34px, 28px) scale(1.18);
+  }
+}
+@keyframes sl-d2 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(26px, -30px);
+  }
+}
+
+/* ---- shared building blocks ------------------------------------------- */
+.sl-page {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 16px 20px 24px;
+  font-family: var(--sl-body);
+}
+.sl-logo {
+  font-family: var(--sl-disp);
+  font-weight: var(--sl-dw);
+  font-size: 19px;
+}
+html[data-theme="light"] .sl-logo {
+  background: var(--sl-acc);
+  border: 3px solid #14161c;
+  border-radius: 10px;
+  padding: 3px 12px;
+  transform: rotate(-2.5deg);
+  box-shadow: 3px 3px 0 #14161c;
+}
+.sl-title {
+  font-family: var(--sl-disp);
+  font-weight: var(--sl-dw);
+  font-size: 35px;
+  line-height: 1.05;
+  margin: 2px 0 0;
+}
+html[data-theme="light"] .sl-title {
+  text-decoration: underline wavy var(--sl-hl);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 8px;
+}
+html[data-theme="dark"] .sl-title {
+  background: linear-gradient(120deg, #fff 30%, #ffb199);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.sl-sub {
+  font-size: 13px;
+  color: var(--sl-mut);
+}
+.sl-sec {
+  font-family: var(--sl-disp);
+  font-weight: var(--sl-dw);
+  font-size: 17px;
+  margin-top: 4px;
+}
+html[data-theme="dark"] .sl-sec {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: var(--sl-acc);
+}
+
+.sl-toggle {
+  display: inline-flex;
+  border: var(--sl-btnb);
+  border-radius: 999px;
+  background: var(--sl-btn);
+  padding: 2px;
+  font-size: 12px;
+}
+.sl-toggle button {
+  border: 0;
+  background: transparent;
+  color: var(--sl-ink);
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sl-toggle button[aria-pressed="true"] {
+  background: var(--sl-acc);
+  color: var(--sl-onacc);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sl-glows i {
+    animation: none;
+  }
 }

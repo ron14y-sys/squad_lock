@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { auth } from "@/auth";
+import { ThemeToggle } from "./ThemeToggle";
 
 // No task ever asked for this — B2 built sign-in itself, C1-C7 built the
 // screens behind it, and nothing connected the two: there was no way into
@@ -10,19 +11,18 @@ export async function AppHeader() {
   const session = await auth();
 
   return (
-    <header className="safe-top sticky top-0 z-10 border-b border-zinc-200 bg-zinc-50/90 backdrop-blur dark:border-zinc-800 dark:bg-black/90">
-      <div className="flex h-14 items-center justify-between px-4">
-        <span className="text-lg font-semibold tracking-tight text-black dark:text-zinc-50">
-          SquadLock
-        </span>
+    <header className="safe-top sticky top-0 z-10 backdrop-blur">
+      <div className="flex h-14 items-center justify-between gap-2 px-4">
+        <span className="sl-logo">SquadLock</span>
+        <ThemeToggle />
         {session?.user ? (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+            <span className="sl-sub hidden whitespace-nowrap sm:inline">
               {session.user.name}
             </span>
             <Link
               href="/api/auth/signout"
-              className="text-sm font-medium text-zinc-900 dark:text-zinc-50"
+              className="text-sm font-bold whitespace-nowrap"
             >
               התנתק
             </Link>
@@ -30,7 +30,8 @@ export async function AppHeader() {
         ) : (
           <Link
             href="/api/auth/signin"
-            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-black"
+            className="rounded-full px-3 py-1.5 text-sm font-bold whitespace-nowrap"
+            style={{ background: "var(--sl-acc)", color: "var(--sl-onacc)" }}
           >
             התחבר
           </Link>
