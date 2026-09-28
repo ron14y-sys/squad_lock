@@ -153,6 +153,7 @@ model Invitation {
   group      Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   invitedBy  User  @relation("InvitationSender", fields: [invitedById], references: [id])
   acceptedBy User? @relation("InvitationAcceptor", fields: [acceptedByUserId], references: [id])
+  notificationLogs NotificationLog[]
 
   /// One live invitation per (group, email) at a time — inviting the same
   /// address twice re-sends, it does not duplicate. Also means an email that
@@ -217,6 +218,7 @@ model Meeting {
   participantContexts ParticipantMeetingContext[]
   dismissalsAsA       ConflictDismissal[]         @relation("MeetingA")
   dismissalsAsB       ConflictDismissal[]         @relation("MeetingB")
+  notificationLogs    NotificationLog[]
 
   @@index([groupId])
   @@index([status, currentDatetime])
@@ -520,4 +522,63 @@ model PlaceDetailsCache {
   fetchedAt     DateTime @default(now())
 
   @@map("place_details_cache")
+}
+
+/// B8 — a record of every transactional-email attempt (spec §5.5's binding
+/// rule: "the failure is recorded against the notification, retried, and
+/// surfaced as a notification problem, not as a scheduling one"). This is
+/// what makes that true in the database, not just in the code's intent: a
+/// failed send is a row here, never a reason a Meeting or Invitation write
+/// rolled back — every `notify*` call in `lib/email/notify.ts` runs only
+/// after the state change it is about has already committed.
+///
+/// Deliberately not the retry mechanism itself (B9, still unscoped) — just
+/// the record a retry mechanism, or a person reading the table, would need.
+/// One attempt is logged per send today; nothing here re-sends on its own.
+///
+/// `meetingId` and `invitationId` are both nullable and independent: a
+/// notification is about at most one of them — an invitation email has no
+/// meeting, every meeting-state email has no invitation — never both and
+/// never neither.
+model NotificationLog {
+  id                String             @id @default(cuid())
+  kind              NotificationKind
+  /// Denormalized, not a User relation — the address this attempt actually
+  /// used, so a later email change on the account doesn't rewrite history
+  /// (same reasoning as MatchOption's venue snapshot).
+  recipientEmail    String
+  status            NotificationStatus
+  /// Resend's own id for a sent message — nothing reads this back yet, but
+  /// it is what you would paste into their dashboard to find this send.
+  providerMessageId String?
+  errorMessage      String?
+
+  meetingId    String?
+  invitationId String?
+
+  createdAt DateTime @default(now())
+
+  meeting    Meeting?    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  invitation Invitation? @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@index([invitationId])
+  @@map("notification_log")
+}
+
+/// The five spec §5.5 triggers. Only `proposal_waiting` is wired to a
+/// sender yet (B8 part one) — the other four are declared here because
+/// they are the fixed, spec-mandated list, not a guess, and B8 part two
+/// wires them to the hook points `tasks/todo.md` already names.
+enum NotificationKind {
+  invitation
+  proposal_waiting
+  meeting_confirmed
+  conflict_reweigh
+  stuck
+}
+
+enum NotificationStatus {
+  sent
+  failed
 }

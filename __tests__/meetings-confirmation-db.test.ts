@@ -38,10 +38,17 @@ describe.skipIf(!CONNECTED)(
 
     afterAll(async () => {
       if (!prisma) return;
-      await Promise.all([
-        prisma.group.deleteMany({ where: { name: { startsWith: PREFIX } } }),
-        prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } }),
-      ]);
+      // Sequential, not Promise.all: the group cascades to its meetings, but
+      // Meeting.initiatorId has no cascade back to User, so deleting the
+      // user concurrently with (or before) that cascade races
+      // meetings_initiatorId_fkey. Same fix, same reason, as
+      // __tests__/match-run-db.test.ts.
+      await prisma.group.deleteMany({
+        where: { name: { startsWith: PREFIX } },
+      });
+      await prisma.user.deleteMany({
+        where: { email: { startsWith: PREFIX } },
+      });
     });
 
     /** Two users, one group, one meeting already `awaiting` with both Response rows. */

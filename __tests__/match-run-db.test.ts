@@ -79,12 +79,14 @@ describe.skipIf(!CONNECTED)("a run, written down and read back", () => {
   afterAll(async () => {
     if (!prisma) return;
     // The group cascades to its meetings, which cascade to their runs and
-    // options. The user is deleted separately because it is the group's
-    // member rather than its parent.
-    await Promise.all([
-      prisma.group.deleteMany({ where: { name: { startsWith: PREFIX } } }),
-      prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } }),
-    ]);
+    // options -- but Meeting.initiatorId has no cascade back to User, so
+    // this has to be sequential, not Promise.all: deleting the user first,
+    // or even concurrently, can race the group's own cascade and hit
+    // meetings_initiatorId_fkey while a just-cascaded-away meeting row is
+    // still (briefly) there. Group first, awaited, then the user it was
+    // racing against.
+    await prisma.group.deleteMany({ where: { name: { startsWith: PREFIX } } });
+    await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
   });
 
   it("writes the run and both its options in one go", async () => {

@@ -61,6 +61,7 @@ import { originOf } from "./distance";
 import { pairId } from "./schemas";
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
 import { buildShortlist } from "./funnel";
+import { notifyProposalWaiting } from "@/lib/email/notify";
 import type { MatchAgentInput } from "./agent";
 
 /**
@@ -578,7 +579,7 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
 
   const prisma = getPrisma();
 
-  return prisma.$transaction(async (tx) => {
+  const { run, landedOnAwaiting } = await prisma.$transaction(async (tx) => {
     const run = await persistMatchRun(draft, call, tx);
 
     if (contextIds.length > 0) {
@@ -607,11 +608,14 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
       },
     });
 
+    const landedOnAwaiting = unanswered === 0;
+
     await tx.meeting.update({
       where: { id: meetingId },
       data: {
-        status:
-          unanswered > 0 ? MeetingStatus.weighing : MeetingStatus.awaiting,
+        status: landedOnAwaiting
+          ? MeetingStatus.awaiting
+          : MeetingStatus.weighing,
         // **`cycleCount` counts rematches, `cycleNumber` counts runs**, and
         // the two are deliberately one apart. Spec §3.1 caps
         // "**reject-and-rematch** cycles" at three, and the first proposal is
@@ -631,8 +635,23 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
       },
     });
 
-    return run;
+    return { run, landedOnAwaiting };
   });
+
+  // Spec §5.5 trigger #2, fired only once the transaction above has actually
+  // committed the meeting onto `awaiting` — never inside it (the binding
+  // rule that notification is not part of meeting state, spec §5.5).
+  // `weigh()` is already background code by the time it runs (called from
+  // `runCycle`, itself called from inside a route's `after()`), so this is
+  // awaited directly rather than backgrounded again — there is no HTTP
+  // response left to protect. `notifyProposalWaiting` never throws (see its
+  // own header comment), so a broken mail provider cannot turn a successful
+  // weighing into a failed one.
+  if (landedOnAwaiting) {
+    await notifyProposalWaiting(meetingId);
+  }
+
+  return run;
 }
 
 /* -------------------------------------------------------------------------
