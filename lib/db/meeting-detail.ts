@@ -63,6 +63,9 @@ export type ConflictDTO = {
   start: string | null;
 };
 
+/** Someone the matching agent cannot place: no home point and no amendment for tonight. */
+export type MissingHomeDTO = { userId: string; name: string };
+
 export type MeetingDetailDTO = {
   id: string;
   groupId: string;
@@ -77,6 +80,12 @@ export type MeetingDetailDTO = {
   isInitiator: boolean;
   /** Undismissed clashes with this viewer's other open meetings (spec §5.7). */
   conflicts: ConflictDTO[];
+  /**
+   * Who has nowhere to be weighed from (#132). Only worked out for a meeting
+   * with no proposal yet or a stuck one — the two places it explains
+   * something — and empty otherwise.
+   */
+  missingHome: MissingHomeDTO[];
   initiatorName: string;
   pinnedVenue: string | null;
   occasion: string | null;
@@ -101,6 +110,62 @@ function describeContext(context: {
   const first = windows[0];
   if (first?.mode && first.available === false) return `אין ${first.mode} הערב`;
   return "המצב הערב שונה";
+}
+
+/**
+ * Mirrors what `originOf` needs: a person can be weighed if they have a home
+ * point, or if they gave an origin for this one meeting (spec §5.7 — tonight's
+ * amendment wins over home). A missing origin makes `runCycle` throw before it
+ * searches, and that throw is not a `NoSolutionError`, so the meeting is left
+ * waiting with no proposal rather than marked stuck — which is why the caller
+ * asks for this in both states, not only the stuck one.
+ */
+async function findMissingHome(
+  meetingId: string,
+  people: MissingHomeDTO[]
+): Promise<MissingHomeDTO[]> {
+  const prisma = getPrisma();
+  const userIds = people.map((p) => p.userId);
+
+  const [profiles, amendments] = await Promise.all([
+    prisma.preferenceProfile.findMany({
+      where: { userId: { in: userIds } },
+      select: { userId: true, homeLat: true, homeLng: true },
+    }),
+    prisma.participantMeetingContext.findMany({
+      where: {
+        meetingId,
+        userId: { in: userIds },
+        originLat: { not: null },
+        originLng: { not: null },
+      },
+      select: { userId: true },
+    }),
+  ]);
+
+  return withoutOrigin(people, profiles, amendments);
+}
+
+/** The decision itself, kept free of the database so it can be tested. */
+export function withoutOrigin(
+  people: MissingHomeDTO[],
+  profiles: {
+    userId: string;
+    homeLat: number | null;
+    homeLng: number | null;
+  }[],
+  amendments: { userId: string }[]
+): MissingHomeDTO[] {
+  const hasHome = new Set(
+    profiles
+      .filter((p) => p.homeLat !== null && p.homeLng !== null)
+      .map((p) => p.userId)
+  );
+  const hasAmendment = new Set(amendments.map((a) => a.userId));
+
+  return people.filter(
+    (p) => !hasHome.has(p.userId) && !hasAmendment.has(p.userId)
+  );
 }
 
 export async function getMeetingDetail(
@@ -204,6 +269,14 @@ export async function getMeetingDetail(
       }
     : null;
 
+  const missingHome =
+    proposal === null || row.status === "stuck"
+      ? await findMissingHome(
+          meetingId,
+          row.responses.map((r) => ({ userId: r.userId, name: r.user.name }))
+        )
+      : [];
+
   const timeline: TimelineEvent[] = [
     {
       kind: "initiated",
@@ -290,6 +363,7 @@ export async function getMeetingDetail(
     isStuck: row.status === "stuck",
     isInitiator: row.initiatorId === viewerId,
     conflicts,
+    missingHome,
     initiatorName: row.initiator.name,
     pinnedVenue: meeting.pinnedVenue,
     occasion: meeting.occasion,

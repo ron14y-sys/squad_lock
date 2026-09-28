@@ -59,6 +59,8 @@ type TimelineEvent =
       reasonText: string | null;
     };
 
+type MissingHome = { userId: string; name: string };
+
 type MeetingDetail = {
   id: string;
   groupId: string;
@@ -68,6 +70,7 @@ type MeetingDetail = {
   isStuck: boolean;
   isInitiator: boolean;
   conflicts: Conflict[];
+  missingHome: MissingHome[];
   initiatorName: string;
   pinnedVenue: string | null;
   occasion: string | null;
@@ -223,6 +226,43 @@ function TimelineBlock({ timeline }: { timeline: TimelineEvent[] }) {
   );
 }
 
+/**
+ * #132: a person with no home point makes the agent refuse to weigh the
+ * group, and from outside that looks like "no proposal, no reason". Name who
+ * is missing and, for the viewer themselves, say where to fix it.
+ */
+function MissingHomeNotice({
+  missing,
+  viewerId,
+}: {
+  missing: MissingHome[];
+  viewerId: string;
+}) {
+  const mine = missing.some((p) => p.userId === viewerId);
+  const others = missing.filter((p) => p.userId !== viewerId);
+
+  return (
+    <div role="alert" className="sl-warn flex flex-col gap-2">
+      <p className="font-bold">אי אפשר להכין הצעה עדיין</p>
+      {mine && (
+        <p>
+          עוד לא הגדרת שכונת מגורים.{" "}
+          <Link href="/profile/location" className="font-bold underline">
+            הגדר עכשיו
+          </Link>
+        </p>
+      )}
+      {others.length > 0 && (
+        <p>
+          {others.map((p) => p.name).join(", ")}{" "}
+          {others.length === 1 ? "עוד לא הגדיר/ה" : "עוד לא הגדירו"} שכונת
+          מגורים. בלי זה אי אפשר למצוא מקום שמתאים לכולם.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function loadDetail(
   meetingId: string,
   cancelledRef: { current: boolean },
@@ -302,6 +342,12 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
         {detail.occasion && <span className="sl-sub">· {detail.occasion}</span>}
       </div>
 
+      {detail.missingHome.length > 0 && (
+        <MissingHomeNotice
+          missing={detail.missingHome}
+          viewerId={detail.viewerId}
+        />
+      )}
       {detail.isStuck && (
         <StuckPanel
           meetingId={detail.id}
