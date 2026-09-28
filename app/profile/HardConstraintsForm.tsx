@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { HardConstraints, LocalWeekday, LocalWindow } from "@/lib/types";
 import { WEEKDAY_LABELS } from "@/lib/format/hebrew-labels";
+import { ScreenState } from "@/app/_components/ScreenState";
 
 const DIETARY_PRESETS = ["כשר", "צמחוני", "טבעוני", "חלאל"];
 const ALLERGY_PRESETS = ["אגוזים", "פירות ים", "מוצרי חלב", "גלוטן"];
@@ -68,18 +69,22 @@ export function HardConstraintsForm() {
   }
 
   if (loadState === "loading") {
-    return <p className="sl-page sl-sub">טוען את הפרופיל שלך…</p>;
+    return <ScreenState kind="loading">טוען את הפרופיל שלך…</ScreenState>;
   }
 
   if (loadState === "signed-out") {
-    return <p className="sl-page sl-sub">התחבר כדי להגדיר את האילוצים שלך.</p>;
+    return (
+      <ScreenState kind="notice" signIn>
+        התחבר כדי להגדיר את האילוצים שלך.
+      </ScreenState>
+    );
   }
 
   if (loadState === "error") {
     return (
-      <p className="sl-page sl-sub">
+      <ScreenState kind="error">
         לא הצלחנו לטעון את הפרופיל. נסה לרענן את הדף.
-      </p>
+      </ScreenState>
     );
   }
 

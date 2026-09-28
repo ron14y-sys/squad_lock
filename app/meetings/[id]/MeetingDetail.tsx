@@ -14,6 +14,7 @@ import { ResponseControls } from "./respond/ResponseControls";
 import { ConflictWarning, type Conflict } from "./respond/ConflictWarning";
 import { StuckPanel } from "./StuckPanel";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
+import { ScreenState } from "@/app/_components/ScreenState";
 
 type MeetingCardStatus =
   | "waiting_on_you"
@@ -309,23 +310,27 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
   }
 
   if (loadState === "loading") {
-    return <p className="sl-page sl-sub">טוען את הפגישה…</p>;
+    return <ScreenState kind="loading">טוען את הפגישה…</ScreenState>;
   }
   if (loadState === "signed-out") {
-    return <p className="sl-page sl-sub">התחבר כדי לראות פגישה.</p>;
+    return (
+      <ScreenState kind="notice" signIn>
+        התחבר כדי לראות פגישה.
+      </ScreenState>
+    );
   }
   if (loadState === "not-found") {
     return (
-      <p className="sl-page sl-sub">
+      <ScreenState kind="notice">
         הפגישה הזו לא נמצאה, או שאתה לא משתתף בה.
-      </p>
+      </ScreenState>
     );
   }
   if (loadState === "error" || !detail) {
     return (
-      <p className="sl-page sl-sub">
+      <ScreenState kind="error">
         לא הצלחנו לטעון את הפגישה. נסה לרענן את הדף.
-      </p>
+      </ScreenState>
     );
   }
 

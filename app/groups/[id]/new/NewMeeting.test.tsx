@@ -6,6 +6,7 @@ import { NewMeeting } from "./NewMeeting";
 const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
+  usePathname: () => "/groups/group-1/new",
 }));
 
 function jsonResponse(body: unknown, status = 200) {

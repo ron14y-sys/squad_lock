@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ScreenState } from "@/app/_components/ScreenState";
 
 type SubmitState = "idle" | "submitting" | "signed-out" | "not-found" | "error";
 
@@ -69,12 +70,18 @@ export function NewMeeting({ groupId }: { groupId: string }) {
   }
 
   if (submitState === "signed-out") {
-    return <p className="sl-page sl-sub">התחבר כדי לפתוח פגישה.</p>;
+    return (
+      <ScreenState kind="notice" signIn>
+        התחבר כדי לפתוח פגישה.
+      </ScreenState>
+    );
   }
 
   if (submitState === "not-found") {
     return (
-      <p className="sl-page sl-sub">הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.</p>
+      <ScreenState kind="notice">
+        הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.
+      </ScreenState>
     );
   }
 

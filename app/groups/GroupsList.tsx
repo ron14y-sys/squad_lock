@@ -7,6 +7,7 @@ import { ConflictBanner } from "@/app/_components/ConflictBanner";
 import { stickerClass, tiltClass } from "@/app/_components/meeting-style";
 import { meetingStatusLabel, membersLabel } from "@/lib/format/hebrew-labels";
 import { meetingDateLabel, meetingTimeLabel } from "@/lib/format/meeting-when";
+import { ScreenState } from "@/app/_components/ScreenState";
 
 type GroupMember = {
   userId: string;
@@ -114,18 +115,22 @@ export function GroupsList() {
   }
 
   if (loadState === "loading") {
-    return <p className="sl-page sl-sub">טוען את הקבוצות שלך…</p>;
+    return <ScreenState kind="loading">טוען את הקבוצות שלך…</ScreenState>;
   }
 
   if (loadState === "signed-out") {
-    return <p className="sl-page sl-sub">התחבר כדי לראות את הקבוצות שלך.</p>;
+    return (
+      <ScreenState kind="notice" signIn>
+        התחבר כדי לראות את הקבוצות שלך.
+      </ScreenState>
+    );
   }
 
   if (loadState === "error") {
     return (
-      <p className="sl-page sl-sub">
+      <ScreenState kind="error">
         לא הצלחנו לטעון את הקבוצות. נסה לרענן את הדף.
-      </p>
+      </ScreenState>
     );
   }
 
@@ -139,7 +144,9 @@ export function GroupsList() {
       {meetings.some((m) => m.status === "conflicting") && <ConflictBanner />}
 
       <div className="flex flex-col gap-4">
-        {groups.length === 0 && <p className="sl-sub">עדיין אין לך קבוצות.</p>}
+        {groups.length === 0 && (
+          <ScreenState kind="empty">עדיין אין לך קבוצות.</ScreenState>
+        )}
         {groups.map((group, index) => {
           const awaiting = awaitingCount(group.id);
           return (
