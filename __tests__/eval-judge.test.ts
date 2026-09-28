@@ -74,6 +74,7 @@ describe("classify", () => {
       "no-perfect-solution-diet-conflict": "scored",
       "no-perfect-solution-dispersed-group": "scored",
       "rejection-loop-budget": "deferred",
+      "six-profiles-outlier": "scored",
     });
   });
 });
