@@ -2,6 +2,14 @@
 // it", "something doesn't work for me", or the amendment ("my situation
 // tonight is different"). Only a participant — someone with a Response row
 // for this meeting — can respond to it.
+//
+// B8 part two: up to three spec §5.5 emails can come out of one response —
+// meeting confirmed, a conflict-cancelled meeting back in `weighing` (one
+// per cancelled meeting), and stuck — fired via `after()` so a slow Resend
+// call never adds latency to this response. `respondToMeeting` itself stays
+// pure db/business logic; it only hands back what happened
+// (`justClosed`/`justStuck`/`cancelledConflicts`), same split as
+// `applyRejection` below being called from here rather than from inside it.
 
 import {
   MeetingNotOpenError,
@@ -10,7 +18,13 @@ import {
 } from "@/lib/db/meetings";
 import { respondToMeetingSchema } from "@/lib/meetings/schema";
 import { applyRejection } from "@/lib/extraction/apply-rejection";
+import {
+  notifyConflictReweigh,
+  notifyMeetingConfirmed,
+  notifyStuck,
+} from "@/lib/email/notify";
 import { auth } from "@/auth";
+import { after } from "next/server";
 
 export async function POST(
   request: Request,
@@ -50,6 +64,23 @@ export async function POST(
     if (parsed.data.kind === "doesnt_suit") {
       await applyRejection(meetingId, userId, parsed.data.reasonText);
     }
+
+    // B8 part two — spec §5.5's binding rule again: none of this can affect
+    // the response already recorded above, so it runs after the response is
+    // decided, backgrounded past the HTTP response entirely.
+    after(async () => {
+      const notifications: Promise<void>[] = [];
+      if (result.justClosed) {
+        notifications.push(notifyMeetingConfirmed(meetingId));
+      }
+      if (result.justStuck) {
+        notifications.push(notifyStuck(meetingId));
+      }
+      for (const cancelled of result.cancelledConflicts) {
+        notifications.push(notifyConflictReweigh(cancelled.id));
+      }
+      await Promise.all(notifications);
+    });
 
     return Response.json(result);
   } catch (error) {

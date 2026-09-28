@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { notifyProposalWaiting } from "./notify";
+import {
+  notifyConflictReweigh,
+  notifyInvitation,
+  notifyMeetingConfirmed,
+  notifyProposalWaiting,
+  notifyStuck,
+} from "./notify";
 import {
   NotificationKind,
   NotificationStatus,
@@ -9,13 +15,15 @@ import {
 /**
  * No real database and no real network anywhere in this file -- same
  * discipline as `lib/db/places-cache.test.ts`. The DB side is a hand-built
- * fake (`response.findMany`, `notificationLog.create`); `fetch` is mocked
- * the same way `lib/email/client.test.ts` mocks it.
+ * fake (`response.findMany`, `invitation.findUnique`,
+ * `notificationLog.create`); `fetch` is mocked the same way
+ * `lib/email/client.test.ts` mocks it.
  */
 
 function fakeClient() {
   return {
     response: { findMany: vi.fn() },
+    invitation: { findUnique: vi.fn() },
     notificationLog: { create: vi.fn() },
   };
 }
@@ -118,5 +126,130 @@ describe("notifyProposalWaiting", () => {
     await expect(
       notifyProposalWaiting("meeting-1", client)
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("notifyInvitation", () => {
+  it("emails the invited address, not a User, and logs it against the invitation", async () => {
+    const client = fakeClient();
+    client.invitation.findUnique.mockResolvedValueOnce({
+      id: "invitation-1",
+      email: "new-member@example.test",
+      token: "tok-abc",
+      group: { name: "Rothschild crew" },
+      invitedBy: { name: "Dana" },
+    });
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, { id: "email-x" }));
+
+    await notifyInvitation("invitation-1", client);
+
+    expect(client.invitation.findUnique).toHaveBeenCalledWith({
+      where: { id: "invitation-1" },
+      include: {
+        group: { select: { name: true } },
+        invitedBy: { select: { name: true } },
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.to).toBe("new-member@example.test");
+    expect(body.html).toContain(
+      "https://squadlock.example/invitations/tok-abc"
+    );
+
+    expect(client.notificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: NotificationKind.invitation,
+          recipientEmail: "new-member@example.test",
+          status: NotificationStatus.sent,
+          invitationId: "invitation-1",
+        }),
+      })
+    );
+  });
+
+  it("sends nothing when the invitation row is gone by the time this runs", async () => {
+    const client = fakeClient();
+    client.invitation.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      notifyInvitation("invitation-1", client)
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(client.notificationLog.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifyMeetingConfirmed", () => {
+  it("emails everyone still in, not someone who dropped out", async () => {
+    const client = fakeClient();
+    client.response.findMany.mockResolvedValueOnce([
+      { user: { email: "dana@example.test" } },
+      { user: { email: "yoav@example.test" } },
+    ]);
+    fetchMock.mockResolvedValue(fakeResponse(true, { id: "email-x" }));
+
+    await notifyMeetingConfirmed("meeting-1", client);
+
+    expect(client.response.findMany).toHaveBeenCalledWith({
+      where: { meetingId: "meeting-1", status: { not: "cant_make_it" } },
+      include: { user: { select: { email: true } } },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(client.notificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: NotificationKind.meeting_confirmed,
+          meetingId: "meeting-1",
+        }),
+      })
+    );
+  });
+});
+
+describe("notifyConflictReweigh", () => {
+  it("emails still-in participants of the cancelled meeting", async () => {
+    const client = fakeClient();
+    client.response.findMany.mockResolvedValueOnce([
+      { user: { email: "yoav@example.test" } },
+    ]);
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, { id: "email-x" }));
+
+    await notifyConflictReweigh("meeting-2", client);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(client.notificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: NotificationKind.conflict_reweigh,
+          recipientEmail: "yoav@example.test",
+          meetingId: "meeting-2",
+        }),
+      })
+    );
+  });
+});
+
+describe("notifyStuck", () => {
+  it("emails everyone still in the stuck meeting", async () => {
+    const client = fakeClient();
+    client.response.findMany.mockResolvedValueOnce([
+      { user: { email: "dana@example.test" } },
+    ]);
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, { id: "email-x" }));
+
+    await notifyStuck("meeting-3", client);
+
+    expect(client.notificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: NotificationKind.stuck,
+          meetingId: "meeting-3",
+        }),
+      })
+    );
   });
 });
