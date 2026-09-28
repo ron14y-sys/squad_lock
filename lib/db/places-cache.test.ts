@@ -228,6 +228,41 @@ describe("getCachedDetails / saveCachedDetails", () => {
     });
   });
 
+  it("returns a stored budget, and ignores anything that is not one of the two answers", async () => {
+    const client = fakeCacheClient();
+    client.placeDetailsCache.findUnique.mockResolvedValueOnce({
+      rating: null,
+      openingHours: [],
+      budget: "splurge",
+      fetchedAt: new Date(),
+    });
+    expect((await getCachedDetails("p1", client))?.budget).toBe("splurge");
+
+    client.placeDetailsCache.findUnique.mockResolvedValueOnce({
+      rating: null,
+      openingHours: [],
+      budget: "moderate",
+      fetchedAt: new Date(),
+    });
+    expect((await getCachedDetails("p1", client))?.budget).toBeUndefined();
+  });
+
+  it("saveCachedDetails stores the budget, and null when it is not known", async () => {
+    const client = fakeCacheClient();
+
+    await saveCachedDetails(
+      "p1",
+      { openingHours: [], budget: "modest" },
+      client
+    );
+    await saveCachedDetails("p2", { openingHours: [] }, client);
+
+    const calls = client.placeDetailsCache.upsert.mock.calls;
+    expect(calls[0][0].create.budget).toBe("modest");
+    expect(calls[0][0].update.budget).toBe("modest");
+    expect(calls[1][0].create.budget).toBeNull();
+  });
+
   it("is an undefined rating, not null, when the stored rating is null", async () => {
     const client = fakeCacheClient();
     client.placeDetailsCache.findUnique.mockResolvedValue({

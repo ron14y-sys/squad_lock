@@ -519,6 +519,9 @@ model PlaceDetailsCache {
   /// hours returned" — distinct from the row not existing at all, which
   /// means "never fetched."
   openingHours  Json     @default("[]")
+  /// `modest` or `splurge`, from `priceLevel` (#139). NULL is "not known" —
+  /// no price returned, or `PRICE_LEVEL_MODERATE`, which fits neither answer.
+  budget        String?
   fetchedAt     DateTime @default(now())
 
   @@map("place_details_cache")

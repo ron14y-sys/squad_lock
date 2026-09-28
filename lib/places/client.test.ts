@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LatLng } from "@/lib/types";
-import { fetchPlaceDetails, searchNeighbourhood } from "./client";
+import {
+  budgetFromPriceLevel,
+  fetchPlaceDetails,
+  searchNeighbourhood,
+} from "./client";
 
 /**
  * No real network call ever leaves this file, same discipline as
@@ -204,7 +208,9 @@ describe("fetchPlaceDetails", () => {
     expect(url).toBe("https://places.googleapis.com/v1/places/place-1");
     expect(init.method).toBe("GET");
     expect(init.headers["X-Goog-Api-Key"]).toBe("test-key");
-    expect(init.headers["X-Goog-FieldMask"]).toBe("rating,regularOpeningHours");
+    expect(init.headers["X-Goog-FieldMask"]).toBe(
+      "rating,regularOpeningHours,priceLevel"
+    );
   });
 
   it("returns rating as-is and converts periods to LocalWindows", async () => {
@@ -251,6 +257,23 @@ describe("fetchPlaceDetails", () => {
     ]);
   });
 
+  it("turns priceLevel into a budget answer, from the same request", async () => {
+    fetchMock.mockResolvedValueOnce(
+      fakeResponse(true, { priceLevel: "PRICE_LEVEL_EXPENSIVE" })
+    );
+
+    const details = await fetchPlaceDetails("place-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(details.budget).toBe("splurge");
+  });
+
+  it("is an undefined budget when priceLevel is absent", async () => {
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, {}));
+
+    expect((await fetchPlaceDetails("place-1")).budget).toBeUndefined();
+  });
+
   it("is an empty openingHours list, and an undefined rating, when both are absent", async () => {
     fetchMock.mockResolvedValueOnce(fakeResponse(true, {}));
 
@@ -266,5 +289,24 @@ describe("fetchPlaceDetails", () => {
     await expect(fetchPlaceDetails("bad-id")).rejects.toThrow(
       /get place details failed \(400\): not found/
     );
+  });
+});
+
+describe("budgetFromPriceLevel", () => {
+  it("maps the cheap rungs to modest and the dear rungs to splurge", () => {
+    expect(budgetFromPriceLevel("PRICE_LEVEL_FREE")).toBe("modest");
+    expect(budgetFromPriceLevel("PRICE_LEVEL_INEXPENSIVE")).toBe("modest");
+    expect(budgetFromPriceLevel("PRICE_LEVEL_EXPENSIVE")).toBe("splurge");
+    expect(budgetFromPriceLevel("PRICE_LEVEL_VERY_EXPENSIVE")).toBe("splurge");
+  });
+
+  it("does not force the middle into either side — moderate is not known", () => {
+    expect(budgetFromPriceLevel("PRICE_LEVEL_MODERATE")).toBeUndefined();
+  });
+
+  it("is not known when absent, unspecified or a value Google adds later", () => {
+    expect(budgetFromPriceLevel(undefined)).toBeUndefined();
+    expect(budgetFromPriceLevel("PRICE_LEVEL_UNSPECIFIED")).toBeUndefined();
+    expect(budgetFromPriceLevel("PRICE_LEVEL_SOMETHING_NEW")).toBeUndefined();
   });
 });

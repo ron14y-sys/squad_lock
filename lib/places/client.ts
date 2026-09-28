@@ -34,7 +34,13 @@
  * "only for the shortlist... never for the full retrieved pool."
  */
 
-import type { Candidate, LatLng, LocalWeekday, LocalWindow } from "@/lib/types";
+import type {
+  Candidate,
+  LatLng,
+  LocalWeekday,
+  LocalWindow,
+  SoftPreferences,
+} from "@/lib/types";
 
 const SEARCH_ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
 const DETAILS_ENDPOINT = "https://places.googleapis.com/v1/places";
@@ -53,8 +59,14 @@ const SEARCH_FIELD_MASK = [
   "places.businessStatus",
 ].join(",");
 
-/** Enterprise-tier only — the two fields §6.3 gates to the shortlist. */
-const DETAILS_FIELD_MASK = ["rating", "regularOpeningHours"].join(",");
+/**
+ * Enterprise-tier only — the fields §6.3 gates to the shortlist. `priceLevel`
+ * is in the same tier as the other two, so it rides in the same request:
+ * no extra call, no tier escalation (#139).
+ */
+const DETAILS_FIELD_MASK = ["rating", "regularOpeningHours", "priceLevel"].join(
+  ","
+);
 
 /**
  * What the group is looking for. A constant, not a parameter, so every
@@ -94,10 +106,37 @@ type SearchTextResponse = {
 
 type PlaceDetailsResponse = {
   rating?: number;
+  /** Google's enum, e.g. `PRICE_LEVEL_INEXPENSIVE`. */
+  priceLevel?: string;
   regularOpeningHours?: {
     periods?: RawPeriod[];
   };
 };
+
+/**
+ * Google's price level, folded onto the two answers the preference game asks
+ * (`budget`: modest or splurge, #139).
+ *
+ * `PRICE_LEVEL_MODERATE` deliberately maps to **nothing**: it has no home in
+ * a two-way split, and forcing the middle into one side would assert
+ * something the data does not say. Absent, moderate and any value Google adds
+ * later all mean "not known" — the same rule `VenueDietaryFacts` follows
+ * (#86). `FREE` counts as the cheap side; it is the lowest rung.
+ */
+export function budgetFromPriceLevel(
+  priceLevel: string | undefined
+): SoftPreferences["budget"] {
+  switch (priceLevel) {
+    case "PRICE_LEVEL_FREE":
+    case "PRICE_LEVEL_INEXPENSIVE":
+      return "modest";
+    case "PRICE_LEVEL_EXPENSIVE":
+    case "PRICE_LEVEL_VERY_EXPENSIVE":
+      return "splurge";
+    default:
+      return undefined;
+  }
+}
 
 /** `9` → `"09:00"`, `undefined` minute treated as `0`. */
 function formatTimeOfDay(hour: number, minute: number | undefined): string {
@@ -230,9 +269,11 @@ export async function searchNeighbourhood(
  * ranking already expect. Called once per shortlist candidate — never in a
  * loop over the whole search pool (see the header comment).
  */
-export async function fetchPlaceDetails(
-  placeId: string
-): Promise<{ rating?: number; openingHours: LocalWindow[] }> {
+export async function fetchPlaceDetails(placeId: string): Promise<{
+  rating?: number;
+  openingHours: LocalWindow[];
+  budget?: SoftPreferences["budget"];
+}> {
   const response = await fetch(`${DETAILS_ENDPOINT}/${placeId}`, {
     method: "GET",
     headers: {
@@ -253,5 +294,6 @@ export async function fetchPlaceDetails(
   return {
     rating: data.rating,
     openingHours: parseOpeningHours(data.regularOpeningHours),
+    budget: budgetFromPriceLevel(data.priceLevel),
   };
 }
