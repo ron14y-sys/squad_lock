@@ -34,7 +34,12 @@
  * constraint round-trip for real.
  */
 
-import type { Candidate, LatLng, LocalWindow } from "@/lib/types";
+import type {
+  Candidate,
+  LatLng,
+  LocalWindow,
+  SoftPreferences,
+} from "@/lib/types";
 import { fetchPlaceDetails, searchNeighbourhood } from "@/lib/places/client";
 import { roundToNeighbourhood } from "@/lib/places/geo";
 import { getPrisma } from "./client";
@@ -144,7 +149,17 @@ export async function searchNeighbourhoodCached(
  * Tier 2 — place details (rating, opening hours)
  * ---------------------------------------------------------------------- */
 
-export type PlaceDetails = { rating?: number; openingHours: LocalWindow[] };
+export type PlaceDetails = {
+  rating?: number;
+  openingHours: LocalWindow[];
+  /** From `priceLevel`; absent means not known (#139). */
+  budget?: SoftPreferences["budget"];
+};
+
+/** A cached value is only trusted if it is one of the two answers. */
+function parseBudget(value: string | null): SoftPreferences["budget"] {
+  return value === "modest" || value === "splurge" ? value : undefined;
+}
 
 /** The cached details for `placeId`, or `null` on a miss (no row, or older than `DETAILS_CACHE_TTL_MS`). */
 export async function getCachedDetails(
@@ -159,6 +174,7 @@ export async function getCachedDetails(
   return {
     rating: row.rating ?? undefined,
     openingHours: row.openingHours as unknown as LocalWindow[],
+    budget: parseBudget(row.budget ?? null),
   };
 }
 
@@ -174,10 +190,12 @@ export async function saveCachedDetails(
       placeId,
       rating: details.rating ?? null,
       openingHours: asJson(details.openingHours),
+      budget: details.budget ?? null,
     },
     update: {
       rating: details.rating ?? null,
       openingHours: asJson(details.openingHours),
+      budget: details.budget ?? null,
       fetchedAt: new Date(),
     },
   });

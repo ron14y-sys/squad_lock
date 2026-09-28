@@ -10,6 +10,7 @@ import {
   type DueInput,
   type PriorProposal,
   type RecordedRejection,
+  venueSoftFactsFrom,
 } from "./run-cycle";
 import { pairId } from "./schemas";
 
@@ -278,5 +279,30 @@ describe("isDue", () => {
         NOW
       )
     ).toBe(true);
+  });
+});
+
+describe("venueSoftFactsFrom", () => {
+  it("keeps only the venues whose budget is known, keyed by place id", () => {
+    const facts = venueSoftFactsFrom([
+      { placeId: "cheap", budget: "modest" },
+      { placeId: "unknown" },
+      { placeId: "dear", budget: "splurge" },
+    ]);
+
+    expect(facts).toEqual({
+      cheap: { budget: "modest" },
+      dear: { budget: "splurge" },
+    });
+    expect(facts).not.toHaveProperty("unknown");
+  });
+
+  it("is undefined, not an empty object, when nothing is known about any venue", () => {
+    // An empty object would tell the agent that nothing is true of these
+    // venues, rather than that nothing is known about them (#86, #139).
+    expect(
+      venueSoftFactsFrom([{ placeId: "a" }, { placeId: "b" }])
+    ).toBeUndefined();
+    expect(venueSoftFactsFrom([])).toBeUndefined();
   });
 });

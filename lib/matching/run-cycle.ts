@@ -37,6 +37,7 @@ import {
   type Participant,
   type ParticipantMeetingContext,
   type TimeSlot,
+  type VenueSoftFacts,
 } from "@/lib/types";
 import {
   mergeContexts,
@@ -431,10 +432,21 @@ export async function assembleRun(
     slots,
   });
 
-  const priced: Candidate[] = await Promise.all(
+  const detailed = await Promise.all(
     provisional.shortlist.map(async (score) => ({
-      ...score.candidate,
-      ...(await fetchPlaceDetailsCached(score.candidate.placeId)),
+      candidate: score.candidate,
+      details: await fetchPlaceDetailsCached(score.candidate.placeId),
+    }))
+  );
+  const priced: Candidate[] = detailed.map(({ candidate, details }) => ({
+    ...candidate,
+    rating: details.rating,
+    openingHours: details.openingHours,
+  }));
+  const venueSoftFacts = venueSoftFactsFrom(
+    detailed.map(({ candidate, details }) => ({
+      placeId: candidate.placeId,
+      budget: details.budget,
     }))
   );
 
@@ -480,13 +492,33 @@ export async function assembleRun(
       viable,
       ranked,
       rejections,
-      // `venueFacts` and `venueSoftFacts` stay absent rather than empty: B7
-      // fetches neither dietary tags nor atmosphere, and an empty object
-      // would tell A2 and A4 that nothing is true of these venues rather
-      // than that nothing is known (the rule `findRejectedOption` follows).
+      // `venueFacts` stays absent rather than empty: B7 fetches no dietary
+      // tags, and an empty object would tell A2 and A4 that nothing is true
+      // of these venues rather than that nothing is known (the rule
+      // `findRejectedOption` follows). `venueSoftFacts` is the same: only
+      // what Google actually said, and absent when it said nothing (#139).
+      ...(venueSoftFacts ? { venueSoftFacts } : {}),
     },
     contextIds: meeting.participantContexts.map((row) => row.id),
   };
+}
+
+/**
+ * What is known about each venue's soft side, keyed by place id. A venue with
+ * nothing known is left out entirely and, when nothing at all is known,
+ * `undefined` is returned so the caller omits the field: an empty object
+ * would assert that nothing is true of these venues (#86, #139). Today only
+ * `budget` can be sourced (from `priceLevel`); the other three have no
+ * source yet and are not invented.
+ */
+export function venueSoftFactsFrom(
+  venues: { placeId: string; budget?: VenueSoftFacts["budget"] }[]
+): Record<string, VenueSoftFacts> | undefined {
+  const facts: Record<string, VenueSoftFacts> = {};
+  for (const venue of venues) {
+    if (venue.budget) facts[venue.placeId] = { budget: venue.budget };
+  }
+  return Object.keys(facts).length > 0 ? facts : undefined;
 }
 
 /* -------------------------------------------------------------------------
