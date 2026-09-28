@@ -239,6 +239,36 @@ export function allStillInHaveApproved(
   );
 }
 
+/**
+ * Which of B8's two status-change email triggers, if any, this response
+ * just caused -- pure, same reason as `allStillInHaveApproved` above: it
+ * only reads the two statuses `respondToMeeting`'s transaction already
+ * has on hand (before its own updates, and after them), so it is
+ * unit-tested without a database while the transition itself stays
+ * DB-tested the way it already is.
+ *
+ * `closed` can never recur (`CLOSED_MEETING_STATUSES` blocks any further
+ * response to a closed meeting), but `stuck` can -- a meeting can sit
+ * `stuck` and still take another response (an amendment past the cap, for
+ * instance), so `justStuck` needs the "wasn't already" half of the check
+ * that `justClosed` technically doesn't. Both get it, for the same shape
+ * and because "technically doesn't need it" is not the same as "must not
+ * have it."
+ */
+export function transitionFlags(
+  startingStatus: MeetingStatus,
+  endingStatus: MeetingStatus
+): { justClosed: boolean; justStuck: boolean } {
+  return {
+    justClosed:
+      startingStatus !== MeetingStatus.closed &&
+      endingStatus === MeetingStatus.closed,
+    justStuck:
+      startingStatus !== MeetingStatus.stuck &&
+      endingStatus === MeetingStatus.stuck,
+  };
+}
+
 export type RespondToMeetingResult = {
   meeting: Meeting;
   /** Set for approve / cant_make_it / doesnt_suit, null for an amendment. */
@@ -251,6 +281,24 @@ export type RespondToMeetingResult = {
    * them (spec §5.7). Always empty unless `kind` was `approve`.
    */
   cancelledConflicts: Meeting[];
+  /**
+   * True only on the response whose branch actually moved this meeting
+   * onto `closed` just now (B8, spec §5.5 trigger #3) -- never on a
+   * re-check of a meeting that was already closed, though that case can't
+   * reach here anyway: `closed` is in `CLOSED_MEETING_STATUSES`, so a
+   * further response to a closed meeting throws `MeetingNotOpenError`
+   * before this is ever computed.
+   */
+  justClosed: boolean;
+  /**
+   * True only on the response whose branch actually moved this meeting
+   * onto `stuck` just now (B8, spec §5.5 trigger #5). Unlike `closed`,
+   * `stuck` is **not** in `CLOSED_MEETING_STATUSES` -- a further response
+   * to an already-stuck meeting is allowed (an amendment past the cap,
+   * for instance), and without this flag the caller has no way to tell
+   * "just became stuck" from "was already stuck."
+   */
+  justStuck: boolean;
 };
 
 /**
@@ -316,6 +364,11 @@ export async function respondToMeeting(
     if (CLOSED_MEETING_STATUSES.includes(existingResponse.meeting.status)) {
       throw new MeetingNotOpenError(meetingId);
     }
+
+    // Captured before any of this call's own updates, so `justClosed` /
+    // `justStuck` below can tell "became so just now" from "already was" --
+    // see their own comments on `RespondToMeetingResult`.
+    const startingStatus = existingResponse.meeting.status;
 
     let response: Response | null = null;
     let participantContext: ParticipantMeetingContext | null = null;
@@ -458,7 +511,13 @@ export async function respondToMeeting(
       }
     }
 
-    return { meetingRow, response, participantContext, cancelledConflicts };
+    return {
+      meetingRow,
+      response,
+      participantContext,
+      cancelledConflicts,
+      ...transitionFlags(startingStatus, meetingRow.status),
+    };
   });
 
   return {
@@ -466,6 +525,8 @@ export async function respondToMeeting(
     response: result.response,
     participantContext: result.participantContext,
     cancelledConflicts: result.cancelledConflicts.map(meetingFromRow),
+    justClosed: result.justClosed,
+    justStuck: result.justStuck,
   };
 }
 

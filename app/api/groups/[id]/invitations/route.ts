@@ -1,12 +1,20 @@
 // Inviting someone to a group, by email (B4, spec §5.3, §12.1). Only a
-// current member of the group can invite; sending the actual email is B8's
-// job (Resend) — this route only creates the Invitation row the eventual
-// email will carry a link to.
+// current member of the group can invite.
+//
+// B8 part two: the invitation email fires from here, via `after()`, and
+// only on the row-creation path below — the "already invited, same row
+// returned" path a few lines down is deliberately not a resend (spec §5.5
+// names five triggers, not "every time someone clicks invite again"), and
+// neither is the P2002 race-recovery path in the catch block, for the same
+// reason: whichever concurrent request actually created the row is the one
+// that already sent it.
 
 import { auth } from "@/auth";
 import { getPrisma } from "@/lib/db/client";
 import { inviteToGroupSchema } from "@/lib/groups/schema";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { notifyInvitation } from "@/lib/email/notify";
+import { after } from "next/server";
 
 /**
  * Listing a group's invitations, for the "pending and accepted members"
@@ -113,6 +121,7 @@ export async function POST(
     const invitation = await prisma.invitation.create({
       data: { groupId, email, invitedById: userId },
     });
+    after(() => notifyInvitation(invitation.id));
     return Response.json(invitation, { status: 201 });
   } catch (error) {
     // A concurrent request for the same (group, email) lost the race to

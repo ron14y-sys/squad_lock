@@ -61,7 +61,7 @@ import { originOf } from "./distance";
 import { pairId } from "./schemas";
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
 import { buildShortlist } from "./funnel";
-import { notifyProposalWaiting } from "@/lib/email/notify";
+import { notifyProposalWaiting, notifyStuck } from "@/lib/email/notify";
 import type { MatchAgentInput } from "./agent";
 
 /**
@@ -549,11 +549,22 @@ export async function runCycle(
     if (error instanceof NoSolutionError) {
       // Conditional on the status, so a meeting somebody closed or cancelled
       // while this was running is not dragged back to `stuck`.
-      await getPrisma().meeting.updateMany({
+      const claimed = await getPrisma().meeting.updateMany({
         where: { id: meetingId, status: MeetingStatus.weighing },
         data: { status: MeetingStatus.stuck },
       });
       console.warn(`[a8] stuck meeting=${meetingId}`, error.message);
+      // Spec §5.5 trigger #5, B8 part two's other `stuck` hook
+      // (`respondToMeeting`'s is the cycle-cap one). Gated on `claimed.count`,
+      // not just "we're in this branch" -- the same race the status update
+      // itself guards against (a meeting somebody closed or cancelled while
+      // this ran) would otherwise notify about a status change that didn't
+      // actually happen. This is already background code by the time it
+      // runs (see the header comment on why `weigh()`'s own trigger is
+      // awaited directly, not backgrounded again), so no `after()` here.
+      if (claimed.count > 0) {
+        await notifyStuck(meetingId);
+      }
       return null;
     }
 

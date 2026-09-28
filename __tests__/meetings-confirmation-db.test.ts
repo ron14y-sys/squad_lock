@@ -102,18 +102,27 @@ describe.skipIf(!CONNECTED)(
         kind: "approve",
       });
       expect(afterYoav.meeting.status).toBe("closed");
+      // B8 part two reads this to decide whether to fire the "meeting
+      // confirmed" email — proving it's set for real, not just in the pure
+      // transitionFlags unit tests.
+      expect(afterYoav.justClosed).toBe(true);
     });
 
     it("closes the meeting when the last non-approver drops out instead of approving", async () => {
       if (!prisma) return;
       const { dana, yoav, meeting } = await seedAwaitingMeeting("dropout");
 
-      await respondToMeeting(meeting.id, dana.id, { kind: "approve" });
+      const afterDana = await respondToMeeting(meeting.id, dana.id, {
+        kind: "approve",
+      });
+      expect(afterDana.justClosed).toBe(false);
+
       const afterYoav = await respondToMeeting(meeting.id, yoav.id, {
         kind: "cant_make_it",
       });
 
       expect(afterYoav.meeting.status).toBe("closed");
+      expect(afterYoav.justClosed).toBe(true);
     });
 
     it("does not close the meeting while someone still in hasn't responded", async () => {
