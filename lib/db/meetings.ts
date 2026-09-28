@@ -211,6 +211,34 @@ async function cancelConflictingMeetings(
   return cancelled;
 }
 
+/**
+ * spec §3's step 8 — "Confirmation: once everyone still in has approved,
+ * the card closes." "Still in" excludes anyone who said `cant_make_it` —
+ * the same definition A8's `assembleRun` uses for who is still attending
+ * (`run-cycle.ts`).
+ *
+ * Nobody still in is not a confirmation: every `Response` row is created at
+ * initiation for a current group member (`initiateMeeting`), so this only
+ * happens if literally everyone later drops out, and there is nobody left
+ * to confirm a time and place for. It reads as "not yet," never as
+ * "vacuously yes."
+ *
+ * Pure, and reads only the one field it needs, so `respondToMeeting`'s
+ * transaction can hand it the rows it already fetched without reshaping
+ * them — and this is unit-tested without a database.
+ */
+export function allStillInHaveApproved(
+  responses: readonly { status: ResponseStatus }[]
+): boolean {
+  const stillIn = responses.filter(
+    (response) => response.status !== ResponseStatus.cant_make_it
+  );
+  if (stillIn.length === 0) return false;
+  return stillIn.every(
+    (response) => response.status === ResponseStatus.approved
+  );
+}
+
 export type RespondToMeetingResult = {
   meeting: Meeting;
   /** Set for approve / cant_make_it / doesnt_suit, null for an amendment. */
@@ -245,6 +273,14 @@ export type RespondToMeetingResult = {
  *   Spec §3.1 caps "**reject-and-rematch** cycles" at three, and the opening
  *   proposal is not one — nobody had rejected anything yet. So a meeting gets
  *   four proposals in all, and all three rejections are answered.
+ *
+ *   `approve` and `cant_make_it` also each check, after their own update,
+ *   whether the meeting has just been confirmed — spec §3's step 8,
+ *   `allStillInHaveApproved`. Either can be the response that completes
+ *   "everyone still in": approving can finish the set, and so can dropping
+ *   out, if the person who just said `cant_make_it` was the only one left
+ *   who hadn't approved. The check only runs while the meeting is
+ *   `awaiting`, the one status meaning a live proposal is actually out.
  * - `amendment` — appends a ParticipantMeetingContext row rather than
  *   touching Response at all, because it corrects the *input*, not the
  *   output (see that type's own comment). The first one for a given
@@ -398,6 +434,28 @@ export async function respondToMeeting(
               : MeetingStatus.weighing,
         },
       });
+    }
+
+    // spec §3 step 8 — confirmation. `awaiting` is the only status meaning
+    // a live proposal is actually out: `weighing` has nothing to confirm
+    // yet, and a rejection or the cycle cap already moved the status away
+    // in their own branches above — which is why this reads
+    // `meetingRow.status` fresh rather than assuming anything about the
+    // row this transaction started with.
+    if (
+      (input.kind === "approve" || input.kind === "cant_make_it") &&
+      meetingRow.status === MeetingStatus.awaiting
+    ) {
+      const allResponses = await tx.response.findMany({
+        where: { meetingId },
+        select: { status: true },
+      });
+      if (allStillInHaveApproved(allResponses)) {
+        meetingRow = await tx.meeting.update({
+          where: { id: meetingId },
+          data: { status: MeetingStatus.closed },
+        });
+      }
     }
 
     return { meetingRow, response, participantContext, cancelledConflicts };
