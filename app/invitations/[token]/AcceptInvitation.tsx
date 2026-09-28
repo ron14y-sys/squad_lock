@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ScreenState } from "@/app/_components/ScreenState";
 
 type State =
   | { status: "idle" | "accepting" }
@@ -59,9 +60,9 @@ export function AcceptInvitation({ token }: { token: string }) {
 
   if (state.status === "signed-out") {
     return (
-      <p className="sl-page sl-sub text-center">
+      <ScreenState kind="notice" signIn>
         התחבר עם Google כדי להצטרף לקבוצה.
-      </p>
+      </ScreenState>
     );
   }
 

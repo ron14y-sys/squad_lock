@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ScreenState } from "@/app/_components/ScreenState";
 
 type GroupMember = {
   userId: string;
@@ -107,24 +108,30 @@ export function GroupDetail({ groupId }: { groupId: string }) {
   }
 
   if (loadState === "loading") {
-    return <p className="sl-page sl-sub">טוען את הקבוצה…</p>;
+    return <ScreenState kind="loading">טוען את הקבוצה…</ScreenState>;
   }
 
   if (loadState === "signed-out") {
-    return <p className="sl-page sl-sub">התחבר כדי לראות את הקבוצה.</p>;
+    return (
+      <ScreenState kind="notice" signIn>
+        התחבר כדי לראות את הקבוצה.
+      </ScreenState>
+    );
   }
 
   if (loadState === "not-found") {
     return (
-      <p className="sl-page sl-sub">הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.</p>
+      <ScreenState kind="notice">
+        הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.
+      </ScreenState>
     );
   }
 
   if (loadState === "error" || !group) {
     return (
-      <p className="sl-page sl-sub">
+      <ScreenState kind="error">
         לא הצלחנו לטעון את הקבוצה. נסה לרענן את הדף.
-      </p>
+      </ScreenState>
     );
   }
 

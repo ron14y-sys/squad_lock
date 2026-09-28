@@ -462,3 +462,30 @@ html[data-theme="dark"] .sl-chip {
   max-width: 36rem;
   margin-inline: auto;
 }
+
+/* grey placeholder cards shown while a screen loads */
+.sl-skel {
+  height: 76px;
+  border: var(--sl-cb);
+  border-radius: var(--sl-r);
+  background: var(--sl-card);
+  animation: sl-shimmer 1.4s ease-in-out infinite;
+}
+.sl-skel.short {
+  height: 48px;
+  width: 65%;
+}
+@keyframes sl-shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sl-skel {
+    animation: none;
+  }
+}

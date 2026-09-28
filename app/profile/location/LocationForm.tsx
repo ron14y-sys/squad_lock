@@ -17,6 +17,7 @@ import {
   MOBILITY_MODE_LABELS,
   WEEKDAY_LABELS,
 } from "@/lib/format/hebrew-labels";
+import { ScreenState } from "@/app/_components/ScreenState";
 
 /**
  * Labels the user sees; kilometres are what get stored and unit-tested
@@ -110,22 +111,22 @@ export function LocationForm() {
   }
 
   if (loadState === "loading") {
-    return <p className="sl-page sl-sub">טוען את הפרופיל שלך…</p>;
+    return <ScreenState kind="loading">טוען את הפרופיל שלך…</ScreenState>;
   }
 
   if (loadState === "signed-out") {
     return (
-      <p className="sl-page sl-sub">
+      <ScreenState kind="notice" signIn>
         התחבר כדי להגדיר את המיקום שלך ומרחק הנסיעה.
-      </p>
+      </ScreenState>
     );
   }
 
   if (loadState === "error") {
     return (
-      <p className="sl-page sl-sub">
+      <ScreenState kind="error">
         לא הצלחנו לטעון את הפרופיל. נסה לרענן את הדף.
-      </p>
+      </ScreenState>
     );
   }
 

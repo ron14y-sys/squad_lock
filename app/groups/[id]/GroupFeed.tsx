@@ -14,6 +14,7 @@ import {
   stickerClass,
   tiltClass,
 } from "@/app/_components/meeting-style";
+import { ScreenState } from "@/app/_components/ScreenState";
 
 type ResponseStatus = "pending" | "approved" | "cant_make_it" | "doesnt_suit";
 
@@ -174,21 +175,27 @@ export function GroupFeed({ groupId }: { groupId: string }) {
   }, [groupId]);
 
   if (loadState === "loading") {
-    return <p className="sl-page sl-sub">טוען פגישות…</p>;
+    return <ScreenState kind="loading">טוען פגישות…</ScreenState>;
   }
   if (loadState === "signed-out") {
-    return <p className="sl-page sl-sub">התחבר כדי לראות פגישות.</p>;
+    return (
+      <ScreenState kind="notice" signIn>
+        התחבר כדי לראות פגישות.
+      </ScreenState>
+    );
   }
   if (loadState === "not-found") {
     return (
-      <p className="sl-page sl-sub">הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.</p>
+      <ScreenState kind="notice">
+        הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.
+      </ScreenState>
     );
   }
   if (loadState === "error" || !feed) {
     return (
-      <p className="sl-page sl-sub">
+      <ScreenState kind="error">
         לא הצלחנו לטעון את הפגישות. נסה לרענן את הדף.
-      </p>
+      </ScreenState>
     );
   }
 
@@ -200,7 +207,7 @@ export function GroupFeed({ groupId }: { groupId: string }) {
       <h2 className="sl-sec">פגישות ({feed.openCount} פתוחות)</h2>
 
       {feed.meetings.length === 0 && (
-        <p className="sl-sub">אין עדיין פגישות בקבוצה הזו.</p>
+        <ScreenState kind="empty">אין עדיין פגישות בקבוצה הזו.</ScreenState>
       )}
 
       {feed.meetings.some((m) => m.status === "conflicting") && (
