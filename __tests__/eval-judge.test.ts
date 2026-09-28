@@ -82,7 +82,7 @@ describe("classify", () => {
 describe("blockedReason", () => {
   it("names the missing stage for every scenario that is not scored", () => {
     expect(blockedReason(loadScenario("semantic-geography-trap"))).toBe(
-      "needs A12"
+      "A12 not in v1"
     );
     // It used to answer "needs A8". A stage that has landed must not still
     // have a reason to be waiting for it.

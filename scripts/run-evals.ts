@@ -375,7 +375,10 @@ function print(rows: Row[]): void {
   // when three cannot run would be a number that means nothing.
   console.log(
     `\n${total.scored} scored · ${total.passed} passed (${total.rate}%)` +
-      aside(total.blocked, replayDir ? "not scored" : "blocked (A12)") +
+      aside(
+        total.blocked,
+        replayDir ? "not scored" : "blocked (A12 not in v1)"
+      ) +
       aside(total.deferred, "deferred (A7/A8)") +
       aside(total.unreached, "no answer")
   );

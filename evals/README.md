@@ -165,10 +165,10 @@ It performs only the _spellings_ in the table above; anything a scenario says th
 
 **Two of the seven are not scored in this table**, and the runner reports why rather than counting them as failures. There were five: `03` and `05` waited on the meeting shortening to fit the venue, and became scored when the trimming landed.
 
-| Scenario | Not here because                                                                                        |
-| -------- | ------------------------------------------------------------------------------------------------------- |
-| `04`     | waiting on **A12**: leximin on a bare straight line picks the other venue                               |
-| `08`     | **measured in the follow-up table instead.** This sweep runs cycle 1; `08`'s oracle is cycle 2's answer |
+| Scenario | Not here because                                                                                         |
+| -------- | -------------------------------------------------------------------------------------------------------- |
+| `04`     | **A12 is not in v1**: leximin on a bare straight line picks the other venue, and nothing will correct it |
+| `08`     | **measured in the follow-up table instead.** This sweep runs cycle 1; `08`'s oracle is cycle 2's answer  |
 
 `08` used to say "waiting on A7 + A8". Both landed, and `npm run eval -- --followup` now drives A8's real loop (`evals/loop.ts`) rather than a harness that imitated it — but the sweep still has no oracle for it, because the answer it states is the one _after_ a rejection. Scoring it here was tried and it **passed**, which is the worst available outcome: cycle 1 happened to choose the venue cycle 2 was expected to, and a meaningless verdict came out green. ⚠️ And read the note on `08` in [`judge.ts`](judge.ts) before quoting the follow-up number: with two candidates and the rejected one blocked, exactly one survives, so what a pass proves is that the chain ran — not that a stated budget changed anybody's mind.
 

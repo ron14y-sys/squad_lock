@@ -30,7 +30,7 @@ import { APP_TIME_ZONE } from "@/lib/types";
  *
  * | Scenario | Waiting on           | Because                                               |
  * | -------- | -------------------- | ----------------------------------------------------- |
- * | `04`     | A12 Context Resolver | leximin on a bare straight line picks the other venue |
+ * | `04`     | nothing — A12 is not in v1 | leximin on a bare straight line picks the other venue, and no stage will correct it (tasks/todo.md) |
  *
  * **`08` is `deferred` for a different reason than it used to be.** It waited
  * on A8; A8 landed, and `npm run eval -- --followup` now runs the real loop
@@ -95,7 +95,7 @@ export function classify(scenario: Scenario): Classification {
 export function blockedReason(scenario: Scenario): string {
   // Not a missing stage any more — a different table. See the note above.
   if (scenario.trap === "rejection-loop") return "judged under --followup";
-  if (scenario.trap === "semantic-geography") return "needs A12";
+  if (scenario.trap === "semantic-geography") return "A12 not in v1";
   throw new Error(
     `judge: "${scenario.id}" is scored, not blocked — it has no missing stage`
   );
