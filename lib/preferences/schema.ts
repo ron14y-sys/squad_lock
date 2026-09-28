@@ -93,7 +93,14 @@ export const preferenceProfileInputSchema = z
     recurringMobilityRules: z.array(recurringMobilityRuleSchema),
   })
   .partial()
-  .strict();
+  .strict()
+  // #132: the name was being stored with no coordinates behind it, so no
+  // meeting could be weighed. Every other field stays an independent patch,
+  // but a name is only meaningful together with the point it stands for.
+  .refine((p) => p.homeNeighbourhood === undefined || p.home !== undefined, {
+    message: "homeNeighbourhood must be sent together with home.",
+    path: ["home"],
+  });
 
 export type PreferenceProfileInput = z.infer<
   typeof preferenceProfileInputSchema

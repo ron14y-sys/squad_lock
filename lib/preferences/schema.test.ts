@@ -111,4 +111,20 @@ describe("preferenceProfileInputSchema", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("rejects a neighbourhood name sent without its coordinates (#132)", () => {
+    const result = preferenceProfileInputSchema.safeParse({
+      homeNeighbourhood: "Florentin",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts coordinates on their own — a partial update can move the point", () => {
+    const result = preferenceProfileInputSchema.safeParse({
+      home: { lat: 32.08, lng: 34.78 },
+    });
+
+    expect(result.success).toBe(true);
+  });
 });

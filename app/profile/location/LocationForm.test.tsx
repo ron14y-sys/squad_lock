@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { findNeighbourhoodById } from "@/lib/geo/neighbourhoods";
 import { LocationForm } from "./LocationForm";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -35,6 +36,7 @@ test("loads the existing profile and pre-fills the saved values", async () => {
   fetchMock.mockResolvedValueOnce(
     jsonResponse({
       ...EMPTY_PROFILE,
+      home: { lat: 32.0563, lng: 34.769 },
       homeNeighbourhood: "פלורנטין, תל אביב",
       toleranceKm: 8,
     })
@@ -43,23 +45,23 @@ test("loads the existing profile and pre-fills the saved values", async () => {
   render(<LocationForm />);
 
   expect(
-    await screen.findByDisplayValue("פלורנטין, תל אביב")
-  ).toBeInTheDocument();
+    await screen.findByRole("combobox", { name: "שכונת מגורים" })
+  ).toHaveDisplayValue("פלורנטין, תל אביב");
   expect(screen.getByRole("button", { name: "חצי מהעיר" })).toHaveAttribute(
     "aria-pressed",
     "true"
   );
 });
 
-test("saving sends the neighbourhood name and kilometres, not the label", async () => {
+test("saving sends the picked area's name AND its coordinates (#132)", async () => {
   const user = userEvent.setup();
   fetchMock.mockResolvedValueOnce(jsonResponse(EMPTY_PROFILE));
   render(<LocationForm />);
 
   await screen.findByRole("button", { name: "ברגל" });
-  await user.type(
-    screen.getByPlaceholderText("לדוגמה: רוטשילד, תל אביב"),
-    "נווה צדק"
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "שכונת מגורים" }),
+    "נווה צדק, תל אביב"
   );
   await user.click(screen.getByRole("button", { name: "בכל מקום" }));
 
@@ -73,10 +75,34 @@ test("saving sends the neighbourhood name and kilometres, not the label", async 
   );
   const [, init] = putCall!;
   expect(JSON.parse(init.body)).toEqual({
-    homeNeighbourhood: "נווה צדק",
+    homeNeighbourhood: "נווה צדק, תל אביב",
+    home: findNeighbourhoodById("ta-neve-tzedek")!.centre,
     toleranceKm: 20,
     recurringMobilityRules: [],
   });
+});
+
+test("cannot save until an area is picked", async () => {
+  fetchMock.mockResolvedValueOnce(jsonResponse(EMPTY_PROFILE));
+  render(<LocationForm />);
+
+  await screen.findByRole("button", { name: "ברגל" });
+
+  expect(screen.getByRole("button", { name: "שמור" })).toBeDisabled();
+  expect(screen.getByText("בחר אזור מגורים כדי לשמור.")).toBeInTheDocument();
+});
+
+test("free text saved before the picker existed is not treated as a pick", async () => {
+  // Those profiles hold a name with no coordinates (#132) — the user has to
+  // choose again, or the missing point would stay missing.
+  fetchMock.mockResolvedValueOnce(
+    jsonResponse({ ...EMPTY_PROFILE, homeNeighbourhood: "ליד הים" })
+  );
+  render(<LocationForm />);
+
+  await screen.findByRole("button", { name: "ברגל" });
+
+  expect(screen.getByRole("button", { name: "שמור" })).toBeDisabled();
 });
 
 test("adding a recurring mobility rule shows it in the list", async () => {

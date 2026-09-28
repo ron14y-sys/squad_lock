@@ -272,10 +272,17 @@ html[data-theme="dark"] .sl-btn.go {
 .sl-btn:disabled,
 .sl-btn.off {
   background: transparent;
+  color: var(--sl-ink);
   border-style: dashed;
   box-shadow: none;
   opacity: 0.5;
   cursor: not-allowed;
+}
+html[data-theme="dark"] .sl-btn.go:disabled {
+  background: transparent;
+  color: var(--sl-ink);
+  border: 1px dashed #ffffff40;
+  box-shadow: none;
 }
 .sl-row {
   display: flex;
