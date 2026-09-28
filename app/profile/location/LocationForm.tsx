@@ -8,6 +8,12 @@ import type {
   RecurringMobilityRule,
 } from "@/lib/types";
 import {
+  NEIGHBOURHOODS,
+  NEIGHBOURHOOD_GROUPS,
+  findNeighbourhoodById,
+  findNeighbourhoodByLabel,
+} from "@/lib/geo/neighbourhoods";
+import {
   MOBILITY_MODE_LABELS,
   WEEKDAY_LABELS,
 } from "@/lib/format/hebrew-labels";
@@ -42,7 +48,8 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 export function LocationForm() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [homeNeighbourhood, setHomeNeighbourhood] = useState("");
+  // The picked list entry's id, or "" for nothing picked yet.
+  const [homeId, setHomeId] = useState("");
   const [toleranceKm, setToleranceKm] = useState<Kilometres>(
     TOLERANCE_OPTIONS[1].km
   );
@@ -62,7 +69,11 @@ export function LocationForm() {
       })
       .then((profile) => {
         if (cancelled || !profile) return;
-        setHomeNeighbourhood(profile.homeNeighbourhood ?? "");
+        // Free text from before the picker existed matches nothing and has to
+        // be re-picked — its coordinates were never saved anyway (#132).
+        setHomeId(
+          findNeighbourhoodByLabel(profile.homeNeighbourhood)?.id ?? ""
+        );
         setToleranceKm(profile.toleranceKm ?? TOLERANCE_OPTIONS[1].km);
         setRules(profile.recurringMobilityRules ?? []);
         setLoadState("ready");
@@ -77,13 +88,16 @@ export function LocationForm() {
   }, []);
 
   async function save() {
+    const home = findNeighbourhoodById(homeId);
+    if (!home) return;
     setSaveState("saving");
     try {
       const res = await fetch("/api/preferences", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          homeNeighbourhood: homeNeighbourhood.trim(),
+          homeNeighbourhood: home.label,
+          home: home.centre,
           toleranceKm,
           recurringMobilityRules: rules,
         }),
@@ -119,13 +133,25 @@ export function LocationForm() {
     <div className="sl-page">
       <section className="flex flex-col gap-2">
         <h2 className="sl-sec">שכונת מגורים</h2>
-        <input
-          type="text"
-          value={homeNeighbourhood}
-          onChange={(e) => setHomeNeighbourhood(e.target.value)}
-          placeholder="לדוגמה: רוטשילד, תל אביב"
+        <select
+          value={homeId}
+          onChange={(e) => setHomeId(e.target.value)}
+          aria-label="שכונת מגורים"
           className="sl-field"
-        />
+        >
+          <option value="" disabled>
+            בחר אזור מהרשימה
+          </option>
+          {NEIGHBOURHOOD_GROUPS.map((group) => (
+            <optgroup key={group} label={group}>
+              {NEIGHBOURHOODS.filter((n) => n.group === group).map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
         <p className="sl-sub">
           אנחנו שומרים רק את האזור שלך, אף פעם לא כתובת מדויקת — זה גלוי לכל מי
           שנמצא איתך בקבוצות.
@@ -159,11 +185,14 @@ export function LocationForm() {
         <button
           type="button"
           onClick={save}
-          disabled={saveState === "saving"}
+          disabled={saveState === "saving" || homeId === ""}
           className="sl-btn go"
         >
           {saveState === "saving" ? "שומר…" : "שמור"}
         </button>
+        {homeId === "" && (
+          <span className="sl-note">בחר אזור מגורים כדי לשמור.</span>
+        )}
         {saveState === "saved" && <span className="sl-note">נשמר.</span>}
         {saveState === "error" && (
           <span className="sl-note">לא הצלחנו לשמור. נסה שוב.</span>
