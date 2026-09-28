@@ -453,3 +453,12 @@ html[data-theme="dark"] .sl-chip {
   border-color: var(--sl-acc);
   color: var(--sl-onacc);
 }
+
+/* A phone-first layout. On a wide screen the content stays one readable
+   column instead of stretching edge to edge (which also made the tilted cards
+   look wildly skewed). */
+.sl-page {
+  width: 100%;
+  max-width: 36rem;
+  margin-inline: auto;
+}

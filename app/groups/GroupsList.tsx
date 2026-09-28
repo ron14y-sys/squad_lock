@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { ConflictBanner } from "@/app/_components/ConflictBanner";
 import { stickerClass, tiltClass } from "@/app/_components/meeting-style";
-import { meetingStatusLabel } from "@/lib/format/hebrew-labels";
+import { meetingStatusLabel, membersLabel } from "@/lib/format/hebrew-labels";
 import { meetingDateLabel, meetingTimeLabel } from "@/lib/format/meeting-when";
 
 type GroupMember = {
@@ -151,7 +151,9 @@ export function GroupsList() {
               <div className="sl-sq">{group.name.charAt(0)}</div>
               <div className="sl-body">
                 <div className="sl-ttl">{group.name}</div>
-                <div className="sl-line">{group.members.length} חברים</div>
+                <div className="sl-line">
+                  {membersLabel(group.members.length)}
+                </div>
               </div>
               {awaiting > 0 && (
                 <span className="sl-cnt">{awaiting} ממתינים לך</span>

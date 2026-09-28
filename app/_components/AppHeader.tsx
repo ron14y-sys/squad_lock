@@ -12,7 +12,7 @@ export async function AppHeader() {
 
   return (
     <header className="safe-top sticky top-0 z-10 backdrop-blur">
-      <div className="flex h-14 items-center justify-between gap-2 px-4">
+      <div className="mx-auto flex h-14 w-full max-w-xl items-center justify-between gap-2 px-4">
         <span className="sl-logo">SquadLock</span>
         <ThemeToggle />
         {session?.user ? (
