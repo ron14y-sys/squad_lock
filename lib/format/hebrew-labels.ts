@@ -102,3 +102,8 @@ export function unverifiedNote(
 
   return `לא הצלחנו לאמת ${list} — כדאי לטלפן ולוודא לפני שיוצאים.`;
 }
+
+/** "חבר אחד" / "2 חברים" — Hebrew has a singular, so "1 חברים" reads as a mistake. */
+export function membersLabel(count: number): string {
+  return count === 1 ? "חבר אחד" : `${count} חברים`;
+}

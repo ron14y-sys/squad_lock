@@ -80,7 +80,7 @@ test("lists the signed-in user's groups with a member count", async () => {
   render(<GroupsList />);
 
   expect(await screen.findByText("Rothschild Regulars")).toBeInTheDocument();
-  expect(screen.getByText("1 חברים")).toBeInTheDocument();
+  expect(screen.getByText("חבר אחד")).toBeInTheDocument();
 });
 
 test("shows an empty state with no groups yet", async () => {
