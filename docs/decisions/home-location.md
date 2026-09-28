@@ -46,11 +46,24 @@ Swapping the source for a search later changes `neighbourhoods.ts` and the
    on the groups screens links to the location screen. It says nothing when signed
    out, on a network error, or while loading.
 
+## The meeting screen says who is missing a home
+
+#132 asked for "a reason on the `stuck` screen". Reading `runCycle` showed the
+reason belongs in a wider place: a missing origin makes `originOf` throw
+`BurdenError`, and only `NoSolutionError` marks a meeting `stuck`. So a meeting
+with someone missing a home is not stuck — it sits in weighing with no proposal
+and, until now, no explanation outside a server log.
+
+`getMeetingDetail` therefore returns `missingHome` for a meeting that has **no
+proposal or is stuck**, and the meeting screen shows a notice naming them (with
+"set it now" for the viewer themselves). "Missing" mirrors `originOf`: no home
+point **and** no origin amendment for this meeting, since tonight's amendment
+wins over home (spec §5.7). The rule is `withoutOrigin` in
+[`lib/db/meeting-detail.ts`](../../lib/db/meeting-detail.ts), free of the
+database and unit-tested.
+
 ## Not done, on purpose
 
-- **The `stuck` screen does not yet say "someone in the group has no home".**
-  #132 asks for it; it needs the meeting detail to know whose origin is missing,
-  which is a change to what `getMeetingDetail` returns. Left for its own change.
 - **Existing profiles are not migrated.** Free text from before the picker matches
   nothing and shows as "not picked", so those users see the banner and pick again.
   Their coordinates were never saved, so nothing is lost.

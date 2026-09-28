@@ -21,6 +21,7 @@ function detail(overrides: Record<string, unknown> = {}) {
     isStuck: false,
     isInitiator: false,
     conflicts: [],
+    missingHome: [],
     initiatorName: "אלדד",
     pinnedVenue: null,
     occasion: null,
@@ -322,4 +323,66 @@ test("a meeting that is not stuck shows no stuck panel", async () => {
   await screen.findByText("בית קפה נורדאו");
 
   expect(screen.queryByText("הפגישה הזו תקועה")).not.toBeInTheDocument();
+});
+
+test("says who has no home area when that is why there is no proposal (#132)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            proposal: null,
+            missingHome: [{ userId: "u1", name: "רון" }],
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText(/רון עוד לא הגדיר.ה שכונת מגורים/)
+  ).toBeInTheDocument();
+  // The viewer (u2) is not the one missing, so no prompt to fix their own.
+  expect(
+    screen.queryByRole("link", { name: "הגדר עכשיו" })
+  ).not.toBeInTheDocument();
+});
+
+test("tells the viewer where to fix it when they are the one missing", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            proposal: null,
+            missingHome: [{ userId: "u2", name: "דני" }],
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByRole("link", { name: "הגדר עכשיו" })
+  ).toHaveAttribute("href", "/profile/location");
+});
+
+test("shows no notice when nobody is missing a home area", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(jsonResponse(detail({ proposal: null }))))
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  await screen.findByText("עדיין אין הצעה — הסוכן בוחן אפשרויות.");
+  expect(
+    screen.queryByText("אי אפשר להכין הצעה עדיין")
+  ).not.toBeInTheDocument();
 });
