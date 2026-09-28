@@ -1,0 +1,135 @@
+{
+  "id": "six-profiles-outlier",
+  "trap": "six-profiles",
+  "description": "Six participants, five of them close together in central Tel Aviv and one in Petah Tikva. The two better-rated venues suit all five and leave the sixth over her tolerance; the fair answer is the lowest-rated venue, worse for every one of the five. An agent holding six profiles that quietly drops the inconvenient one picks a central venue.",
+  "participants": [
+    {
+      "name": "Tamar",
+      "neighborhood": "Florentin",
+      "coordinates": {
+        "lat": 32.0565,
+        "lng": 34.769
+      },
+      "hardConstraints": ["vegan-option-required"],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Omer",
+      "neighborhood": "Rothschild",
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
+      "hardConstraints": ["kosher"],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Shira",
+      "neighborhood": "Dizengoff",
+      "coordinates": {
+        "lat": 32.0775,
+        "lng": 34.7745
+      },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Yoni",
+      "neighborhood": "Neve Tzedek",
+      "coordinates": {
+        "lat": 32.061,
+        "lng": 34.765
+      },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Maya",
+      "neighborhood": "Old North",
+      "coordinates": {
+        "lat": 32.09,
+        "lng": 34.78
+      },
+      "hardConstraints": [],
+      "toleranceKm": 5
+    },
+    {
+      "name": "Yael",
+      "neighborhood": "Petah Tikva",
+      "coordinates": {
+        "lat": 32.088,
+        "lng": 34.887
+      },
+      "hardConstraints": [],
+      "toleranceKm": 8
+    }
+  ],
+  "availability": [
+    {
+      "day": "Thursday",
+      "date": "2026-10-08",
+      "start": "19:00",
+      "end": "23:00"
+    }
+  ],
+  "candidateVenues": [
+    {
+      "placeId": "place-09-dizengoff-corner-bistro",
+      "name": "Dizengoff Corner Bistro",
+      "neighborhood": "Dizengoff",
+      "coordinates": {
+        "lat": 32.0785,
+        "lng": 34.774
+      },
+      "dietary": {
+        "satisfies": ["kosher", "vegan-option-required"],
+        "violates": []
+      },
+      "openingHours": {
+        "Thursday": ["12:00-23:30"]
+      },
+      "rating": 4.6,
+      "note": "The best-rated venue, and within 2.5 km of all five in the centre — but 10.70 km from Yael against a tolerance of 8, a burden of 1.337."
+    },
+    {
+      "placeId": "place-09-florentin-garden-bar",
+      "name": "Florentin Garden Bar",
+      "neighborhood": "Florentin",
+      "coordinates": {
+        "lat": 32.0572,
+        "lng": 34.7702
+      },
+      "dietary": {
+        "satisfies": ["kosher", "vegan-option-required"],
+        "violates": []
+      },
+      "openingHours": {
+        "Thursday": ["12:00-23:30"]
+      },
+      "rating": 4.4,
+      "note": "A second central option, so the majority has two venues to prefer rather than one. 11.53 km from Yael, a burden of 1.441 — worse for her than Dizengoff."
+    },
+    {
+      "placeId": "place-09-bursa-terrace",
+      "name": "Bursa Terrace",
+      "neighborhood": "Ramat Gan",
+      "coordinates": {
+        "lat": 32.0835,
+        "lng": 34.803
+      },
+      "dietary": {
+        "satisfies": ["kosher", "vegan-option-required"],
+        "violates": []
+      },
+      "openingHours": {
+        "Thursday": ["12:00-23:30"]
+      },
+      "rating": 3.8,
+      "note": "The lowest-rated venue, and farther than either central option for every one of the five. 7.93 km from Yael, a burden of 0.991 — the only venue that leaves nobody over tolerance."
+    }
+  ],
+  "expected": {
+    "venue": "Bursa Terrace",
+    "reasoning": "Every venue satisfies both hard constraints and is open for the whole window, so steps 1 and 2 remove nothing and the answer is leximin alone. Straight-line burdens (distance / toleranceKm, computed from the coordinates in this file), worst first: Dizengoff Corner Bistro is [1.337 Yael, 0.498, 0.425, 0.305, 0.280, 0.024]; Florentin Garden Bar is [1.441 Yael, 0.752, 0.459, 0.191, 0.129, 0.027]; Bursa Terrace is [0.991 Yael, 0.878, 0.874, 0.673, 0.553, 0.457]. The worst-off participant decides: 0.991 beats 1.337 and 1.441, so Bursa Terrace wins outright and no second entry is reached. It wins despite the lowest rating, despite being worse for five of the six, and despite two central options for the majority to agree on — which is exactly the pressure under which an agent holding six profiles drops the one who is inconvenient. Choosing either central venue is the omission this scenario exists to catch, even when all six justifications are present. The two hard constraints are here to make the profiles distinct, not to filter: all three venues satisfy both. Straight lines only, no detour factor (spec §5.4)."
+  }
+}

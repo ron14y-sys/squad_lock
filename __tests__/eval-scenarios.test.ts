@@ -154,6 +154,32 @@ describe("06 — no perfect solution, dispersed group", () => {
   });
 });
 
+describe("09 — six profiles, one of them inconvenient", () => {
+  const scenario = byId("six-profiles-outlier");
+
+  it("holds six people, which is the question A10 asks", () => {
+    expect(scenario.participants).toHaveLength(6);
+  });
+
+  it("agrees with the leximin its own coordinates produce", () => {
+    expect(leximinWinner(scenario)).toBe(scenario.expected.venue);
+  });
+
+  it("is decided by the one participant the better-rated venues leave behind", () => {
+    // Both central venues suit all five and put Yael over tolerance. Bursa is
+    // the lowest-rated and worse for each of the five.
+    expect(round(vectorFor(scenario, "Dizengoff Corner Bistro"))).toEqual([
+      1.337, 0.498, 0.425, 0.305, 0.28, 0.024,
+    ]);
+    expect(round(vectorFor(scenario, "Florentin Garden Bar"))).toEqual([
+      1.441, 0.752, 0.459, 0.191, 0.129, 0.027,
+    ]);
+    expect(round(vectorFor(scenario, "Bursa Terrace"))).toEqual([
+      0.991, 0.878, 0.874, 0.673, 0.553, 0.457,
+    ]);
+  });
+});
+
 describe("04 — the semantic geography trap", () => {
   const scenario = byId("semantic-geography-trap");
 

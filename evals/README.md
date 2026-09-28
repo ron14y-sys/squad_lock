@@ -48,7 +48,7 @@ The burden formula is defined on a straight line with a detour factor. **The sys
 ```json
 {
   "id": "kebab-case-id",
-  "trap": "hard-constraint | closed-on-the-night | mobility-window | semantic-geography | no-perfect-solution | rejection-loop",
+  "trap": "hard-constraint | closed-on-the-night | mobility-window | semantic-geography | no-perfect-solution | rejection-loop | six-profiles",
   "description": "One sentence: what this scenario is designed to catch.",
   "unresolved": "optional — present only while a scenario is known not to test what it claims",
   "participants": [
@@ -116,8 +116,9 @@ And the things that **were** wrong, fixed in [#86](https://github.com/ron14y-sys
 | 5   | `05-no-perfect-solution-diet-conflict.json`   | no-perfect-solution | Conflicting hard/soft requirements; the answer is agreed, not computed.                                                                                           |
 | 6   | `06-no-perfect-solution-dispersed-group.json` | no-perfect-solution | Every candidate leaves someone over their tolerance, and leximin picks the lower-rated venue anyway.                                                              |
 | 7   | `08-rejection-loop-budget.json`               | rejection-loop      | A rejection about cost must produce a visibly cheaper follow-up.                                                                                                  |
+| 8   | `09-six-profiles-outlier.json`                | six-profiles        | Six people, five close together; the fair answer is the lowest-rated venue, chosen for the one who lives far away. Added by A10.                                  |
 
-7 of 8–12 required, all agreed by the team.
+8 of 8–12 required, all agreed by the team.
 
 ⚠️ **The numbers are positional, and `07` is gone.** It asked for a visibly
 _quieter_ follow-up, which requires knowing how loud a venue is — and there is

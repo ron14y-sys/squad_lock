@@ -650,7 +650,7 @@ describe("what the model is shown", () => {
     expect(payload).not.toContain("no preference");
   });
 
-  it("gives the model each person's needs and lost travel modes to name (A6)", () => {
+  it("gives the model each person's lost travel modes, and not their dietary needs", () => {
     const adi = participant("u-adi", "Adi", ROTHSCHILD, {
       hardConstraints: { dietary: ["kosher"], allergies: [], unavailable: [] },
       recurringMobilityRules: [
@@ -661,8 +661,68 @@ describe("what the model is shown", () => {
       buildPayload(inputFor([NEAR], [adi, YOAV]))
     );
 
-    expect(people.Adi.dietary_needs).toEqual(["kosher"]);
+    // Written by code instead — see "appends each person's own needs" below.
+    expect(people.Adi).not.toHaveProperty("dietary_needs");
     expect(pairs[0].modes_unavailable_during_slot).toEqual({ Adi: ["car"] });
+  });
+
+  describe("appends each person's own needs to their justification", () => {
+    const adi = participant("u-adi", "Adi", ROTHSCHILD, {
+      hardConstraints: {
+        dietary: ["כשר"],
+        allergies: ["אגוזים"],
+        unavailable: [],
+      },
+    });
+    const reason = "מרוטשילד, בטווח שציינת כנוח לנסיעה.";
+    const justificationsFor = (
+      facts?: Record<string, VenueDietaryFacts>
+    ): Record<string, string> =>
+      interpretAnswer(
+        answer([
+          { rank: 1, venue: "place-near", people: ["u-adi", "u-yoav"], reason },
+        ]),
+        inputFor([NEAR], [adi, YOAV], facts)
+      ).options[0]!.participantJustifications;
+
+    it("names a need the venue is known to meet, to its owner only", () => {
+      const justifications = justificationsFor({
+        "place-near": { satisfies: ["כשר", "אגוזים"], violates: [] },
+      });
+
+      expect(justifications["u-adi"]).toBe(
+        `${reason} המקום עומד בדרישה שלך: כשר. המקום מתאים לאלרגיה שלך: אגוזים.`
+      );
+      expect(justifications["u-yoav"]).toBe(reason);
+    });
+
+    it("closes the model's sentence before appending, when it left it open", () => {
+      const open = "מרוטשילד, בטווח שציינת כנוח לנסיעה";
+      const justifications = interpretAnswer(
+        answer([
+          {
+            rank: 1,
+            venue: "place-near",
+            people: ["u-adi", "u-yoav"],
+            reason: open,
+          },
+        ]),
+        inputFor([NEAR], [adi, YOAV], {
+          "place-near": { satisfies: ["כשר", "אגוזים"], violates: [] },
+        })
+      ).options[0]!.participantJustifications;
+
+      expect(justifications["u-adi"]).toMatch(
+        /^מרוטשילד, בטווח שציינת כנוח לנסיעה\. המקום/
+      );
+      expect(justifications["u-yoav"]).toBe(open);
+    });
+
+    it("never claims a need the venue could not be checked against", () => {
+      // No facts at all: A2 lets the pair through as unverified, and saying
+      // "kosher" here is exactly the claim nobody could make.
+      expect(justificationsFor()["u-adi"]).toBe(reason);
+    });
   });
 
   it("shows a correction and the words it came from, and only to their owner", () => {

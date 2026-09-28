@@ -51,6 +51,7 @@ import {
   availableModes,
   describeSlot,
   MOBILITY_MODES,
+  normaliseTag,
   type ConstraintInput,
   type UnverifiedFact,
   type ViablePair,
@@ -231,12 +232,15 @@ HOW TO CHOOSE
 HOW TO WRITE THE JUSTIFICATIONS
 - Write one for EVERY participant on EVERY option, addressed to that person, in their own terms. Never omit anyone, and never justify to somebody who is not in the list.
 - Write every "reason" in Hebrew. Names may stay as they are written above.
-- You do not know anyone's gender, so describe the place and the trip rather than the person ("קרוב לפלורנטין, והמקום כשר", not "תגיע בקלות").
-- Use only facts given above. Never invent a route, a road, a travel time, a transport schedule, or anything about a venue. When there is little to say about someone, say little.
-- Every pair meets every dietary need and allergy, but never say so of a pair marked "verified": false.
-- A person's dietary needs, allergies and unavailable travel modes are private: mention them only in that person's own justification. Their correction and their own words are theirs on exactly the same terms.
+- You do not know anyone's gender, so describe the place and the trip rather than the person ("קרוב לפלורנטין", not "תגיע בקלות").
+- Use only facts given above. Never invent a route, a road, a travel time, a transport schedule, or anything about a venue.
+- Never mention dietary needs or allergies: they are added to each person's justification after you answer.
+- Every justification names ALL of that person's own facts that apply to the pair, not just one: every stated preference or tonight_correction the venue answers (only where "venue_is" says so), and every travel mode they lose during the slot.
+- Every justification also names the trip: from their neighbourhood, and whether their burden is within the distance they said they would travel (1.0 or less — "מפלורנטין, בטווח שציינת כנוח לנסיעה") or beyond it (above 1.0 — "מפתח תקווה, מעט מעבר לטווח שציינת"). Never leave out a trip that is beyond their range; that is the fact they most need to see.
+- Never attribute a preference someone did not state. Two people get the same sentence only when their facts are the same.
+- A person's unavailable travel modes are private: mention them only in that person's own justification. Their correction and their own words are theirs on exactly the same terms.
 - When an option answers somebody's own objection, you may say so to them — "שקט יותר, כמו שביקשת". That is not the comparison forbidden below: it is their own request, not the cost of an option they did not get.
-- Name a constraint, never a comparison. "קרוב לפלורנטין, והמקום כשר" is right. "רחוק יותר מהאפשרות ההוגנת ביותר" is forbidden — the person never sees what an option cost them.
+- Name a constraint, never a comparison. "מפלורנטין, בטווח שציינת כנוח לנסיעה" is right. "רחוק יותר מהאפשרות ההוגנת ביותר" is forbidden — the person never sees what an option cost them.
 - "traded_away" is the opposite: it is internal, nobody is shown it, and it is where the honest cost of the choice belongs. Say what was given up and for whom. Leave it empty only when the option genuinely gives nothing up.`;
 
 /* -------------------------------------------------------------------------
@@ -272,9 +276,9 @@ export function buildPayload(input: MatchAgentInput): string {
     // Absent fields are absent here too. Filling them with "no preference"
     // would hand the model a value to reason about where there is none (#86).
     stated_preferences: person.profile.softPreferences,
-    // Already enforced by A2 — here only so a justification can name them (A6).
-    dietary_needs: person.profile.hardConstraints.dietary,
-    allergies: person.profile.hardConstraints.allergies,
+    // Dietary needs and allergies are deliberately absent: `withOwnNeeds`
+    // writes them into the justification after the answer, because the model
+    // dropped them when asked to. What it never sees it cannot misstate.
     // A7's two halves. Shown beside `stated_preferences` rather than merged
     // into it: the model has to be able to tell a standing preference from
     // something said about tonight, or it cannot answer the objection in
@@ -431,6 +435,7 @@ export function interpretAnswer(
     venueFacts: input.venueFacts,
   };
   const candidateById = new Map(input.candidates.map((c) => [c.placeId, c]));
+  const personById = new Map(input.participants.map((p) => [p.userId, p]));
   const unverifiedByPair = new Map(
     input.viable.map((pair) => [
       pairId(pair.candidatePlaceId, pair.slot),
@@ -456,6 +461,8 @@ export function interpretAnswer(
     );
 
     const candidate = candidateById.get(option.venue_id) as Candidate;
+    const unverified =
+      unverifiedByPair.get(pairId(option.venue_id, slot)) ?? [];
 
     return {
       rank: option.rank,
@@ -468,10 +475,13 @@ export function interpretAnswer(
       proposedDatetime: slot.start,
       proposedEnd: slot.end,
       participantJustifications: Object.fromEntries(
-        option.justifications.map((j) => [j.participant_id, j.reason])
+        option.justifications.map((j) => [
+          j.participant_id,
+          withOwnNeeds(j.reason, personById.get(j.participant_id)!, unverified),
+        ])
       ),
       tradeoffs: { tradedAway: option.traded_away },
-      unverified: unverifiedByPair.get(pairId(option.venue_id, slot)) ?? [],
+      unverified,
     } satisfies MatchOptionDraft;
   });
 
@@ -481,6 +491,49 @@ export function interpretAnswer(
     shortlist: input.ranked,
     options: drafts,
   };
+}
+
+/**
+ * A person's dietary needs and allergies, appended to their own justification
+ * by code rather than left to the model.
+ *
+ * Measured on scenarios 05 and 09: `gemini-3.5-flash-lite` dropped these on
+ * every run, under two different prompts, while naming the trip reliably. They
+ * are facts, not prose — A2 has already checked every one against this pair —
+ * so they are written here, in the person's own tag as they entered it.
+ * A tag the pair could not verify is left out: saying it is met is exactly the
+ * claim A2 could not make.
+ */
+function withOwnNeeds(
+  reason: string,
+  person: Participant,
+  unverified: readonly UnverifiedFact[]
+): string {
+  const unchecked = new Set(
+    unverified.flatMap((fact) => (fact.kind === "dietary" ? [fact.tag] : []))
+  );
+  const met = (tags: readonly string[]) =>
+    tags.filter((tag) => !unchecked.has(normaliseTag(tag)));
+
+  const dietary = met(person.profile.hardConstraints.dietary);
+  const allergies = met(person.profile.hardConstraints.allergies);
+  if (!dietary.length && !allergies.length) return reason;
+
+  // The model does not always end with a full stop, and without one the
+  // appended sentence runs on into its last word.
+  const closed = /[.!?]$/.test(reason.trim())
+    ? reason.trim()
+    : `${reason.trim()}.`;
+
+  return [
+    closed,
+    ...(dietary.length
+      ? [`המקום עומד בדרישה שלך: ${dietary.join(", ")}.`]
+      : []),
+    ...(allergies.length
+      ? [`המקום מתאים לאלרגיה שלך: ${allergies.join(", ")}.`]
+      : []),
+  ].join(" ");
 }
 
 /** JSON first, then the schema. Both failures are the same kind of failure. */
