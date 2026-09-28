@@ -67,13 +67,18 @@ function participant(
   };
 }
 
-function candidate(placeId: string, location: LatLng = ROTHSCHILD): Candidate {
+function candidate(
+  placeId: string,
+  location: LatLng = ROTHSCHILD,
+  rating?: number
+): Candidate {
   return {
     placeId,
     name: placeId,
     address: null,
     location,
     neighbourhood: null,
+    ...(rating === undefined ? {} : { rating }),
   };
 }
 
@@ -273,5 +278,74 @@ describe("buildShortlist", () => {
 
     expect(result.gatedOut).toHaveLength(1);
     expect(result.viable).toEqual([]);
+  });
+
+  it("fills entirely by leximin when nothing has a rating — the raw-search-pool pass", () => {
+    // Same pool and assertion as the SHORTLIST_SIZE cap test above, just
+    // read as a statement about the dual list: with no candidate rated,
+    // the rating list is empty, so this is unchanged from leximin-only.
+    const dana = participant("u-dana", "Dana", ROTHSCHILD, 100);
+    const candidates = Array.from({ length: 30 }, (_, i) =>
+      candidate(`place-${i}`, { lat: 32.0648 + i * 0.0001, lng: 34.7749 })
+    );
+
+    const result = buildShortlist({
+      candidates,
+      participants: [dana],
+      slots: [THREE_HOUR_WINDOW],
+    });
+
+    expect(result.shortlist).toHaveLength(24);
+    expect(result.shortlist.map((s) => s.candidate.placeId)).toEqual(
+      candidates.slice(0, 24).map((c) => c.placeId)
+    );
+  });
+
+  it("rescues a candidate with the worst leximin rank in the pool, because it is the only one with a rating — both lists are represented", () => {
+    const dana = participant("u-dana", "Dana", ROTHSCHILD, 100);
+    // 30 candidates, fairness strictly worsening with i (place-29 is the
+    // least fair of all of them) — a pool bigger than SHORTLIST_SIZE, so the
+    // cap actually excludes someone. Only place-29 has a rating.
+    const candidates = Array.from({ length: 30 }, (_, i) =>
+      candidate(
+        `place-${i}`,
+        { lat: 32.0648 + i * 0.0001, lng: 34.7749 },
+        i === 29 ? 5.0 : undefined
+      )
+    );
+
+    const result = buildShortlist({
+      candidates,
+      participants: [dana],
+      slots: [THREE_HOUR_WINDOW],
+    });
+
+    const ids = result.shortlist.map((s) => s.candidate.placeId);
+    expect(ids).toHaveLength(24);
+    // Leximin alone would cut it — it is the 30th-fairest of 30, well past
+    // the cap of 24. The rating list is what gets it in.
+    expect(ids).toContain("place-29");
+  });
+
+  it("does not shrink the shortlist when the leximin and rating lists overlap at the top", () => {
+    const dana = participant("u-dana", "Dana", ROTHSCHILD, 100);
+    // The fairest candidate is also the only rated one — full overlap at
+    // rank 1 of both lists. Overlap frees the slot it would have cost
+    // rather than leaving the shortlist one short.
+    const candidates = Array.from({ length: 30 }, (_, i) =>
+      candidate(
+        `place-${i}`,
+        { lat: 32.0648 + i * 0.0001, lng: 34.7749 },
+        i === 0 ? 5.0 : undefined
+      )
+    );
+
+    const result = buildShortlist({
+      candidates,
+      participants: [dana],
+      slots: [THREE_HOUR_WINDOW],
+    });
+
+    expect(result.shortlist).toHaveLength(24);
   });
 });
