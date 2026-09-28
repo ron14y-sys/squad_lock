@@ -25,7 +25,7 @@ import {
 
 describe("resolveConfig", () => {
   it("maps each task to the model spec §6.4 assigns it", () => {
-    expect(resolveConfig("matching", {}).model).toBe("gemini-3.6-flash");
+    expect(resolveConfig("matching", {}).model).toBe("gemini-3.5-flash-lite");
     expect(resolveConfig("extraction", {}).model).toBe("gemini-3.5-flash-lite");
   });
 
@@ -51,10 +51,10 @@ describe("resolveConfig", () => {
 
   it("takes the model from the environment", () => {
     const config = resolveConfig("matching", {
-      GEMINI_MATCHING_MODEL: "gemini-3.5-flash-lite",
+      GEMINI_MATCHING_MODEL: "gemini-3.6-flash",
       GEMINI_MATCHING_THINKING: "high",
     });
-    expect(config.model).toBe("gemini-3.5-flash-lite");
+    expect(config.model).toBe("gemini-3.6-flash");
     expect(config.thinkingLevel).toBe("high");
   });
 
@@ -93,7 +93,7 @@ describe("resolveConfig", () => {
       GEMINI_MATCHING_MODEL: "  ",
       GEMINI_MATCHING_THINKING: "",
     });
-    expect(config.model).toBe("gemini-3.6-flash");
+    expect(config.model).toBe("gemini-3.5-flash-lite");
     expect(config.thinkingLevel).toBe("low");
   });
 });

@@ -100,7 +100,9 @@ type TaskDefaults = {
 
 const TASK_DEFAULTS: Record<LlmTask, TaskDefaults> = {
   matching: {
-    model: "gemini-3.6-flash",
+    // A10: chose as 3.6-flash did on the six-profile scenario, 3x faster and
+    // 3.3x cheaper. See tasks/todo.md, A10.
+    model: "gemini-3.5-flash-lite",
     thinkingLevel: "low",
     timeoutMs: 290_000,
     stream: true,

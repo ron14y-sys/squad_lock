@@ -108,10 +108,10 @@ The report asks what a good group decision **would** cost ([spec §6.4](../spec.
 
 | Task                   | Default model           | Thinking | Streams | Deadline |
 | ---------------------- | ----------------------- | -------- | ------- | -------- |
-| `matching` — A4        | `gemini-3.6-flash`      | `low`    | yes     | 290s     |
+| `matching` — A4        | `gemini-3.5-flash-lite` | `low`    | yes     | 290s     |
 | `extraction` — A7, A12 | `gemini-3.5-flash-lite` | `low`    | no      | 60s      |
 
-Configuration rather than code because **A10 is an experiment** — _can the lite model hold six profiles without dropping one?_ — and an experiment that needs a commit to change one value is an experiment nobody runs twice.
+**Matching moved from `gemini-3.6-flash` to lite after A10** — same choice on the six-profile scenario, 3x faster, 3.3x cheaper ([tasks/todo.md](../../tasks/todo.md)). Configuration rather than code because **A10 is an experiment** — _can the lite model hold six profiles without dropping one?_ — and an experiment that needs a commit to change one value is an experiment nobody runs twice.
 
 Overrides: `GEMINI_MATCHING_MODEL`, `GEMINI_MATCHING_THINKING`, `GEMINI_EXTRACTION_MODEL`, `GEMINI_EXTRACTION_THINKING`. Documented in [.env.example](../../.env.example).
 
