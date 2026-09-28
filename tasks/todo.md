@@ -269,7 +269,8 @@ Tasks derived from [tasks/plan.md](plan.md). Detailed through **Milestone 1 (Wee
 
 ### Weeks 7–8
 
-- [ ] **C10 — Empty, loading and error states across every screen** — including visible progress throughout a matching run.
+- [x] **C10 — Empty, loading and error states across every screen** — the screen states are merged in #149 (`ScreenState.tsx`): skeleton cards while loading, an alert with try-again on error, a card for empty, not-found and signed-out (with a sign-in button that returns to the same page). **Visible progress throughout a matching run** (spec §12.6) is not built: it needs the route to stream and report its stages, so it is split out as **C10b, [#150](https://github.com/ron14y-sys/squad_lock/issues/150)** rather than hidden inside a checked box.
+- [ ] **C10b — Visible progress while a matching run works** — [#150](https://github.com/ron14y-sys/squad_lock/issues/150). Waits on the route reporting its stages (Track A/B).
 - [ ] **C11 — Full pass on a real phone with a stranger, no help given** — success criterion 9.
 
 ---
