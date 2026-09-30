@@ -476,23 +476,25 @@ Earlier drafts of this document treated Testing mode as a free pass for v1. It i
 
 Two future features would each cost a sensitive scope, and both are deferred partly for that reason: **calendar event creation** needs `calendar.events` (§5.2), and **habit inference** (§5.2) needs event content. Neither is an MVP dependency, and adding either would mean re-entering the verification process — a real cost to weigh, not a checkbox.
 
-#### Places API (New): Text Search is the venue source
+#### Places API (New): Nearby Search is the venue source
 
-The venue-discovery service for MVP is **Google Places API (New)**, and the endpoint is **Text Search (New)** — [documentation](https://developers.google.com/maps/documentation/places/web-service/text-search).
+The venue-discovery service for MVP is **Google Places API (New)**, and the endpoint is **Nearby Search (New)** — [documentation](https://developers.google.com/maps/documentation/places/web-service/nearby-search).
+
+> **Changed in [#165](https://github.com/ron14y-sys/squad_lock/issues/165).** This was Text Search with the query `"restaurant"`. A real search around Dizengoff on 30.9 returned 20 restaurants out of 20, and no bar or café ever reached the model. Nearby Search takes a list of place types instead, and the search asks for `restaurant`, `bar` and `cafe`.
 
 What the endpoint actually is, because each property below shapes the design:
 
-| Property         | Detail                                                                                                      |
-| ---------------- | ----------------------------------------------------------------------------------------------------------- |
-| Method and URL   | `POST https://places.googleapis.com/v1/places:searchText`                                                   |
-| Required input   | a `textQuery`                                                                                               |
-| Required header  | an explicit **response field mask** — there is no default set of fields                                     |
-| Location control | location bias or location restriction, plus type filtering                                                  |
-| Page size        | up to **20 results per page**                                                                               |
-| Hard ceiling     | **60 results across all pages**                                                                             |
-| Determinism      | **None guaranteed.** Google does not promise identical results or identical ordering for identical requests |
+| Property         | Detail                                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Method and URL   | `POST https://places.googleapis.com/v1/places:searchNearby`                                                                         |
+| Required input   | a `locationRestriction` circle                                                                                                      |
+| Type filter      | `includedTypes: ["restaurant", "bar", "cafe"]`, which matches a place's whole type list (an `italian_restaurant` is a `restaurant`) |
+| Required header  | an explicit **response field mask** — there is no default set of fields                                                             |
+| Location control | a **hard restriction**: nothing outside the circle is returned                                                                      |
+| Result ceiling   | **20 per query**, ranked by popularity, no second page                                                                              |
+| Determinism      | **None guaranteed.** Google does not promise identical results or identical ordering for identical requests                         |
 
-The last two rows are why §5.4 describes the candidate pool as provider-ranked rather than exhaustive, and why the funnel issues **one query per participant neighbourhood** instead of a single wide one: with a 60-result ceiling per query, more query centres is the only way to widen coverage. Place Details may additionally be called for shortlisted candidates.
+The last two rows are why §5.4 describes the candidate pool as provider-ranked rather than exhaustive, and why the funnel issues **one query per participant neighbourhood** instead of a single wide one: with a 20-result ceiling per query, more query centres is the only way to widen coverage. The three kinds share those 20 places. Place Details may additionally be called for shortlisted candidates.
 
 #### Places pricing: SKU-based, and driven by the fields you ask for
 
@@ -506,6 +508,7 @@ Free monthly usage per SKU, from Google's [billing and pricing page](https://dev
 | Text Search Pro                       | 5,000                |
 | Text Search Enterprise                | 1,000                |
 | Text Search Enterprise + Atmosphere   | 1,000                |
+| Nearby Search Pro                     | 5,000                |
 | Place Details Essentials (IDs Only)   | **Unlimited**        |
 | Place Details Essentials              | 10,000               |
 | Place Details Pro                     | 5,000                |

@@ -38,14 +38,14 @@ afterEach(() => {
 });
 
 describe("searchNeighbourhood", () => {
-  it("calls searchText with the Essentials+Pro field mask, the key, and a location-biased circle", async () => {
+  it("calls searchNearby with the Essentials+Pro field mask, the key, and a restricted circle", async () => {
     fetchMock.mockResolvedValueOnce(fakeResponse(true, { places: [] }));
 
     await searchNeighbourhood(CENTER, 1500);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://places.googleapis.com/v1/places:searchText");
+    expect(url).toBe("https://places.googleapis.com/v1/places:searchNearby");
     expect(init.method).toBe("POST");
     expect(init.headers["X-Goog-Api-Key"]).toBe("test-key");
     expect(init.headers["X-Goog-FieldMask"]).toBe(
@@ -55,13 +55,17 @@ describe("searchNeighbourhood", () => {
     expect(init.headers["X-Goog-FieldMask"]).not.toMatch(/rating|OpeningHours/);
 
     const body = JSON.parse(init.body as string);
-    expect(body.textQuery).toBeTruthy();
+    // #165: a Text Search for "restaurant" never returned a bar or a café.
+    expect(body.includedTypes).toEqual(["restaurant", "bar", "cafe"]);
+    expect(body).not.toHaveProperty("textQuery");
+    // `includedPrimaryTypes` would drop an `italian_restaurant`.
+    expect(body).not.toHaveProperty("includedPrimaryTypes");
     expect(body.languageCode).toBe("he");
-    expect(body.locationBias.circle.center).toEqual({
+    expect(body.locationRestriction.circle.center).toEqual({
       latitude: 32.08,
       longitude: 34.78,
     });
-    expect(body.locationBias.circle.radius).toBe(1500);
+    expect(body.locationRestriction.circle.radius).toBe(1500);
   });
 
   it("turns a raw place into a Candidate, with rating and openingHours left unset", async () => {
@@ -207,11 +211,11 @@ describe("searchNeighbourhood", () => {
     expect(candidate.address).toBeNull();
   });
 
-  it("throws with the status and body when searchText fails", async () => {
+  it("throws with the status and body when searchNearby fails", async () => {
     fetchMock.mockResolvedValueOnce(fakeResponse(false, "quota exceeded"));
 
     await expect(searchNeighbourhood(CENTER, 1500)).rejects.toThrow(
-      /searchText failed \(400\): quota exceeded/
+      /searchNearby failed \(400\): quota exceeded/
     );
   });
 });

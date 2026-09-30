@@ -42,7 +42,7 @@ import type {
   SoftPreferences,
 } from "@/lib/types";
 
-const SEARCH_ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
+const SEARCH_ENDPOINT = "https://places.googleapis.com/v1/places:searchNearby";
 const DETAILS_ENDPOINT = "https://places.googleapis.com/v1/places";
 
 /**
@@ -85,8 +85,14 @@ const LANGUAGE_CODE = "he";
  * search across the app costs the same and stays cacheable by location
  * alone — see the header comment on why a per-call query string would
  * defeat the neighbourhood-keyed cache the next piece adds.
+ *
+ * `includedTypes` matches a place's whole type list, so an
+ * `italian_restaurant` still counts as a `restaurant`.
+ * `includedPrimaryTypes` would not, and would drop most restaurants.
+ * Until #165 this was a Text Search for "restaurant", and no bar or café
+ * ever came back.
  */
-const TEXT_QUERY = "restaurant";
+const INCLUDED_TYPES = ["restaurant", "bar", "cafe"];
 
 const WEEKDAY_BY_GOOGLE_INDEX: LocalWeekday[] = [
   "sunday",
@@ -113,7 +119,7 @@ type RawPlace = {
   primaryTypeDisplayName?: { text: string };
 };
 
-type SearchTextResponse = {
+type SearchNearbyResponse = {
   places?: RawPlace[];
 };
 
@@ -236,12 +242,13 @@ function apiKeyHeader(): Record<string, string> {
 }
 
 /**
- * Every venue Text Search (New) returns near `center`, narrowed to the
- * Essentials + Pro field mask and to operating businesses.
+ * Every restaurant, bar and café Nearby Search (New) returns around
+ * `center`, narrowed to the Essentials + Pro field mask and to operating
+ * businesses. At most 20, ranked by Google's popularity, with no second page.
  *
- * `radiusMeters` is a location *bias*, not a hard restriction (Google may
- * still return something slightly outside it) — deriving the right radius
- * from a group's neighbourhoods is B7b's job, not this file's.
+ * `radiusMeters` is a hard *restriction*: nothing outside the circle comes
+ * back. (Text Search, used before #165, only took it as a bias.) Deriving the
+ * right radius from a group's neighbourhoods is B7b's job, not this file's.
  */
 export async function searchNeighbourhood(
   center: LatLng,
@@ -255,9 +262,9 @@ export async function searchNeighbourhood(
       ...apiKeyHeader(),
     },
     body: JSON.stringify({
-      textQuery: TEXT_QUERY,
+      includedTypes: INCLUDED_TYPES,
       languageCode: LANGUAGE_CODE,
-      locationBias: {
+      locationRestriction: {
         circle: {
           center: { latitude: center.lat, longitude: center.lng },
           radius: radiusMeters,
@@ -268,10 +275,12 @@ export async function searchNeighbourhood(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`places: searchText failed (${response.status}): ${body}`);
+    throw new Error(
+      `places: searchNearby failed (${response.status}): ${body}`
+    );
   }
 
-  const data = (await response.json()) as SearchTextResponse;
+  const data = (await response.json()) as SearchNearbyResponse;
   const places = data.places ?? [];
 
   return places
