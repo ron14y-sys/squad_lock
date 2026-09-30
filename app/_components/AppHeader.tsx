@@ -17,6 +17,12 @@ export async function AppHeader() {
         <ThemeToggle />
         {session?.user ? (
           <div className="flex items-center gap-3">
+            <Link
+              href="/profile"
+              className="text-sm font-bold whitespace-nowrap"
+            >
+              פרופיל
+            </Link>
             <span className="sl-sub hidden whitespace-nowrap sm:inline">
               {session.user.name}
             </span>
