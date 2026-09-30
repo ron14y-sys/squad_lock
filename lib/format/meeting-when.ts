@@ -24,11 +24,17 @@ function formatLocalDate(date: string): string {
 
 export function meetingDateLabel(meeting: {
   currentDatetime: string | null;
-  pinnedWhen: { date: string } | null;
+  // #168: a part of day (pinnedWhen.kind "part_of_day"/"date_and_part_of_day")
+  // has no `date` at all in one of those two cases — the index signature is
+  // what lets that shape (no properties in common with `{ date?: string }`)
+  // still satisfy this parameter.
+  pinnedWhen: ({ date?: string } & Record<string, unknown>) | null;
 }): string {
   if (meeting.currentDatetime)
     return DATE_FMT.format(new Date(meeting.currentDatetime));
-  if (meeting.pinnedWhen) return formatLocalDate(meeting.pinnedWhen.date);
+  // #168: a part of day with no date (pinnedWhen.date absent) has nothing
+  // to show here — same fallback as no pin at all.
+  if (meeting.pinnedWhen?.date) return formatLocalDate(meeting.pinnedWhen.date);
   return "טרם נקבע";
 }
 

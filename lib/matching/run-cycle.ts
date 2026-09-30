@@ -36,6 +36,7 @@ import {
   type Candidate,
   type Participant,
   type ParticipantMeetingContext,
+  type TimeOfDayPart,
   type TimeSlot,
   type VenueSoftFacts,
 } from "@/lib/types";
@@ -184,6 +185,92 @@ export function searchWindow(pinnedDate: Date | null, now: Date): TimeSlot {
     // reach a proposal.
     end: new Date(localMidnight + DAY_MS),
   };
+}
+
+/**
+ * #168: local hours for each part of day, agreed in #163. `endHour` is
+ * exclusive, same convention as every other `TimeSlot` in this file.
+ */
+export const TIME_OF_DAY_HOURS: Record<
+  TimeOfDayPart,
+  { startHour: number; endHour: number }
+> = {
+  morning: { startHour: 8, endHour: 12 },
+  midday: { startHour: 12, endHour: 17 },
+  evening: { startHour: 18, endHour: 23 },
+};
+
+/**
+ * #168, per the #165 follow-up comment on the issue: filtering *after* a
+ * 20-result Nearby Search leaves almost nothing for a scarce kind (3 cafés
+ * in central Tel Aviv on a real search) — so the chosen part sets
+ * `includedTypes` in the search itself instead.
+ */
+export const TIME_OF_DAY_VENUE_KINDS: Record<TimeOfDayPart, string[]> = {
+  morning: ["cafe"],
+  midday: ["restaurant", "cafe"],
+  evening: ["restaurant", "bar"],
+};
+
+/** The local midnight (as a UTC instant) of the calendar day `instant` falls on. */
+function localMidnightOf(instant: Date): Date {
+  const parts = ZONE_PARTS.formatToParts(instant);
+  const value = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0");
+  const midnightAsIfUtc = Date.UTC(
+    value("year"),
+    value("month") - 1,
+    value("day")
+  );
+  return new Date(midnightAsIfUtc - zoneOffsetMs(new Date(midnightAsIfUtc)));
+}
+
+/**
+ * `outerWindow` narrowed to `part`'s local hours, one `TimeSlot` per calendar
+ * day it spans — spec's own words in #168: "one window per day, not one long
+ * window." A week-long horizon with no pinned date becomes up to
+ * `SEARCH_HORIZON_DAYS` disjoint windows; a pinned day becomes at most one.
+ * `commonFreeWindows` already returns several free slots from a single
+ * window (busy blocks split it up) — this is the same idea one level up, so
+ * nothing downstream of it needs to change.
+ *
+ * A day whose part-hours fall entirely outside `outerWindow` (already past,
+ * or beyond the horizon) contributes no window rather than an empty one —
+ * `commonFreeWindows` refuses a window that doesn't end after it starts.
+ */
+export function partOfDayWindows(
+  outerWindow: TimeSlot,
+  part: TimeOfDayPart
+): TimeSlot[] {
+  const { startHour, endHour } = TIME_OF_DAY_HOURS[part];
+  const windows: TimeSlot[] = [];
+
+  // +2 over the horizon: a pinned window is one day already, and rounding at
+  // either end of a "no date" week can otherwise land one calendar day short.
+  for (let day = 0; day <= SEARCH_HORIZON_DAYS + 2; day++) {
+    const dayMidnight = localMidnightOf(
+      new Date(outerWindow.start.getTime() + day * DAY_MS)
+    );
+    if (dayMidnight.getTime() >= outerWindow.end.getTime()) break;
+
+    const start = new Date(
+      Math.max(
+        dayMidnight.getTime() + startHour * 60 * 60 * 1000,
+        outerWindow.start.getTime()
+      )
+    );
+    const end = new Date(
+      Math.min(
+        dayMidnight.getTime() + endHour * 60 * 60 * 1000,
+        outerWindow.end.getTime()
+      )
+    );
+    if (end.getTime() > start.getTime()) {
+      windows.push({ start, end });
+    }
+  }
+
+  return windows;
 }
 
 /* -------------------------------------------------------------------------
@@ -373,6 +460,13 @@ export async function assembleRun(
     recorded
   );
 
+  // #168: a chosen part of day (stored in the same column an exact time used
+  // to be) narrows both the search window and the venue kinds below.
+  const part: TimeOfDayPart | null =
+    meeting.pinnedTime && meeting.pinnedTime in TIME_OF_DAY_HOURS
+      ? (meeting.pinnedTime as TimeOfDayPart)
+      : null;
+
   const window = searchWindow(meeting.pinnedDate, now);
   await reportStage("calendars");
   const busyByUser = await busyFor(
@@ -402,7 +496,14 @@ export async function assembleRun(
     };
   });
 
-  const slots = commonFreeWindows(participants, window);
+  // `commonFreeWindows` already returns several free slots out of one
+  // window (busy blocks split it up) — concatenating its output across
+  // several *narrowed* windows needs no change downstream of this line.
+  const slots = part
+    ? partOfDayWindows(window, part).flatMap((dayWindow) =>
+        commonFreeWindows(participants, dayWindow)
+      )
+    : commonFreeWindows(participants, window);
   if (slots.length === 0) {
     throw new NoSolutionError(
       `no window ${meetingId}'s group shares in the search period`
@@ -418,9 +519,14 @@ export async function assembleRun(
   const origins = participants.map(originOf);
 
   await reportStage("places");
+  // #168: the chosen part sets which kinds of venue the search itself asks
+  // for — filtering afterwards left almost nothing for a scarce kind (see
+  // TIME_OF_DAY_VENUE_KINDS's own comment). `undefined` keeps today's
+  // behaviour, every kind, when no part was chosen.
+  const includedTypes = part ? TIME_OF_DAY_VENUE_KINDS[part] : undefined;
   const pools = await Promise.all(
     deriveSearchCentres(origins).map((centre) =>
-      searchNeighbourhoodCached(centre, SEARCH_RADIUS_METERS)
+      searchNeighbourhoodCached(centre, SEARCH_RADIUS_METERS, includedTypes)
     )
   );
   // `buildShortlist` dedupes, so the pools are merged and not reconciled.

@@ -13,8 +13,19 @@
 
 import type { MeetingModel } from "@/lib/generated/prisma/models";
 
-import type { Meeting, PinnedWhen } from "./meeting";
+import type { Meeting, PinnedWhen, TimeOfDayPart } from "./meeting";
 import type { LocalDate } from "./primitives";
+
+/** #168: every part `pinnedTime` can hold now, besides a legacy `HH:MM`. */
+const TIME_OF_DAY_PARTS = new Set<TimeOfDayPart>([
+  "morning",
+  "midday",
+  "evening",
+]);
+
+function isTimeOfDayPart(value: string): value is TimeOfDayPart {
+  return TIME_OF_DAY_PARTS.has(value as TimeOfDayPart);
+}
 
 /**
  * A `@db.Date` column arrives as a `Date` at UTC midnight — Prisma stores a
@@ -34,6 +45,15 @@ function toPinnedWhen(
   pinnedDate: Date | null,
   pinnedTime: string | null
 ): PinnedWhen | null {
+  // #168: a part of day is schedulable on its own — unlike an exact time, it
+  // is not discarded just because no date came with it.
+  if (pinnedTime !== null && isTimeOfDayPart(pinnedTime)) {
+    const part = pinnedTime;
+    return pinnedDate === null
+      ? { kind: "part_of_day", part }
+      : { kind: "date_and_part_of_day", date: toLocalDate(pinnedDate), part };
+  }
+
   // A time with no date says nothing schedulable, so it is not a pin.
   if (pinnedDate === null) return null;
 

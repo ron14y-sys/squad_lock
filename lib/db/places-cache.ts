@@ -40,7 +40,11 @@ import type {
   LocalWindow,
   SoftPreferences,
 } from "@/lib/types";
-import { fetchPlaceDetails, searchNeighbourhood } from "@/lib/places/client";
+import {
+  DEFAULT_INCLUDED_TYPES,
+  fetchPlaceDetails,
+  searchNeighbourhood,
+} from "@/lib/places/client";
 import { roundToNeighbourhood } from "@/lib/places/geo";
 import { getPrisma } from "./client";
 import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
@@ -60,6 +64,15 @@ type CacheClient = {
 
 function asJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+}
+
+/**
+ * #168: sorted and comma-joined, so `["bar", "cafe"]` and `["cafe", "bar"]`
+ * hit the same cache row — the search itself doesn't care about the order,
+ * and the cache key shouldn't either.
+ */
+function normalizeIncludedTypes(includedTypes: string[]): string {
+  return [...includedTypes].sort().join(",");
 }
 
 /* -------------------------------------------------------------------------
@@ -96,12 +109,20 @@ export function isFresh(fetchedAt: Date, ttlMs: number, now: Date): boolean {
 export async function getCachedSearch(
   center: LatLng,
   radiusMeters: number,
+  includedTypes: string[] = DEFAULT_INCLUDED_TYPES,
   client: CacheClient = getPrisma()
 ): Promise<Candidate[] | null> {
   const { latKey, lngKey } = roundToNeighbourhood(center);
 
   const row = await client.placeSearchCache.findUnique({
-    where: { latKey_lngKey_radiusMeters: { latKey, lngKey, radiusMeters } },
+    where: {
+      latKey_lngKey_radiusMeters_includedTypes: {
+        latKey,
+        lngKey,
+        radiusMeters,
+        includedTypes: normalizeIncludedTypes(includedTypes),
+      },
+    },
   });
   if (!row || !isFresh(row.fetchedAt, SEARCH_CACHE_TTL_MS, new Date())) {
     return null;
@@ -115,13 +136,28 @@ export async function saveCachedSearch(
   center: LatLng,
   radiusMeters: number,
   results: Candidate[],
+  includedTypes: string[] = DEFAULT_INCLUDED_TYPES,
   client: CacheClient = getPrisma()
 ): Promise<void> {
   const { latKey, lngKey } = roundToNeighbourhood(center);
+  const includedTypesKey = normalizeIncludedTypes(includedTypes);
 
   await client.placeSearchCache.upsert({
-    where: { latKey_lngKey_radiusMeters: { latKey, lngKey, radiusMeters } },
-    create: { latKey, lngKey, radiusMeters, results: asJson(results) },
+    where: {
+      latKey_lngKey_radiusMeters_includedTypes: {
+        latKey,
+        lngKey,
+        radiusMeters,
+        includedTypes: includedTypesKey,
+      },
+    },
+    create: {
+      latKey,
+      lngKey,
+      radiusMeters,
+      includedTypes: includedTypesKey,
+      results: asJson(results),
+    },
     update: { results: asJson(results), fetchedAt: new Date() },
   });
 }
@@ -130,18 +166,33 @@ export async function saveCachedSearch(
  * `searchNeighbourhood`, but cache-first — the function everything outside
  * this file should actually call. A miss fetches from `lib/places/client.ts`
  * and writes the cache before returning, so the next call for the same
- * neighbourhood, from any meeting or user, is a pure read.
+ * neighbourhood and the same kinds, from any meeting or user, is a pure read.
+ *
+ * `includedTypes` defaults to every kind (today's behaviour); pass a
+ * narrower list (#168) for a chosen part of day. It is part of the cache
+ * key, so a morning search is never served an evening's cached answer for
+ * the same coordinates and radius.
  */
 export async function searchNeighbourhoodCached(
   center: LatLng,
   radiusMeters: number,
+  includedTypes: string[] = DEFAULT_INCLUDED_TYPES,
   client: CacheClient = getPrisma()
 ): Promise<Candidate[]> {
-  const cached = await getCachedSearch(center, radiusMeters, client);
+  const cached = await getCachedSearch(
+    center,
+    radiusMeters,
+    includedTypes,
+    client
+  );
   if (cached) return cached;
 
-  const results = await searchNeighbourhood(center, radiusMeters);
-  await saveCachedSearch(center, radiusMeters, results, client);
+  const results = await searchNeighbourhood(
+    center,
+    radiusMeters,
+    includedTypes
+  );
+  await saveCachedSearch(center, radiusMeters, results, includedTypes, client);
   return results;
 }
 
