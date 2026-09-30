@@ -56,6 +56,8 @@ const DRAFT: MatchRunDraft = {
         name: "Near",
         address: "12 Rothschild",
         location: { lat: 32.0648, lng: 34.7749 },
+        typeLabel: "בר יין",
+        summary: "יין מקומי ונשנושים",
       },
       proposedDatetime: SLOT_START,
       proposedEnd: SLOT_END,
@@ -189,6 +191,15 @@ describe("the options", () => {
     expect(first.venueAddress).toBe("12 Rothschild");
     expect(first.venueLat).toBeCloseTo(32.0648, 6);
     expect(first.venueLng).toBeCloseTo(34.7749, 6);
+  });
+
+  it("keeps what the place is and Google's line about it, null when unknown", () => {
+    const [first, second] = DATA.options.create;
+
+    expect(first.venueType).toBe("בר יין");
+    expect(first.venueSummary).toBe("יין מקומי ונשנושים");
+    expect(second.venueType).toBeNull();
+    expect(second.venueSummary).toBeNull();
   });
 
   it("writes null coordinates rather than zeroes for a venue with no location", () => {

@@ -263,6 +263,38 @@ describe("getCachedDetails / saveCachedDetails", () => {
     expect(calls[1][0].create.budget).toBeNull();
   });
 
+  it("stores Google's summary and reads it back, undefined when there is none", async () => {
+    const client = fakeCacheClient();
+
+    await saveCachedDetails(
+      "p1",
+      { openingHours: [], summary: "פסטה טרייה" },
+      client
+    );
+    await saveCachedDetails("p2", { openingHours: [] }, client);
+
+    const calls = client.placeDetailsCache.upsert.mock.calls;
+    expect(calls[0][0].create.summary).toBe("פסטה טרייה");
+    expect(calls[0][0].update.summary).toBe("פסטה טרייה");
+    expect(calls[1][0].create.summary).toBeNull();
+
+    client.placeDetailsCache.findUnique.mockResolvedValueOnce({
+      rating: null,
+      openingHours: [],
+      summary: "פסטה טרייה",
+      fetchedAt: new Date(),
+    });
+    expect((await getCachedDetails("p1", client))?.summary).toBe("פסטה טרייה");
+
+    client.placeDetailsCache.findUnique.mockResolvedValueOnce({
+      rating: null,
+      openingHours: [],
+      summary: null,
+      fetchedAt: new Date(),
+    });
+    expect((await getCachedDetails("p2", client))?.summary).toBeUndefined();
+  });
+
   it("is an undefined rating, not null, when the stored rating is null", async () => {
     const client = fakeCacheClient();
     client.placeDetailsCache.findUnique.mockResolvedValue({

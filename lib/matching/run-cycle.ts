@@ -454,6 +454,7 @@ export async function assembleRun(
     ...candidate,
     rating: details.rating,
     openingHours: details.openingHours,
+    summary: details.summary,
   }));
   const venueSoftFacts = venueSoftFactsFrom(
     detailed.map(({ candidate, details }) => ({
