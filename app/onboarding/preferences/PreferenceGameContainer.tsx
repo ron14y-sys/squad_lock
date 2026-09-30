@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { PreferenceGame } from "./PreferenceGame";
 
 import type { SoftPreferences } from "@/lib/types";
@@ -56,7 +57,15 @@ export function PreferenceGameContainer() {
             <span style={{ color: "rgba(20,22,28,0.65)" }}>שומר…</span>
           )}
           {saveState === "saved" && (
-            <span style={{ color: "#1C4E4A" }}>נשמר.</span>
+            <div className="flex flex-col items-center gap-1">
+              <span style={{ color: "#1C4E4A" }}>נשמר.</span>
+              <Link
+                href="/groups"
+                className="font-bold underline underline-offset-2"
+              >
+                להמשיך
+              </Link>
+            </div>
           )}
           {saveState === "signed-out" && (
             <span style={{ color: "rgba(20,22,28,0.65)" }}>

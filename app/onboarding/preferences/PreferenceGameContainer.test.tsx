@@ -50,6 +50,22 @@ test("saves the answers to /api/preferences the moment the game finishes", async
   });
 });
 
+test("leads onward to the rest of onboarding once saved (#173)", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(jsonResponse({})))
+  );
+
+  render(<PreferenceGameContainer />);
+  await playThroughAllFourQuestions(user);
+
+  expect(await screen.findByRole("link", { name: "להמשיך" })).toHaveAttribute(
+    "href",
+    "/groups"
+  );
+});
+
 test("shows a sign-in prompt if the session expired mid-game", async () => {
   const user = userEvent.setup();
   vi.stubGlobal(
