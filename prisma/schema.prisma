@@ -503,7 +503,7 @@ model ConflictDismissal {
   @@map("conflict_dismissals")
 }
 
-/// B7 two-tier Places cache, tier 1 (spec §6.3): the broad Text Search
+/// B7 two-tier Places cache, tier 1 (spec §6.3): the broad Nearby Search
 /// (New) result for one neighbourhood-sized area — a property of a
 /// *location*, not of any one meeting, so it is keyed on coordinates rather
 /// than on a meeting id and shared across every meeting and user that

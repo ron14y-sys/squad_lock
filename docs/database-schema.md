@@ -360,7 +360,7 @@ caller goes through it, never the raw client in `lib/places/client.ts`.
 
 ### `place_search_cache`
 
-Tier 1: the broad Text Search result for one neighbourhood-sized area.
+Tier 1: the broad Nearby Search result (restaurants, bars and cafés, #165) for one neighbourhood-sized area.
 Kept 30 days.
 
 | Column         | Type       | Notes                                                                     |
