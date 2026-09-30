@@ -28,7 +28,13 @@ type MeetingCardStatus =
 
 type PinnedWhen =
   | { kind: "date"; date: string }
-  | { kind: "date_and_time"; date: string; time: string };
+  | { kind: "date_and_time"; date: string; time: string }
+  | { kind: "part_of_day"; part: "morning" | "midday" | "evening" }
+  | {
+      kind: "date_and_part_of_day";
+      date: string;
+      part: "morning" | "midday" | "evening";
+    };
 
 type MeetingCard = {
   id: string;

@@ -61,29 +61,65 @@ test("sends only the fields that were filled in", async () => {
   });
 });
 
-test("the time field is disabled until a date is chosen", async () => {
-  render(<NewMeeting groupId="group-1" />);
-  expect(screen.getByLabelText(/^שעה/)).toBeDisabled();
-});
-
-test("clearing the date also clears an already-chosen time", async () => {
+test("sends a chosen part of day, with no date at all (#168)", async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({}, 201)));
   vi.stubGlobal("fetch", fetchMock);
 
   render(<NewMeeting groupId="group-1" />);
+  await user.click(screen.getByRole("button", { name: "ערב" }));
+  await user.click(screen.getByRole("button", { name: "פתח פגישה" }));
 
-  const dateInput = screen.getByLabelText("תאריך");
-  await user.type(dateInput, "2026-09-20");
-  const timeInput = screen.getByLabelText(/^שעה/);
-  await user.type(timeInput, "20:00");
+  const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(init.body as string)).toEqual({ part: "evening" });
+});
 
-  await user.clear(dateInput);
-  expect(timeInput).toBeDisabled();
+test("sends both a date and a part of day together", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({}, 201)));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<NewMeeting groupId="group-1" />);
+  await user.type(screen.getByLabelText("תאריך"), "2026-09-20");
+  await user.click(screen.getByRole("button", { name: "בוקר" }));
+  await user.click(screen.getByRole("button", { name: "פתח פגישה" }));
+
+  const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(init.body as string)).toEqual({
+    date: "2026-09-20",
+    part: "morning",
+  });
+});
+
+test("clicking a chosen part again deselects it", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({}, 201)));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<NewMeeting groupId="group-1" />);
+  const midday = screen.getByRole("button", { name: "צהריים" });
+  await user.click(midday);
+  expect(midday).toHaveAttribute("aria-pressed", "true");
+
+  await user.click(midday);
+  expect(midday).toHaveAttribute("aria-pressed", "false");
 
   await user.click(screen.getByRole("button", { name: "פתח פגישה" }));
   const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
   expect(JSON.parse(init.body as string)).toEqual({});
+});
+
+test("choosing a different part replaces the previous one", async () => {
+  const user = userEvent.setup();
+  render(<NewMeeting groupId="group-1" />);
+
+  const morning = screen.getByRole("button", { name: "בוקר" });
+  const evening = screen.getByRole("button", { name: "ערב" });
+  await user.click(morning);
+  await user.click(evening);
+
+  expect(morning).toHaveAttribute("aria-pressed", "false");
+  expect(evening).toHaveAttribute("aria-pressed", "true");
 });
 
 test("shows a friendly message and no redirect when the group is at its cap", async () => {

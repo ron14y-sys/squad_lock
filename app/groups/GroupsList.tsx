@@ -35,7 +35,10 @@ type OpenMeeting = {
     | "closed";
   waitingOn: number | null;
   currentDatetime: string | null;
-  pinnedWhen: { kind: "date" | "date_and_time"; date: string } | null;
+  pinnedWhen: {
+    kind: "date" | "date_and_time" | "part_of_day" | "date_and_part_of_day";
+    date?: string;
+  } | null;
   pinnedVenue: string | null;
   occasion: string | null;
   approvedCount: number;

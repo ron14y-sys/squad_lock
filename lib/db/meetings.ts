@@ -135,7 +135,9 @@ export async function initiateMeeting(
         groupId,
         initiatorId,
         pinnedDate: toPinnedDateColumn(input.date),
-        pinnedTime: input.time ?? null,
+        // #168: the chosen part of day (morning/midday/evening) rides in the
+        // same column an exact time used to — see meetingFromRow's toPinnedWhen.
+        pinnedTime: input.part ?? null,
         pinnedVenue: input.venue ?? null,
         occasion: input.occasion ?? null,
         responses: {

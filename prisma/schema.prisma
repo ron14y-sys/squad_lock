@@ -519,10 +519,15 @@ model PlaceSearchCache {
   latKey        Float
   lngKey        Float
   radiusMeters  Int
+  /// #168: the Nearby Search `includedTypes` list, sorted and comma-joined
+  /// (e.g. "bar,cafe,restaurant") — part of the key so a morning search
+  /// (cafés only) is never served an evening's cached restaurants-and-bars
+  /// answer for the same coordinates and radius.
+  includedTypes String
   results       Json
   fetchedAt     DateTime @default(now())
 
-  @@unique([latKey, lngKey, radiusMeters])
+  @@unique([latKey, lngKey, radiusMeters, includedTypes])
   @@map("place_search_cache")
 }
 

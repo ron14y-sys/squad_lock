@@ -91,6 +91,31 @@ describe.skipIf(!CONNECTED)("places cache against a real database", () => {
     expect(await getCachedSearch(CENTER, RADIUS_M)).toEqual([second]);
   });
 
+  it("keys a narrower includedTypes list as a separate row, not a duplicate-key error (#168)", async () => {
+    const everyKind: Candidate = {
+      placeId: "db-test-place-all",
+      name: "All kinds",
+      address: null,
+      location: CENTER,
+      neighbourhood: null,
+    };
+    const cafesOnly: Candidate = {
+      placeId: "db-test-place-cafe",
+      name: "Cafe only",
+      address: null,
+      location: CENTER,
+      neighbourhood: null,
+    };
+
+    await saveCachedSearch(CENTER, RADIUS_M, [everyKind]);
+    await saveCachedSearch(CENTER, RADIUS_M, [cafesOnly], ["cafe"]);
+
+    expect(await getCachedSearch(CENTER, RADIUS_M)).toEqual([everyKind]);
+    expect(await getCachedSearch(CENTER, RADIUS_M, ["cafe"])).toEqual([
+      cafesOnly,
+    ]);
+  });
+
   it("round-trips place details: miss, save, hit", async () => {
     expect(await getCachedDetails(PLACE_ID)).toBeNull();
 
