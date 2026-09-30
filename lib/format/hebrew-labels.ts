@@ -5,6 +5,7 @@
 import type { LocalWeekday, MobilityMode } from "@/lib/types";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
 import type { MeetingCardStatus, ResponseStatus } from "@/lib/types/meeting";
+import type { RunStage } from "@/lib/generated/prisma/enums";
 
 export const WEEKDAY_LABELS: Record<LocalWeekday, string> = {
   sunday: "א׳",
@@ -46,6 +47,15 @@ export function meetingStatusLabel(
   }
   return MEETING_CARD_STATUS_LABELS[status];
 }
+
+/** #169: what a spinner says while a run works through §4.1e's stages. */
+export const RUN_STAGE_LABELS: Record<RunStage, string> = {
+  calendars: "בודקים יומנים",
+  places: "מחפשים מקומות",
+  venue_details: "בודקים פרטי מקום",
+  model: "בוחרים הצעה",
+  saving: "שומרים",
+};
 
 export const RESPONSE_STATUS_LABELS: Record<ResponseStatus, string> = {
   pending: "טרם הגיב",
