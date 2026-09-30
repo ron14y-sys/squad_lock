@@ -68,6 +68,16 @@ describe("searchNeighbourhood", () => {
     expect(body.locationRestriction.circle.radius).toBe(1500);
   });
 
+  it("asks for only the given kinds when a narrower list is passed (#168)", async () => {
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, { places: [] }));
+
+    await searchNeighbourhood(CENTER, 1500, ["cafe"]);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.includedTypes).toEqual(["cafe"]);
+  });
+
   it("turns a raw place into a Candidate, with rating and openingHours left unset", async () => {
     fetchMock.mockResolvedValueOnce(
       fakeResponse(true, {

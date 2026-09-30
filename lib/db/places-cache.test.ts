@@ -79,13 +79,14 @@ describe("getCachedSearch / saveCachedSearch", () => {
     const client = fakeCacheClient();
     client.placeSearchCache.findUnique.mockResolvedValue(null);
 
-    expect(await getCachedSearch(CENTER, 1500, client)).toBeNull();
+    expect(await getCachedSearch(CENTER, 1500, undefined, client)).toBeNull();
     expect(client.placeSearchCache.findUnique).toHaveBeenCalledWith({
       where: {
-        latKey_lngKey_radiusMeters: {
+        latKey_lngKey_radiusMeters_includedTypes: {
           latKey: 32.08,
           lngKey: 34.78,
           radiusMeters: 1500,
+          includedTypes: "bar,cafe,restaurant",
         },
       },
     });
@@ -98,7 +99,7 @@ describe("getCachedSearch / saveCachedSearch", () => {
       fetchedAt: new Date(Date.now() - SEARCH_CACHE_TTL_MS - 1000),
     });
 
-    expect(await getCachedSearch(CENTER, 1500, client)).toBeNull();
+    expect(await getCachedSearch(CENTER, 1500, undefined, client)).toBeNull();
   });
 
   it("returns the cached results when the row is fresh", async () => {
@@ -115,7 +116,9 @@ describe("getCachedSearch / saveCachedSearch", () => {
       fetchedAt: new Date(),
     });
 
-    expect(await getCachedSearch(CENTER, 1500, client)).toEqual([candidate]);
+    expect(await getCachedSearch(CENTER, 1500, undefined, client)).toEqual([
+      candidate,
+    ]);
   });
 
   it("saveCachedSearch upserts on the rounded key with the results as JSON", async () => {
@@ -128,19 +131,36 @@ describe("getCachedSearch / saveCachedSearch", () => {
       neighbourhood: null,
     };
 
-    await saveCachedSearch(CENTER, 1500, [candidate], client);
+    await saveCachedSearch(CENTER, 1500, [candidate], undefined, client);
 
     expect(client.placeSearchCache.upsert).toHaveBeenCalledTimes(1);
     const call = client.placeSearchCache.upsert.mock.calls[0][0];
     expect(call.where).toEqual({
-      latKey_lngKey_radiusMeters: {
+      latKey_lngKey_radiusMeters_includedTypes: {
         latKey: 32.08,
         lngKey: 34.78,
         radiusMeters: 1500,
+        includedTypes: "bar,cafe,restaurant",
       },
     });
     expect(call.create.results).toEqual([candidate]);
     expect(call.update.results).toEqual([candidate]);
+  });
+
+  it("keys a narrower includedTypes list separately, sorted so order doesn't matter (#168)", async () => {
+    const client = fakeCacheClient();
+    client.placeSearchCache.findUnique.mockResolvedValue(null);
+
+    await getCachedSearch(CENTER, 1500, ["cafe"], client);
+    await getCachedSearch(CENTER, 1500, ["bar", "restaurant"], client);
+
+    const calls = client.placeSearchCache.findUnique.mock.calls;
+    expect(
+      calls[0][0].where.latKey_lngKey_radiusMeters_includedTypes
+    ).toMatchObject({ includedTypes: "cafe" });
+    expect(
+      calls[1][0].where.latKey_lngKey_radiusMeters_includedTypes
+    ).toMatchObject({ includedTypes: "bar,restaurant" });
   });
 });
 
@@ -159,7 +179,12 @@ describe("searchNeighbourhoodCached", () => {
       fetchedAt: new Date(),
     });
 
-    const results = await searchNeighbourhoodCached(CENTER, 1500, client);
+    const results = await searchNeighbourhoodCached(
+      CENTER,
+      1500,
+      undefined,
+      client
+    );
 
     expect(results).toEqual([candidate]);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -181,7 +206,12 @@ describe("searchNeighbourhoodCached", () => {
       })
     );
 
-    const results = await searchNeighbourhoodCached(CENTER, 1500, client);
+    const results = await searchNeighbourhoodCached(
+      CENTER,
+      1500,
+      undefined,
+      client
+    );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(results.map((c) => c.placeId)).toEqual(["p1"]);
@@ -189,6 +219,20 @@ describe("searchNeighbourhoodCached", () => {
     expect(
       client.placeSearchCache.upsert.mock.calls[0][0].create.results
     ).toEqual(results);
+  });
+
+  it("passes a narrower includedTypes through to the real client on a miss (#168)", async () => {
+    const client = fakeCacheClient();
+    client.placeSearchCache.findUnique.mockResolvedValue(null);
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, { places: [] }));
+
+    await searchNeighbourhoodCached(CENTER, 1500, ["cafe"], client);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body as string).includedTypes).toEqual(["cafe"]);
+    expect(
+      client.placeSearchCache.upsert.mock.calls[0][0].create.includedTypes
+    ).toBe("cafe");
   });
 });
 

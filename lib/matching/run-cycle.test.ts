@@ -5,9 +5,11 @@ import {
   faultRetryNotBefore,
   isDue,
   MIN_PROPOSAL_LIFETIME_MS,
+  partOfDayWindows,
   RATE_LIMIT_RETRY_COOLDOWN_MS,
   REJECTION_BATCH_MS,
   RUN_ATTEMPT_COOLDOWN_MS,
+  SEARCH_HORIZON_DAYS,
   searchWindow,
   type DueInput,
   type PriorProposal,
@@ -193,6 +195,73 @@ describe("searchWindow", () => {
     const window = searchWindow(at("2026-09-24T00:00:00.000Z"), midday);
 
     expect(window.start).toEqual(midday);
+  });
+});
+
+describe("partOfDayWindows (#168)", () => {
+  it("narrows a pinned day to the part's local hours, as one window", () => {
+    const window = searchWindow(
+      at("2026-09-24T00:00:00.000Z"),
+      at("2026-09-20T09:00:00.000Z")
+    );
+
+    expect(partOfDayWindows(window, "evening")).toEqual([
+      {
+        start: at("2026-09-24T15:00:00.000Z"),
+        end: at("2026-09-24T20:00:00.000Z"),
+      },
+    ]);
+  });
+
+  it("excludes a pinned day whose part has already fully passed", () => {
+    // Evening ends at 20:00 UTC on the pinned day (23:00 local) — a moment
+    // at exactly that instant is a pinned day already entirely spent.
+    const window = searchWindow(
+      at("2026-09-24T00:00:00.000Z"),
+      at("2026-09-24T21:00:00.000Z")
+    );
+
+    expect(partOfDayWindows(window, "evening")).toEqual([]);
+  });
+
+  it("splits a week-long, no-date horizon into one window per day", () => {
+    const now = at("2026-09-20T09:00:00.000Z"); // noon local
+    const window = searchWindow(null, now);
+
+    const windows = partOfDayWindows(window, "morning");
+
+    // Today's morning (08:00-12:00 local) is already over at noon — the
+    // horizon contributes exactly SEARCH_HORIZON_DAYS windows, not one per
+    // calendar day it spans.
+    expect(windows).toHaveLength(SEARCH_HORIZON_DAYS);
+    expect(windows[0]).toEqual({
+      start: at("2026-09-21T05:00:00.000Z"),
+      end: at("2026-09-21T09:00:00.000Z"),
+    });
+    // The last day is clipped to the outer window's own end, one minute
+    // short of a full week — same rule `searchWindow` itself states.
+    expect(windows[windows.length - 1]).toEqual({
+      start: at("2026-09-27T05:00:00.000Z"),
+      end: at("2026-09-27T08:59:00.000Z"),
+    });
+  });
+
+  it("keeps every window inside the outer bounds and in order", () => {
+    const window = searchWindow(null, at("2026-09-20T09:00:00.000Z"));
+    const windows = partOfDayWindows(window, "midday");
+
+    for (const slot of windows) {
+      expect(slot.start.getTime()).toBeGreaterThanOrEqual(
+        window.start.getTime()
+      );
+      expect(slot.end.getTime()).toBeLessThanOrEqual(window.end.getTime());
+      expect(slot.end.getTime()).toBeGreaterThan(slot.start.getTime());
+    }
+    for (let i = 1; i < windows.length; i++) {
+      expect(windows[i]!.start.getTime()).toBeGreaterThan(
+        windows[i - 1]!.end.getTime()
+      );
+    }
   });
 });
 

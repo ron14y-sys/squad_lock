@@ -16,7 +16,7 @@ describe("initiateMeetingSchema", () => {
   it("accepts a fully filled body", () => {
     const result = initiateMeetingSchema.safeParse({
       date: "2026-09-10",
-      time: "19:30",
+      part: "evening",
       venue: "Cafe Nona",
       occasion: "Ron's birthday",
     });
@@ -30,19 +30,19 @@ describe("initiateMeetingSchema", () => {
     ).toBe(false);
   });
 
-  it("rejects a time in the wrong shape", () => {
-    expect(initiateMeetingSchema.safeParse({ time: "7:30pm" }).success).toBe(
+  it("rejects a part outside morning/midday/evening", () => {
+    expect(initiateMeetingSchema.safeParse({ part: "night" }).success).toBe(
       false
     );
   });
 
-  it("rejects a time with no date — it would schedule nothing", () => {
-    expect(initiateMeetingSchema.safeParse({ time: "19:30" }).success).toBe(
-      false
+  it("accepts a part with no date (#168) — 'evening, any day this week'", () => {
+    expect(initiateMeetingSchema.safeParse({ part: "evening" }).success).toBe(
+      true
     );
   });
 
-  it("accepts a date with no time", () => {
+  it("accepts a date with no part", () => {
     expect(
       initiateMeetingSchema.safeParse({ date: "2026-09-10" }).success
     ).toBe(true);

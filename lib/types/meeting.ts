@@ -26,20 +26,37 @@ export type MeetingStatus =
   "weighing" | "awaiting" | "closed" | "stuck" | "cancelled";
 
 /**
+ * #168: morning/midday/evening, in place of an exact time nobody's search
+ * ever read (`pinnedTime` was stored and never used — see `meeting-from-row`'s
+ * own history). Stored in the same `pinnedTime` column, as the part's name
+ * rather than an hour range, so the database says what the person actually
+ * chose; the hours themselves live in one place, `lib/matching/run-cycle.ts`'s
+ * `TIME_OF_DAY_HOURS`, next to the code that reads them.
+ */
+export type TimeOfDayPart = "morning" | "midday" | "evening";
+
+/**
  * What the initiator pinned, if anything (spec §3, §5.3 — the all-blank case
  * is the default path, not a degraded one).
  *
  * The database holds this as two columns, `pinnedDate` and `pinnedTime`, and
- * hiding that seam is the reason `meetingFromRow` exists. Two variants rather
- * than a nullable time, so "a day, no time yet" cannot be silently read as
- * midnight.
+ * hiding that seam is the reason `meetingFromRow` exists. Separate variants
+ * rather than nullable fields, so an absent one cannot be silently read as a
+ * value nobody chose (midnight, "any part of the day").
+ *
+ * A part of day is allowed with or without a date (#168) — "evening, any day
+ * this week" is a real request the exact-time variants below could never
+ * express, which is why they are four variants and not a date paired with an
+ * optional time-or-part.
  *
  * It stays local wall clock. A human typed it, and it becomes an instant only
  * where a zone is applied on purpose — see the time rule in `primitives.ts`.
  */
 export type PinnedWhen =
   | { kind: "date"; date: LocalDate }
-  | { kind: "date_and_time"; date: LocalDate; time: LocalTimeOfDay };
+  | { kind: "date_and_time"; date: LocalDate; time: LocalTimeOfDay }
+  | { kind: "part_of_day"; part: TimeOfDayPart }
+  | { kind: "date_and_part_of_day"; date: LocalDate; part: TimeOfDayPart };
 
 export type Meeting = {
   id: string;

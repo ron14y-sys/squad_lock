@@ -2,9 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ScreenState } from "@/app/_components/ScreenState";
+import type { TimeOfDayPart } from "@/lib/types";
 
 type SubmitState = "idle" | "submitting" | "signed-out" | "not-found" | "error";
+
+/** #168: replaces the exact-time field, which nothing ever read. */
+const PARTS: { value: TimeOfDayPart; label: string }[] = [
+  { value: "morning", label: "בוקר" },
+  { value: "midday", label: "צהריים" },
+  { value: "evening", label: "ערב" },
+];
 
 const KNOWN_ERRORS: Record<string, string> = {
   "Body must be JSON.": "משהו השתבש. נסה שוב.",
@@ -27,7 +36,7 @@ function groupTooSmallMessage(message: string): string | null {
 export function NewMeeting({ groupId }: { groupId: string }) {
   const router = useRouter();
   const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
+  const [part, setPart] = useState<TimeOfDayPart | "">("");
   const [venue, setVenue] = useState("");
   const [occasion, setOccasion] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
@@ -39,7 +48,7 @@ export function NewMeeting({ groupId }: { groupId: string }) {
 
     const body: Record<string, string> = {};
     if (date) body.date = date;
-    if (date && time) body.time = time;
+    if (part) body.part = part;
     if (venue.trim()) body.venue = venue.trim();
     if (occasion.trim()) body.occasion = occasion.trim();
 
@@ -97,6 +106,9 @@ export function NewMeeting({ groupId }: { groupId: string }) {
 
   return (
     <div className="sl-page">
+      <Link href={`/groups/${groupId}`} className="sl-sub self-start">
+        &rsaquo; חזרה לקבוצה
+      </Link>
       <h1 className="sl-sec">פגישה חדשה</h1>
       <p className="sl-sub">
         כל השדות אופציונליים — אפשר לפתוח פגישה בלי למלא כלום, וזה בסדר גמור.
@@ -108,24 +120,34 @@ export function NewMeeting({ groupId }: { groupId: string }) {
           <input
             type="date"
             value={date}
-            onChange={(e) => {
-              setDate(e.target.value);
-              if (!e.target.value) setTime("");
-            }}
+            onChange={(e) => setDate(e.target.value)}
             className="sl-field"
           />
         </label>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="sl-line">שעה {!date && "(בחר תאריך קודם)"}</span>
-          <input
-            type="time"
-            value={time}
-            disabled={!date}
-            onChange={(e) => setTime(e.target.value)}
-            className="sl-field"
-          />
-        </label>
+        <div className="flex flex-col gap-1.5">
+          <span className="sl-line">חלק מהיום</span>
+          <div className="flex flex-wrap gap-2">
+            {PARTS.map((option) => {
+              const active = part === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() =>
+                    setPart((current) =>
+                      current === option.value ? "" : option.value
+                    )
+                  }
+                  aria-pressed={active}
+                  className={active ? "sl-chip on" : "sl-chip"}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <label className="flex flex-col gap-1.5">
           <span className="sl-line">מקום</span>

@@ -81,10 +81,11 @@ const DETAILS_FIELD_MASK = [
 const LANGUAGE_CODE = "he";
 
 /**
- * What the group is looking for. A constant, not a parameter, so every
- * search across the app costs the same and stays cacheable by location
- * alone — see the header comment on why a per-call query string would
- * defeat the neighbourhood-keyed cache the next piece adds.
+ * What the group is looking for, absent a more specific request. Every
+ * search still stays cacheable by location — see the header comment — but
+ * `includedTypes` is now a parameter, not a constant (#168): the chosen part
+ * of day narrows it (cafés only in the morning), and `getCachedSearch` keys
+ * on it precisely so that narrowing is never served the wrong answer.
  *
  * `includedTypes` matches a place's whole type list, so an
  * `italian_restaurant` still counts as a `restaurant`.
@@ -92,7 +93,7 @@ const LANGUAGE_CODE = "he";
  * Until #165 this was a Text Search for "restaurant", and no bar or café
  * ever came back.
  */
-const INCLUDED_TYPES = ["restaurant", "bar", "cafe"];
+export const DEFAULT_INCLUDED_TYPES = ["restaurant", "bar", "cafe"];
 
 const WEEKDAY_BY_GOOGLE_INDEX: LocalWeekday[] = [
   "sunday",
@@ -249,10 +250,16 @@ function apiKeyHeader(): Record<string, string> {
  * `radiusMeters` is a hard *restriction*: nothing outside the circle comes
  * back. (Text Search, used before #165, only took it as a bias.) Deriving the
  * right radius from a group's neighbourhoods is B7b's job, not this file's.
+ *
+ * `includedTypes` defaults to every kind this app ever searches for
+ * (`DEFAULT_INCLUDED_TYPES`) — pass a narrower list (#168) to ask Google for
+ * only that kind, e.g. `["cafe"]` for a morning meeting, so a scarce kind
+ * doesn't lose to more common ones within the same 20-result cap.
  */
 export async function searchNeighbourhood(
   center: LatLng,
-  radiusMeters: number
+  radiusMeters: number,
+  includedTypes: string[] = DEFAULT_INCLUDED_TYPES
 ): Promise<Candidate[]> {
   const response = await fetch(SEARCH_ENDPOINT, {
     method: "POST",
@@ -262,7 +269,7 @@ export async function searchNeighbourhood(
       ...apiKeyHeader(),
     },
     body: JSON.stringify({
-      includedTypes: INCLUDED_TYPES,
+      includedTypes,
       languageCode: LANGUAGE_CODE,
       locationRestriction: {
         circle: {
