@@ -52,9 +52,9 @@ const NOW = new Date("2026-09-30T10:00:00.000Z");
 
 const MEETING = {
   id: "m1",
-  // Pinned, so the window is one day. Unpinned with free calendars, the week is
-  // one slot, which constraints.ts rejects as longer than a week.
-  pinnedDate: new Date("2026-10-01T00:00:00.000Z"),
+  // Unpinned, one person, nobody busy: the case that reached production as
+  // "a time slot longer than a week is not a slot" (see `searchWindow`).
+  pinnedDate: null,
   occasion: null,
   responses: [
     {
@@ -151,6 +151,20 @@ describe("runCycle's stage", () => {
       "venue_details",
       "model",
     ]);
+  });
+});
+
+describe("a group of one, free all week, with no date pinned", () => {
+  it("is weighed as far as the model", async () => {
+    runMatchingAgent.mockRejectedValue(new Error("stop here"));
+
+    await runCycle("m1", NOW, FREE);
+
+    expect(runMatchingAgent).toHaveBeenCalledOnce();
+    expect(console.error).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.stringMatching(/week/) })
+    );
   });
 });
 

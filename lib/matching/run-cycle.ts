@@ -152,7 +152,12 @@ function zoneOffsetMs(instant: Date): number {
  * calendar day; the local day starts two or three hours before that instant,
  * which is exactly what `zoneOffsetMs` is for.
  *
- * Without one, `SEARCH_HORIZON_DAYS` from now.
+ * Without one, `SEARCH_HORIZON_DAYS` from now, **less a minute**. A full week
+ * ends where it starts on `constraints.ts`'s weekly axis, which cannot place
+ * it, and a group nobody in which is busy gets the whole window back from
+ * `commonFreeWindows` as one slot — so every run failed, and a new group of
+ * one with an empty calendar never got a proposal. Free time lies inside this
+ * window, so keeping the window under a week keeps every slot under one.
  *
  * Clamped to `now` either way: a pinned day that is half over is still
  * proposable for the evening, and one that is entirely over leaves an empty
@@ -165,7 +170,7 @@ export function searchWindow(pinnedDate: Date | null, now: Date): TimeSlot {
   if (!pinnedDate) {
     return {
       start: now,
-      end: new Date(now.getTime() + SEARCH_HORIZON_DAYS * DAY_MS),
+      end: new Date(now.getTime() + SEARCH_HORIZON_DAYS * DAY_MS - 60_000),
     };
   }
 
