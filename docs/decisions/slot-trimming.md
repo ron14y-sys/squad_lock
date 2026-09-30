@@ -117,6 +117,22 @@ places that consult it.
 - **The slot left after narrowing** — inside `trimPairToViableSlots`. Too short
   there drops that one pair and nothing else.
 
+## The four-hour maximum
+
+`MAXIMUM_MEETING_MINUTES = 240` ([#163](https://github.com/ron14y-sys/squad_lock/issues/163)).
+The last step of `trimPairToViableSlots` hands a longer slot to
+`splitIntoBlocks`, which cuts it into back-to-back four-hour blocks. The model
+then chooses which four hours, not whether to take the whole day.
+
+When the slot does not divide evenly, the last block is pulled back to end
+where the slot ends, overlapping the one before it: 12:00–22:00 becomes 12–16,
+16–20 and 18–22. The late hours are the ones dinner or a bar needs, so they are
+never the ones lost.
+
+The cost is more pairs. A group free all week, at venues open 12:00–24:00, gets
+three pairs per venue per day instead of one; measured on scenario `09`'s six
+people, the payload sent to the model grew from about 11.5k to 31.7k characters.
+
 ## Wired
 
 `evals/adapter.ts` calls it, through `filterTrimmedPairs` — trim each candidate

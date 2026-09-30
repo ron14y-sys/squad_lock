@@ -9,8 +9,10 @@ import {
 } from "@/evals/adapter";
 import { expectedPlaceId } from "@/evals/judge";
 import {
+  MAXIMUM_MEETING_MINUTES,
   MINIMUM_MEETING_MINUTES,
   meetsMinimumLength,
+  splitIntoBlocks,
   trimPairToViableSlots,
   windowsCoverSlot,
 } from "@/lib/matching/constraints";
@@ -119,7 +121,12 @@ describe("reach shortens the meeting too", () => {
     const pair = pairFrom("mobility-window-trap", "place-03-herzl-16");
     expect(pair.distanceKm["Shira"]).toBeLessThan(1);
 
-    expect(trimPairToViableSlots(pair).map(reads)).toEqual(["18:00–23:00"]);
+    // The whole 18:00–23:00 evening survives; it is five hours, so it comes
+    // back as two four-hour blocks (#163).
+    expect(trimPairToViableSlots(pair).map(reads)).toEqual([
+      "18:00–22:00",
+      "19:00–23:00",
+    ]);
   });
 
   it("never narrows on tolerance — being far is a burden, not a wall", () => {
@@ -196,7 +203,63 @@ describe("hours that are not known", () => {
       })
         .map(reads)
         .sort()
-    ).toEqual(["12:00–16:00", "18:00–23:00"]);
+    ).toEqual(["12:00–16:00", "18:00–22:00", "19:00–23:00"]);
+  });
+});
+
+describe("the four-hour maximum (#163)", () => {
+  const day = (from: string, to: string): TimeSlot => ({
+    start: instantOf("2026-09-10", from),
+    end: instantOf("2026-09-10", to),
+  });
+
+  it("leaves a window of four hours or less alone", () => {
+    expect(splitIntoBlocks(day("19:00", "23:00")).map(reads)).toEqual([
+      "19:00–23:00",
+    ]);
+    expect(splitIntoBlocks(day("20:00", "23:00")).map(reads)).toEqual([
+      "20:00–23:00",
+    ]);
+  });
+
+  it("cuts a long window into back-to-back four-hour blocks", () => {
+    expect(splitIntoBlocks(day("08:00", "20:00")).map(reads)).toEqual([
+      "08:00–12:00",
+      "12:00–16:00",
+      "16:00–20:00",
+    ]);
+  });
+
+  // The latest hours are the ones a dinner or a bar needs, so an uneven
+  // window gives up overlap rather than its last two hours.
+  it("pulls the last block back so the window's end is never cut off", () => {
+    expect(splitIntoBlocks(day("12:00", "22:00")).map(reads)).toEqual([
+      "12:00–16:00",
+      "16:00–20:00",
+      "18:00–22:00",
+    ]);
+  });
+
+  it("never proposes a meeting longer than four hours, whatever is free", () => {
+    const pair = pairFrom("closed-on-the-night-trap", "place-02-port-said");
+    const allDay: Candidate = {
+      ...pair.candidate,
+      openingHours: [{ weekdays: ["thursday"], from: "08:00", to: "23:59" }],
+    };
+
+    const slots = trimPairToViableSlots({
+      ...pair,
+      candidate: allDay,
+      slot: day("09:00", "23:00"),
+    });
+
+    expect(slots.length).toBeGreaterThan(1);
+    for (const slot of slots) {
+      expect(slot.end.getTime() - slot.start.getTime()).toBeLessThanOrEqual(
+        MAXIMUM_MEETING_MINUTES * 60_000
+      );
+    }
+    expect(reads(slots[slots.length - 1])).toBe("19:00–23:00");
   });
 });
 
