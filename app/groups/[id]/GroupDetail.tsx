@@ -30,6 +30,15 @@ const KNOWN_INVITE_ERRORS: Record<string, string> = {
   "Invalid invitation.": "כתובת האימייל לא תקינה.",
 };
 
+function groupFullMessage(message: string): string | null {
+  // GroupFullError's text (#174), e.g. "Group g1 already has 6 members or
+  // pending invitations."
+  if (!/already has \d+ members or pending invitations\./.test(message)) {
+    return null;
+  }
+  return "הקבוצה מלאה (מקסימום 6 חברים, כולל הזמנות ממתינות).";
+}
+
 export function GroupDetail({ groupId }: { groupId: string }) {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [group, setGroup] = useState<Group | null>(null);
@@ -93,7 +102,9 @@ export function GroupDetail({ groupId }: { groupId: string }) {
       const body = await res.json();
       if (!res.ok) {
         setInviteMessage(
-          KNOWN_INVITE_ERRORS[body.error] ?? "לא הצלחנו לשלוח את ההזמנה."
+          groupFullMessage(body.error ?? "") ??
+            KNOWN_INVITE_ERRORS[body.error] ??
+            "לא הצלחנו לשלוח את ההזמנה."
         );
         return;
       }

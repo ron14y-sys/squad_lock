@@ -70,3 +70,18 @@ test("shows a translated message for a known error", async () => {
     )
   ).toBeInTheDocument();
 });
+
+test("shows a friendly message when the group filled up first (#174)", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      jsonResponse({ error: "This group is already full." }, 409)
+    );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<AcceptInvitation token="tok-123" />);
+  await user.click(screen.getByRole("button", { name: "הצטרף לקבוצה" }));
+
+  expect(await screen.findByText("הקבוצה כבר מלאה.")).toBeInTheDocument();
+});

@@ -15,6 +15,9 @@ const KNOWN_ERRORS: Record<string, string> = {
   "This invitation has already been accepted.": "ההזמנה הזו כבר אושרה.",
   "This invitation was sent to a different address.":
     "ההזמנה הזו נשלחה לכתובת אימייל אחרת מזו שאיתה התחברת.",
+  // #174: someone else's invitation filled the group before this one was
+  // accepted.
+  "This group is already full.": "הקבוצה כבר מלאה.",
 };
 
 export function AcceptInvitation({ token }: { token: string }) {

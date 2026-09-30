@@ -7,6 +7,7 @@
 
 import { auth } from "@/auth";
 import { getPrisma } from "@/lib/db/client";
+import { GROUP_SIZE_CAP, GroupFullError } from "@/lib/db/groups";
 
 export async function POST(
   _request: Request,
@@ -52,23 +53,44 @@ export async function POST(
     );
   }
 
-  const [, membership] = await prisma.$transaction([
-    prisma.invitation.update({
-      where: { id: invitation.id },
-      data: {
-        status: "accepted",
-        acceptedByUserId: userId,
-        respondedAt: new Date(),
-      },
-    }),
-    prisma.groupMember.upsert({
-      where: {
-        groupId_userId: { groupId: invitation.groupId, userId },
-      },
-      update: {},
-      create: { groupId: invitation.groupId, userId },
-    }),
-  ]);
+  try {
+    const membership = await prisma.$transaction(async (tx) => {
+      // #174, spec §5.3: the invite-time check (members + pending) keeps
+      // this from happening in the ordinary case, but several pending
+      // invitations can still be accepted at once — recheck the member
+      // count itself, in the same transaction as the write.
+      const memberCount = await tx.groupMember.count({
+        where: { groupId: invitation.groupId },
+      });
+      if (memberCount >= GROUP_SIZE_CAP) {
+        throw new GroupFullError(invitation.groupId);
+      }
 
-  return Response.json({ groupId: membership.groupId });
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: {
+          status: "accepted",
+          acceptedByUserId: userId,
+          respondedAt: new Date(),
+        },
+      });
+      return tx.groupMember.upsert({
+        where: {
+          groupId_userId: { groupId: invitation.groupId, userId },
+        },
+        update: {},
+        create: { groupId: invitation.groupId, userId },
+      });
+    });
+
+    return Response.json({ groupId: membership.groupId });
+  } catch (error) {
+    if (error instanceof GroupFullError) {
+      return Response.json(
+        { error: "This group is already full." },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 }

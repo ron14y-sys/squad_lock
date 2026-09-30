@@ -13,6 +13,11 @@ import { auth } from "@/auth";
 import { getPrisma } from "@/lib/db/client";
 import { inviteToGroupSchema } from "@/lib/groups/schema";
 import { Prisma } from "@/lib/generated/prisma/client";
+import {
+  GROUP_SIZE_CAP,
+  GroupFullError,
+  groupSizeWithPending,
+} from "@/lib/db/groups";
 import { notifyInvitation } from "@/lib/email/notify";
 import { after } from "next/server";
 
@@ -118,12 +123,24 @@ export async function POST(
   }
 
   try {
-    const invitation = await prisma.invitation.create({
-      data: { groupId, email, invitedById: userId },
+    const invitation = await prisma.$transaction(async (tx) => {
+      // #174, spec §5.3: 3–6 members. The cap counts pending invitations
+      // too, in the same transaction as the create, so two invites racing
+      // each other can't both slip in under it.
+      const size = await groupSizeWithPending(tx, groupId);
+      if (size >= GROUP_SIZE_CAP) {
+        throw new GroupFullError(groupId);
+      }
+      return tx.invitation.create({
+        data: { groupId, email, invitedById: userId },
+      });
     });
     after(() => notifyInvitation(invitation.id));
     return Response.json(invitation, { status: 201 });
   } catch (error) {
+    if (error instanceof GroupFullError) {
+      return Response.json({ error: error.message }, { status: 409 });
+    }
     // A concurrent request for the same (group, email) lost the race to
     // create — the row that won is the answer, not an error.
     if (

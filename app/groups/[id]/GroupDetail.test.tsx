@@ -134,6 +134,38 @@ test("shows a friendly message when someone is already a member", async () => {
   ).toBeInTheDocument();
 });
 
+test("shows a friendly message when the group is full (#174)", async () => {
+  const user = userEvent.setup();
+  const fetchMock = routeFetchMock();
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupDetail groupId="group-1" />);
+  await screen.findByText("Rothschild Regulars");
+
+  fetchMock.mockImplementationOnce(() =>
+    Promise.resolve(
+      jsonResponse(
+        {
+          error: "Group group-1 already has 6 members or pending invitations.",
+        },
+        409
+      )
+    )
+  );
+
+  await user.type(
+    screen.getByPlaceholderText("כתובת אימייל"),
+    "dana@example.com"
+  );
+  await user.click(screen.getByRole("button", { name: "הזמן" }));
+
+  expect(
+    await screen.findByText(
+      "הקבוצה מלאה (מקסימום 6 חברים, כולל הזמנות ממתינות)."
+    )
+  ).toBeInTheDocument();
+});
+
 test("shows a not-found message for a group the user isn't in", async () => {
   const fetchMock = routeFetchMock({
     "/api/groups/group-1/invitations": () =>
