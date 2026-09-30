@@ -48,6 +48,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   session: { strategy: "jwt" },
+  // #171: without this, an unauthenticated visit to a protected route (or a
+  // sign-in error) lands on Auth.js's own unstyled default page, which looks
+  // nothing like the rest of the app. "/" already renders Landing with the
+  // Google button front and center for a signed-out visitor.
+  pages: { signIn: "/" },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (
