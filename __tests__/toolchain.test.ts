@@ -41,4 +41,17 @@ describe("prisma toolchain", () => {
     );
     expect(config).toMatch(/url:\s*process\.env\.DATABASE_URL/);
   });
+
+  it("migrates the database before a production build, and only then", () => {
+    // #153: migrations were applied by hand, so #152's code reached production
+    // two days before its column did. Previews share the production database
+    // until a staging one exists, so they must not migrate it.
+    const pkg = JSON.parse(read("package.json")) as {
+      scripts: Record<string, string>;
+    };
+
+    expect(pkg.scripts["vercel-build"]).toBe(
+      'if [ "$VERCEL_ENV" = production ]; then prisma migrate deploy; fi && next build'
+    );
+  });
 });
