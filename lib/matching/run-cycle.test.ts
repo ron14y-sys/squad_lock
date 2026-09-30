@@ -164,11 +164,16 @@ describe("blockedByRejections", () => {
 describe("searchWindow", () => {
   const NOW = at("2026-09-20T09:00:00.000Z");
 
-  it("looks a week ahead when no date was pinned", () => {
+  it("looks a week ahead when no date was pinned, a minute short of it", () => {
     const window = searchWindow(null, NOW);
 
     expect(window.start).toEqual(NOW);
-    expect(window.end.getTime() - NOW.getTime()).toBe(7 * 24 * 60 * 60 * 1000);
+    // A full week would end where it starts on the weekly axis, which
+    // `constraints.ts` cannot place — and a group free all week would get
+    // that whole window as one slot.
+    expect(window.end.getTime() - NOW.getTime()).toBe(
+      7 * 24 * 60 * 60 * 1000 - 60 * 1000
+    );
   });
 
   // A @db.Date is midnight UTC on that calendar day; Asia/Jerusalem is two
