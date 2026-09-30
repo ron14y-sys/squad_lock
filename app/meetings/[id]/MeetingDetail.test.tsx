@@ -413,3 +413,52 @@ test("shows no notice when nobody is missing a home area", async () => {
     screen.queryByText("אי אפשר להכין הצעה עדיין")
   ).not.toBeInTheDocument();
 });
+
+test("asks again every ~3s while re-weighing, and stops once a proposal is back", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(jsonResponse(detail({ status: "reweighing" })))
+    .mockResolvedValueOnce(jsonResponse(detail({ status: "reweighing" })))
+    .mockResolvedValue(jsonResponse(detail()));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+  expect(await screen.findByText("בית קפה נורדאו")).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+
+  expect(screen.getByText("משוקלל מחדש")).toBeInTheDocument();
+
+  // The third answer is `waiting_on_you` — the new proposal is out, and
+  // nothing is asked after the page shows it.
+  await vi.waitFor(() =>
+    expect(screen.queryByText("משוקלל מחדש")).not.toBeInTheDocument()
+  );
+  const settled = fetchMock.mock.calls.length;
+  await vi.advanceTimersByTimeAsync(9000);
+  expect(fetchMock).toHaveBeenCalledTimes(settled);
+  vi.useRealTimers();
+});
+
+test("a failed poll leaves the page on screen", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(jsonResponse(detail({ status: "reweighing" })))
+    .mockResolvedValue(jsonResponse({}, 500));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+  expect(await screen.findByText("בית קפה נורדאו")).toBeInTheDocument();
+
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(screen.getByText("בית קפה נורדאו")).toBeInTheDocument();
+  vi.useRealTimers();
+});
