@@ -6,9 +6,10 @@ Reference for [`prisma/schema.prisma`](../prisma/schema.prisma). Built for
 disagree, the schema is the source of truth — update this file to match it,
 not the other way around.
 
-The schema has **11 tables**: 9 that carry product data, plus 2 pure join
+The schema has **15 tables**: 9 that carry product data, 2 pure join
 tables (`GroupMember`, `MatchRunSeenContext`) that resolve many-to-many
-relationships. All primary keys are `String @default(cuid())` unless noted.
+relationships, 2 Places caches, an invitation table and a notification log.
+All primary keys are `String @default(cuid())` unless noted.
 
 ---
 
@@ -90,6 +91,28 @@ several groups at once, and a group has several members.
 **Indexes:** unique on `(groupId, userId)`; index on `userId` (list a
 user's groups).
 
+### `invitations`
+
+An invitation to join a group, by email (spec §5.3, §12.1) — the only way
+anyone joins a group. Keyed on `email`, not `userId`, because the invitee
+has no `User` row yet when it is sent. Accepting it (after signing in) is
+what creates their `group_members` row.
+
+| Column                  | Type               | Notes                                                 |
+| ----------------------- | ------------------ | ----------------------------------------------------- |
+| `id`                    | `String`           | PK                                                    |
+| `groupId`               | `String`           | FK → `groups.id`, cascade delete                      |
+| `email`                 | `String`           |                                                       |
+| `invitedById`           | `String`           | FK → `users.id`                                       |
+| `status`                | `InvitationStatus` | `pending` / `accepted`; default `pending`             |
+| `token`                 | `String`           | unique, a v4 UUID — what the emailed link carries     |
+| `acceptedByUserId`      | `String?`          | FK → `users.id`; set only once `status` is `accepted` |
+| `respondedAt`           | `DateTime?`        |                                                       |
+| `createdAt`/`updatedAt` | `DateTime`         |                                                       |
+
+**Indexes:** unique on `(groupId, email)` — inviting the same address twice
+re-sends, it does not duplicate; index on `email`.
+
 ---
 
 ## Meetings
@@ -140,6 +163,18 @@ One weighing cycle of a meeting (spec §4.1d — every run persisted in full).
 | `shortlist`   | `Json`     | the candidate venues that went in, with per-participant distances and viable time slots (spec §5.4) |
 | `createdAt`   | `DateTime` |                                                                                                     |
 
+**What the run cost (A4)** — stored, not logged, because A5 and the report
+total it later. All nullable together: a run that failed before the model
+call has none of them.
+
+| Column                                                         | Type             | Notes                                                                           |
+| -------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------- |
+| `model`, `thinkingLevel`                                       | `String?`        | what was called                                                                 |
+| `durationMs`                                                   | `Int?`           |                                                                                 |
+| `inputTokens`, `outputTokens`, `thoughtTokens`, `cachedTokens` | `Int?`           |                                                                                 |
+| `costUsd`                                                      | `Decimal(12,8)?` | `NULL`, never `0`, for a model missing from the price table (`lib/llm/cost.ts`) |
+| `costBasis`                                                    | `String?`        | `exact` / `approximate` / `unknown` — how far to trust `costUsd`                |
+
 **Relations:** many `MatchOption`; many `MatchRunSeenContext` (which
 `ParticipantMeetingContext` rows this run saw).
 
@@ -160,8 +195,10 @@ the report.
 | `venueName`, `venueAddress` | `String`/`String?` | snapshot at decision time — Places data can change later                                                                                                         |
 | `venueLat`, `venueLng`      | `Float?`           |                                                                                                                                                                  |
 | `proposedDatetime`          | `DateTime`         |                                                                                                                                                                  |
+| `proposedEnd`               | `DateTime`         | stored, not implied: B6 shortens a meeting to fit a venue's opening hours                                                                                        |
 | `participantJustifications` | `Json`             | `userId → text`, written for that viewer specifically (spec §5.6)                                                                                                |
 | `tradeoffs`                 | `Json`             | what this option costs, and for whom — persisted for the timeline/report but **never** rendered as a comparative cost line to the person who bore it (spec §5.6) |
+| `unverified`                | `Json`             | `UnverifiedFact[]`, default `[]` — what A2 could not check (e.g. opening hours). Shown to everybody, written by code, never by the model                         |
 | `createdAt`                 | `DateTime`         |                                                                                                                                                                  |
 
 **Indexes:** unique on `(matchRunId, rank)`.
@@ -305,23 +342,96 @@ read/write through it.
 
 ---
 
-## Enums
+## Places cache (B7)
 
-| Enum             | Values                                                     |
-| ---------------- | ---------------------------------------------------------- |
-| `MeetingStatus`  | `weighing` · `awaiting` · `closed` · `stuck` · `cancelled` |
-| `ResponseStatus` | `pending` · `approved` · `cant_make_it` · `doesnt_suit`    |
+Two tiers, cached separately (spec §6.3). Neither is tied to a meeting —
+a place is a property of a location, shared by every meeting nearby. The
+freshness and rounding rules live in `lib/db/places-cache.ts`, and every
+caller goes through it, never the raw client in `lib/places/client.ts`.
+
+### `place_search_cache`
+
+Tier 1: the broad Text Search result for one neighbourhood-sized area.
+Kept 30 days.
+
+| Column         | Type       | Notes                                                                     |
+| -------------- | ---------- | ------------------------------------------------------------------------- |
+| `id`           | `String`   | PK                                                                        |
+| `latKey`       | `Float`    | rounded by `roundToNeighbourhood`, so nearby searches hit the same row    |
+| `lngKey`       | `Float`    | likewise                                                                  |
+| `radiusMeters` | `Int`      |                                                                           |
+| `results`      | `Json`     | `Candidate[]` — Essentials and Pro fields only; `rating`/hours are tier 2 |
+| `fetchedAt`    | `DateTime` |                                                                           |
+
+**Indexes:** unique on `(latKey, lngKey, radiusMeters)`.
+
+### `place_details_cache`
+
+Tier 2: the Enterprise-tier fields for one shortlisted place. Kept 24 hours
+— shorter on purpose, because opening hours are what decide whether a
+proposal is real.
+
+| Column         | Type       | Notes                                                                                              |
+| -------------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| `placeId`      | `String`   | PK — the Google Places id, exact and stable, so no rounding                                        |
+| `rating`       | `Float?`   |                                                                                                    |
+| `openingHours` | `Json`     | `LocalWindow[]`, default `[]`. `[]` is "fetched, no hours"; a missing row is "never fetched"       |
+| `budget`       | `String?`  | `modest` / `splurge`, from Places `priceLevel` (#139). `NULL` is "not known", including `MODERATE` |
+| `fetchedAt`    | `DateTime` |                                                                                                    |
 
 ---
 
-## Deliberately not in this schema
+## Notifications (B8)
 
-Out of scope for F4 — belongs to a later task, not forgotten:
+### `notification_log`
 
-- **A venue cache table** — the two-tier Places cache (spec §6.3) is
-  Track B, weeks 4–6 (`B7`).
-- **An email/notification log** — retry and failure-recording for
-  transactional email (spec §5.5, §13.10) is `B8`/`B9`.
-- **A wired-up `PrismaClient`/db module** and `prisma generate` in
-  `prepare`/CI — belongs to `B1`, once Postgres is actually provisioned
-  and a `DATABASE_URL` exists in CI.
+One row per transactional-email attempt (spec §5.5). A failed send is a row
+here, never a reason a meeting or invitation write rolled back — every
+`notify*` call in `lib/email/notify.ts` runs after the change it reports has
+committed. It is the record a retry would need, not the retry itself (B9):
+nothing re-sends on its own.
+
+| Column              | Type                 | Notes                                                         |
+| ------------------- | -------------------- | ------------------------------------------------------------- |
+| `id`                | `String`             | PK                                                            |
+| `kind`              | `NotificationKind`   | which of the five spec §5.5 triggers                          |
+| `recipientEmail`    | `String`             | the address actually used — a snapshot, not a `User` relation |
+| `status`            | `NotificationStatus` | `sent` / `failed`                                             |
+| `providerMessageId` | `String?`            | Resend's id for the message, to look it up in their dashboard |
+| `errorMessage`      | `String?`            |                                                               |
+| `meetingId`         | `String?`            | FK → `meetings.id`, cascade delete                            |
+| `invitationId`      | `String?`            | FK → `invitations.id`, cascade delete                         |
+| `createdAt`         | `DateTime`           |                                                               |
+
+A row is about **exactly one** of a meeting or an invitation — never both,
+never neither. The database does not enforce this; the senders do.
+
+**Indexes:** `meetingId`; `invitationId`.
+
+---
+
+## Enums
+
+| Enum                 | Values                                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MeetingStatus`      | `weighing` · `awaiting` · `closed` · `stuck` · `cancelled`                                                                                 |
+| `ResponseStatus`     | `pending` · `approved` · `cant_make_it` · `doesnt_suit`                                                                                    |
+| `InvitationStatus`   | `pending` · `accepted`                                                                                                                     |
+| `ExtractionOutcome`  | `soft` · `distance` · `time` · `venue_identity` · `none` — or why nothing was extracted: `failed_quota` · `failed_call` · `failed_invalid` |
+| `NotificationKind`   | `invitation` · `proposal_waiting` · `meeting_confirmed` · `conflict_reweigh` · `stuck`                                                     |
+| `NotificationStatus` | `sent` · `failed`                                                                                                                          |
+
+---
+
+## Environments and migrations
+
+| Where             | Database                                      | Who applies migrations                         |
+| ----------------- | --------------------------------------------- | ---------------------------------------------- |
+| Your machine      | a local Postgres (see [README](../README.md)) | you, with `npm run db:migrate:dev`             |
+| Vercel Preview    | production's, until #157 adds a staging one   | nobody — Previews must not migrate a shared DB |
+| Vercel Production | Supabase                                      | the deploy itself (`vercel-build`, #153)       |
+
+Never point a local `.env.local` at the production database. Until
+2026-09-30 every local `.env.local` did, which is how migrations reached
+production at all — by accident, and up to 16 days late. The rules for
+writing a migration are in [AGENTS.md](../AGENTS.md) → Migrations.
