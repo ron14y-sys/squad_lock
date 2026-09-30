@@ -314,6 +314,29 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
     };
   }, [meetingId]);
 
+  // While a re-weighing is under way, ask again every three seconds — the
+  // same cadence as the feed, and what makes the route above run it. A failed
+  // poll keeps the page on screen; the next one tries again.
+  const reweighing = detail?.status === "reweighing";
+  useEffect(() => {
+    if (!reweighing) return;
+    const cancelledRef = { current: false };
+    const intervalId = setInterval(() => {
+      // Backgrounded: no requests (spec §5.6).
+      if (document.visibilityState !== "visible") return;
+      loadDetail(
+        meetingId,
+        cancelledRef,
+        (s) => s !== "error" && setLoadState(s),
+        setDetail
+      );
+    }, 3000);
+    return () => {
+      cancelledRef.current = true;
+      clearInterval(intervalId);
+    };
+  }, [meetingId, reweighing]);
+
   function refresh() {
     loadDetail(meetingId, { current: false }, setLoadState, setDetail);
   }
