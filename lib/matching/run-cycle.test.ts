@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   blockedByRejections,
+  faultRetryNotBefore,
   isDue,
   MIN_PROPOSAL_LIFETIME_MS,
+  RATE_LIMIT_RETRY_COOLDOWN_MS,
   REJECTION_BATCH_MS,
   RUN_ATTEMPT_COOLDOWN_MS,
   searchWindow,
@@ -12,6 +14,7 @@ import {
   type RecordedRejection,
   venueSoftFactsFrom,
 } from "./run-cycle";
+import { LlmCallError } from "@/lib/llm/client";
 import { pairId } from "./schemas";
 
 /**
@@ -210,6 +213,7 @@ describe("isDue", () => {
     updatedAt: ago(long),
     lastRunAt: ago(long),
     firstRejectionAt: ago(REJECTION_BATCH_MS + 1000),
+    retryNotBefore: null,
   };
 
   it("runs a meeting whose batch window has closed", () => {
@@ -254,6 +258,7 @@ describe("isDue", () => {
           updatedAt: ago(RUN_ATTEMPT_COOLDOWN_MS + 1000),
           lastRunAt: runFinished,
           firstRejectionAt: rejectedDuringIt,
+          retryNotBefore: null,
         },
         NOW
       )
@@ -265,7 +270,12 @@ describe("isDue", () => {
 
     expect(
       isDue(
-        { updatedAt: ago(long), lastRunAt: fresh, firstRejectionAt: ago(1) },
+        {
+          updatedAt: ago(long),
+          lastRunAt: fresh,
+          firstRejectionAt: ago(1),
+          retryNotBefore: null,
+        },
         NOW
       )
     ).toBe(false);
@@ -280,10 +290,86 @@ describe("isDue", () => {
   it("retries a meeting that has never had a run", () => {
     expect(
       isDue(
-        { updatedAt: ago(long), lastRunAt: null, firstRejectionAt: null },
+        {
+          updatedAt: ago(long),
+          lastRunAt: null,
+          firstRejectionAt: null,
+          retryNotBefore: null,
+        },
         NOW
       )
     ).toBe(true);
+  });
+
+  // B9 part two: a rate-limited fault's cooldown, not the flat one.
+  describe("retryNotBefore", () => {
+    it("is not due before a set retryNotBefore, even though the flat cooldown has long passed", () => {
+      expect(isDue({ ...due, retryNotBefore: ago(-1000) }, NOW)).toBe(false);
+    });
+
+    it("is due once retryNotBefore has passed", () => {
+      expect(isDue({ ...due, retryNotBefore: ago(1000) }, NOW)).toBe(true);
+    });
+
+    it("is due exactly at the retryNotBefore boundary", () => {
+      expect(isDue({ ...due, retryNotBefore: NOW }, NOW)).toBe(true);
+    });
+
+    it("is unaffected when null, same as every meeting that never rate-limited", () => {
+      expect(isDue({ ...due, retryNotBefore: null }, NOW)).toBe(true);
+    });
+  });
+});
+
+describe("faultRetryNotBefore", () => {
+  const NOW = at("2026-09-27T20:00:00.000Z");
+
+  it("is null for an error that is not an LlmCallError", () => {
+    expect(
+      faultRetryNotBefore(new Error("places: searchNearby failed (500)"), NOW)
+    ).toBeNull();
+  });
+
+  it("is null for an LlmCallError that is not rate-limited and gives no delay", () => {
+    const error = new LlmCallError("overloaded", {
+      model: "gemini-3.5-flash-lite",
+      task: "matching",
+      rateLimited: false,
+    });
+    expect(faultRetryNotBefore(error, NOW)).toBeNull();
+  });
+
+  it("uses Gemini's own delay even when not flagged rate-limited", () => {
+    const error = new LlmCallError("high demand, retry in 12s", {
+      model: "gemini-3.5-flash-lite",
+      task: "matching",
+      rateLimited: false,
+    });
+    expect(faultRetryNotBefore(error, NOW)).toEqual(
+      new Date(NOW.getTime() + 12_000)
+    );
+  });
+
+  it("falls back to RATE_LIMIT_RETRY_COOLDOWN_MS when rate-limited with no explicit delay", () => {
+    const error = new LlmCallError("RESOURCE_EXHAUSTED", {
+      model: "gemini-3.5-flash-lite",
+      task: "matching",
+      rateLimited: true,
+    });
+    expect(faultRetryNotBefore(error, NOW)).toEqual(
+      new Date(NOW.getTime() + RATE_LIMIT_RETRY_COOLDOWN_MS)
+    );
+  });
+
+  it("prefers Gemini's own delay over the default even when rate-limited", () => {
+    const error = new LlmCallError("quota exceeded, retry in 45s", {
+      model: "gemini-3.5-flash-lite",
+      task: "matching",
+      rateLimited: true,
+    });
+    expect(faultRetryNotBefore(error, NOW)).toEqual(
+      new Date(NOW.getTime() + 45_000)
+    );
   });
 });
 

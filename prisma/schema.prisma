@@ -215,6 +215,15 @@ model Meeting {
   /// `weighing` (`runStageOf`).
   runStage RunStage?
 
+  /// B9 part two -- when set, no automatic retry is attempted before this
+  /// instant, overriding the flat `RUN_ATTEMPT_COOLDOWN_MS`. Set by
+  /// `runCycle`'s fault branch after a rate-limited Gemini call (a daily
+  /// quota wall, not a blip -- retrying it every 90 seconds wastes polls
+  /// for no reason); cleared back to null by any call that gets past that
+  /// branch, whether it fails differently or succeeds outright. NULL is
+  /// "nothing special", same as every meeting has today.
+  retryNotBefore DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
