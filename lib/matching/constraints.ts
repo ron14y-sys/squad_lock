@@ -803,6 +803,44 @@ export function meetsMinimumLength(
   return slot.end.getTime() - slot.start.getTime() >= minimumMinutes * 60_000;
 }
 
+/**
+ * The longest meeting worth proposing (#163). A group free all afternoon and
+ * evening is not asking to spend it all in one place.
+ */
+export const MAXIMUM_MEETING_MINUTES = 240;
+
+/**
+ * A long window cut into four-hour blocks, so the model chooses *which* four
+ * hours rather than being handed the whole day (#163).
+ *
+ * Blocks run back to back from the start. When the window does not divide
+ * evenly, the last block is pulled back to end where the window ends: the
+ * latest hours are often the ones that matter (a bar, dinner), so they are
+ * never the ones cut off. That last block may overlap the one before it.
+ *
+ *   12:00–24:00 → 12–16, 16–20, 20–24
+ *   12:00–22:00 → 12–16, 16–20, 18–22
+ */
+export function splitIntoBlocks(
+  slot: TimeSlot,
+  maximumMinutes: number = MAXIMUM_MEETING_MINUTES
+): TimeSlot[] {
+  const block = maximumMinutes * 60_000;
+  const start = slot.start.getTime();
+  const end = slot.end.getTime();
+  if (end - start <= block) return [slot];
+
+  const blocks: TimeSlot[] = [];
+  for (let from = start; from < end; from += block) {
+    const blockStart = Math.min(from, end - block);
+    blocks.push({
+      start: new Date(blockStart),
+      end: new Date(blockStart + block),
+    });
+  }
+  return blocks;
+}
+
 export type TrimInput = {
   /** One window the group is free. B6 derives these from the calendars. */
   slot: TimeSlot;
@@ -826,7 +864,7 @@ export type TrimInput = {
  * opening hours and everyone's reach have narrowed the group's free window.
  *
  * Empty means the pair is dropped. One or more means the meeting happens, at
- * the hours returned — and **more than one is a real answer**, not a bug: a
+ * the hours returned, each at most `MAXIMUM_MEETING_MINUTES` long — and **more than one is a real answer**, not a bug: a
  * venue open for lunch and again for dinner across a group free all afternoon
  * offers two distinct evenings, and choosing between them is the agent's job,
  * not this function's.
@@ -869,7 +907,8 @@ export function trimPairToViableSlots(input: TrimInput): TimeSlot[] {
   return open
     .flatMap((piece) => reachableRuns(piece, base, input))
     .map((piece) => sliceOf(input.slot, base, piece))
-    .filter((slot) => meetsMinimumLength(slot, minimum));
+    .filter((slot) => meetsMinimumLength(slot, minimum))
+    .flatMap((slot) => splitIntoBlocks(slot));
 }
 
 /** The shared stretch, counting the wrap across Saturday midnight. */
