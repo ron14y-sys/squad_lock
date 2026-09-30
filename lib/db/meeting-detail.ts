@@ -11,9 +11,11 @@ import { deriveMeetingCardStatus, runStageOf } from "./meeting-cards";
 import { findConflictingMeetings } from "./conflict-dismissal";
 import { CYCLE_CAP } from "./meetings";
 import { getPrisma } from "./client";
+import { MOBILITY_MODE_LABELS } from "@/lib/format/hebrew-labels";
 
 import type { RunStage } from "@/lib/generated/prisma/enums";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
+import type { MobilityMode } from "@/lib/types/profile";
 import type {
   Meeting,
   MeetingCardStatus,
@@ -102,7 +104,7 @@ export type MeetingDetailDTO = {
 };
 
 /** A row's own words, for the one line the timeline says triggered a re-run. */
-function describeContext(context: {
+export function describeContext(context: {
   note: string | null;
   originLabel: string | null;
   mobilityWindows: unknown;
@@ -113,7 +115,11 @@ function describeContext(context: {
     ? (context.mobilityWindows as { mode?: string; available?: boolean }[])
     : [];
   const first = windows[0];
-  if (first?.mode && first.available === false) return `אין ${first.mode} הערב`;
+  if (first?.mode && first.available === false) {
+    const label =
+      MOBILITY_MODE_LABELS[first.mode as MobilityMode] ?? first.mode;
+    return `אין ${label} הערב`;
+  }
   return "המצב הערב שונה";
 }
 
