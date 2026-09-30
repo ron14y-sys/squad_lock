@@ -207,6 +207,14 @@ model Meeting {
   /// Kept in sync by the application whenever a new top option is chosen.
   currentDatetime DateTime?
 
+  /// Where the run weighing this meeting is right now (#155), so the screens
+  /// that already poll can show progress (spec §12.6). Set by `runCycle` as it
+  /// enters each stage and cleared when the run ends, however it ends. NULL is
+  /// "no run in progress". A run killed mid-stage leaves its stage behind
+  /// until the retry overwrites it, so readers show it only while `status` is
+  /// `weighing` (`runStageOf`).
+  runStage RunStage?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -223,6 +231,15 @@ model Meeting {
   @@index([groupId])
   @@index([status, currentDatetime])
   @@map("meetings")
+}
+
+/// The stages of one run, in the order `runCycle` enters them (#155).
+enum RunStage {
+  calendars
+  places
+  venue_details
+  model
+  saving
 }
 
 /// One weighing cycle of a meeting (spec §6.2, §4.1d — every run persisted

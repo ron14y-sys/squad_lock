@@ -7,11 +7,12 @@
 
 import { meetingFromRow } from "@/lib/types/meeting-from-row";
 
-import { deriveMeetingCardStatus } from "./meeting-cards";
+import { deriveMeetingCardStatus, runStageOf } from "./meeting-cards";
 import { findConflictingMeetings } from "./conflict-dismissal";
 import { CYCLE_CAP } from "./meetings";
 import { getPrisma } from "./client";
 
+import type { RunStage } from "@/lib/generated/prisma/enums";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
 import type {
   Meeting,
@@ -76,6 +77,8 @@ export type MeetingDetailDTO = {
   remainingCycles: number;
   /** The stored status is `stuck` — separate from `status`, because a clash outranks it on the card. */
   isStuck: boolean;
+  /** Where the run weighing it is, while one is (#155). */
+  runStage: RunStage | null;
   /** Whether the viewer started this meeting — the only one who can cancel it when stuck. */
   isInitiator: boolean;
   /** Undismissed clashes with this viewer's other open meetings (spec §5.7). */
@@ -361,6 +364,7 @@ export async function getMeetingDetail(
     viewerId,
     remainingCycles: Math.max(0, CYCLE_CAP - meeting.cycleCount),
     isStuck: row.status === "stuck",
+    runStage: runStageOf(row),
     isInitiator: row.initiatorId === viewerId,
     conflicts,
     missingHome,

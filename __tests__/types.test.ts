@@ -71,6 +71,7 @@ function row(overrides: Partial<MeetingModel> = {}): MeetingModel {
     pinnedVenue: null,
     occasion: null,
     currentDatetime: null,
+    runStage: null,
     createdAt: new Date("2026-08-27T09:00:00.000Z"),
     updatedAt: new Date("2026-08-27T09:00:00.000Z"),
     ...overrides,

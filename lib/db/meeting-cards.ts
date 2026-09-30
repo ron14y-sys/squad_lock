@@ -9,6 +9,7 @@ import { findConflictingMeetings } from "./conflict-dismissal";
 import { OPEN_MEETING_STATUSES } from "./meetings";
 import { getPrisma } from "./client";
 
+import type { MeetingStatus, RunStage } from "@/lib/generated/prisma/enums";
 import type {
   MeetingModel,
   ResponseModel,
@@ -77,8 +78,23 @@ export type MeetingCardDTO = {
   totalCount: number;
   /** True once `currentDatetime` has passed — the feed's "past" divider. */
   isPast: boolean;
+  /** Where the run weighing it is, while one is (#155). */
+  runStage: RunStage | null;
   participants: { userId: string; name: string; status: ResponseStatus }[];
 };
+
+/**
+ * A meeting's run stage, as far as a screen should believe it (#155): only
+ * while it is `weighing`. A run killed mid-stage leaves its stage on the row
+ * until the retry overwrites it, and a meeting that has moved on is not
+ * being worked on, whatever the row says.
+ */
+export function runStageOf(row: {
+  status: MeetingStatus;
+  runStage: RunStage | null;
+}): RunStage | null {
+  return row.status === "weighing" ? row.runStage : null;
+}
 
 /** No proposal yet sorts as "now" — the newest, least-settled meetings lead the list. */
 function sortKey(card: Pick<MeetingCardDTO, "currentDatetime">): number {
@@ -150,6 +166,7 @@ function toMeetingCardDTO(
     isPast:
       meeting.currentDatetime !== null &&
       meeting.currentDatetime.getTime() < now,
+    runStage: runStageOf(row),
     participants: row.responses.map((r) => ({
       userId: r.userId,
       name: r.user.name,
