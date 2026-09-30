@@ -302,6 +302,10 @@ model MatchOption {
   venueAddress String?
   venueLat     Float?
   venueLng     Float?
+  /// What the place is and a line about it, as Google put it (#163). Shown
+  /// on the proposal; NULL when Google did not say.
+  venueType    String?
+  venueSummary String?
 
   proposedDatetime DateTime
   /// When it ends. Stored rather than implied: B6 shortens a meeting to fit a
@@ -539,6 +543,9 @@ model PlaceDetailsCache {
   /// `modest` or `splurge`, from `priceLevel` (#139). NULL is "not known" —
   /// no price returned, or `PRICE_LEVEL_MODERATE`, which fits neither answer.
   budget        String?
+  /// Google's `editorialSummary` (#163). NULL when Google has none, which
+  /// for Israeli venues is often.
+  summary       String?
   fetchedAt     DateTime @default(now())
 
   @@map("place_details_cache")

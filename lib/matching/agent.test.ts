@@ -224,6 +224,21 @@ describe("a well-formed answer", () => {
     });
   });
 
+  it("carries what the place is into the snapshot, for the proposal card", () => {
+    const described = {
+      ...NEAR,
+      typeLabel: "מסעדה איטלקית",
+      summary: "פסטה טרייה ויין",
+    };
+    const draft = interpretAnswer(
+      answer([{ rank: 1, venue: "place-near" }]),
+      inputFor([described])
+    );
+
+    expect(draft.options[0].venue.typeLabel).toBe("מסעדה איטלקית");
+    expect(draft.options[0].venue.summary).toBe("פסטה טרייה ויין");
+  });
+
   it("carries both ends of the slot, not just the start", () => {
     // B6 shortens a meeting to fit a venue's opening hours, so the end is a
     // real answer rather than one implied by the group's free window — eval

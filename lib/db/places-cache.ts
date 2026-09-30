@@ -154,6 +154,7 @@ export type PlaceDetails = {
   openingHours: LocalWindow[];
   /** From `priceLevel`; absent means not known (#139). */
   budget?: SoftPreferences["budget"];
+  summary?: string;
 };
 
 /** A cached value is only trusted if it is one of the two answers. */
@@ -175,6 +176,7 @@ export async function getCachedDetails(
     rating: row.rating ?? undefined,
     openingHours: row.openingHours as unknown as LocalWindow[],
     budget: parseBudget(row.budget ?? null),
+    summary: row.summary ?? undefined,
   };
 }
 
@@ -191,11 +193,13 @@ export async function saveCachedDetails(
       rating: details.rating ?? null,
       openingHours: asJson(details.openingHours),
       budget: details.budget ?? null,
+      summary: details.summary ?? null,
     },
     update: {
       rating: details.rating ?? null,
       openingHours: asJson(details.openingHours),
       budget: details.budget ?? null,
+      summary: details.summary ?? null,
       fetchedAt: new Date(),
     },
   });

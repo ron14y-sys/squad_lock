@@ -49,13 +49,14 @@ describe("searchNeighbourhood", () => {
     expect(init.method).toBe("POST");
     expect(init.headers["X-Goog-Api-Key"]).toBe("test-key");
     expect(init.headers["X-Goog-FieldMask"]).toBe(
-      "places.id,places.displayName,places.formattedAddress,places.location,places.businessStatus"
+      "places.id,places.displayName,places.formattedAddress,places.location,places.businessStatus,places.primaryTypeDisplayName"
     );
     // No Enterprise field anywhere in this mask — that is the whole point.
     expect(init.headers["X-Goog-FieldMask"]).not.toMatch(/rating|OpeningHours/);
 
     const body = JSON.parse(init.body as string);
     expect(body.textQuery).toBeTruthy();
+    expect(body.languageCode).toBe("he");
     expect(body.locationBias.circle.center).toEqual({
       latitude: 32.08,
       longitude: 34.78,
@@ -91,6 +92,24 @@ describe("searchNeighbourhood", () => {
     ]);
     expect(candidates[0]).not.toHaveProperty("rating");
     expect(candidates[0]).not.toHaveProperty("openingHours");
+  });
+
+  it("keeps Google's own label for what the place is", async () => {
+    fetchMock.mockResolvedValueOnce(
+      fakeResponse(true, {
+        places: [
+          {
+            id: "place-1",
+            location: { latitude: 32.05, longitude: 34.77 },
+            primaryTypeDisplayName: { text: "מסעדה איטלקית" },
+          },
+        ],
+      })
+    );
+
+    const [candidate] = await searchNeighbourhood(CENTER, 1500);
+
+    expect(candidate.typeLabel).toBe("מסעדה איטלקית");
   });
 
   it("is empty when the response has no places at all", async () => {
@@ -198,18 +217,20 @@ describe("searchNeighbourhood", () => {
 });
 
 describe("fetchPlaceDetails", () => {
-  it("calls Place Details with only the Enterprise field mask and the key", async () => {
+  it("calls Place Details with the shortlist field mask, the key and Hebrew", async () => {
     fetchMock.mockResolvedValueOnce(fakeResponse(true, {}));
 
     await fetchPlaceDetails("place-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://places.googleapis.com/v1/places/place-1");
+    expect(url).toBe(
+      "https://places.googleapis.com/v1/places/place-1?languageCode=he"
+    );
     expect(init.method).toBe("GET");
     expect(init.headers["X-Goog-Api-Key"]).toBe("test-key");
     expect(init.headers["X-Goog-FieldMask"]).toBe(
-      "rating,regularOpeningHours,priceLevel"
+      "rating,regularOpeningHours,priceLevel,editorialSummary"
     );
   });
 
@@ -266,6 +287,17 @@ describe("fetchPlaceDetails", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(details.budget).toBe("splurge");
+  });
+
+  it("returns Google's summary of the place, from the same request", async () => {
+    fetchMock.mockResolvedValueOnce(
+      fakeResponse(true, { editorialSummary: { text: "פסטה טרייה ויין" } })
+    );
+
+    const details = await fetchPlaceDetails("place-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(details.summary).toBe("פסטה טרייה ויין");
   });
 
   it("is an undefined budget when priceLevel is absent", async () => {

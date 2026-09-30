@@ -30,6 +30,8 @@ export type ParticipantDTO = {
 export type ProposalDTO = {
   venueName: string;
   venueAddress: string | null;
+  venueType: string | null;
+  venueSummary: string | null;
   start: string;
   end: string;
   /** This viewer's own reason, and only this viewer's — never a comparison. */
@@ -259,6 +261,8 @@ export async function getMeetingDetail(
     ? {
         venueName: topOption.venueName,
         venueAddress: topOption.venueAddress,
+        venueType: topOption.venueType,
+        venueSummary: topOption.venueSummary,
         start: topOption.proposedDatetime.toISOString(),
         end: topOption.proposedEnd.toISOString(),
         justification:

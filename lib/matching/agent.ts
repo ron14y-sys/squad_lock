@@ -471,6 +471,8 @@ export function interpretAnswer(
         name: candidate.name,
         address: candidate.address,
         location: candidate.location,
+        typeLabel: candidate.typeLabel,
+        summary: candidate.summary,
       },
       proposedDatetime: slot.start,
       proposedEnd: slot.end,

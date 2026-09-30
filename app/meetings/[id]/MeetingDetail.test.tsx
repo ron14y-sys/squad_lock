@@ -28,6 +28,8 @@ function detail(overrides: Record<string, unknown> = {}) {
     proposal: {
       venueName: "בית קפה נורדאו",
       venueAddress: "נורדאו 14",
+      venueType: null,
+      venueSummary: null,
       start: "2026-09-15T18:00:00.000Z",
       end: "2026-09-15T20:00:00.000Z",
       justification: "מקום שקט, קרוב לעבודה שלך.",
@@ -54,6 +56,31 @@ function detail(overrides: Record<string, unknown> = {}) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+test("says what the place is, in Google's words, under its name", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            proposal: {
+              ...detail().proposal,
+              venueType: "בית קפה",
+              venueSummary: "קפה קלוי במקום ומאפים",
+            },
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText("בית קפה · קפה קלוי במקום ומאפים")
+  ).toBeInTheDocument();
 });
 
 test("shows the proposal, and reveals the justification only on request", async () => {

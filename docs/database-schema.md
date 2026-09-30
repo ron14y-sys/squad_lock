@@ -202,6 +202,7 @@ the report.
 | `venuePlaceId`              | `String?`          | Google Places id, if resolved from a real venue                                                                                                                  |
 | `venueName`, `venueAddress` | `String`/`String?` | snapshot at decision time — Places data can change later                                                                                                         |
 | `venueLat`, `venueLng`      | `Float?`           |                                                                                                                                                                  |
+| `venueType`, `venueSummary` | `String?`          | What the place is ("מסעדה איטלקית") and Google's one-line description, as Places gave them (#163). Shown under the venue name on the proposal                    |
 | `proposedDatetime`          | `DateTime`         |                                                                                                                                                                  |
 | `proposedEnd`               | `DateTime`         | stored, not implied: B6 shortens a meeting to fit a venue's opening hours                                                                                        |
 | `participantJustifications` | `Json`             | `userId → text`, written for that viewer specifically (spec §5.6)                                                                                                |
@@ -385,6 +386,7 @@ proposal is real.
 | `rating`       | `Float?`   |                                                                                                    |
 | `openingHours` | `Json`     | `LocalWindow[]`, default `[]`. `[]` is "fetched, no hours"; a missing row is "never fetched"       |
 | `budget`       | `String?`  | `modest` / `splurge`, from Places `priceLevel` (#139). `NULL` is "not known", including `MODERATE` |
+| `summary`      | `String?`  | Places `editorialSummary`, in Hebrew where Google has it (#163). `NULL` when Google has none       |
 | `fetchedAt`    | `DateTime` |                                                                                                    |
 
 ---

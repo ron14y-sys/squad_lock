@@ -36,6 +36,10 @@ export type Candidate = {
   rating?: number;
   /** Undecided — hard constraint, or a preference the agent weighs? (spec §13.7) */
   openingHours?: LocalWindow[];
+  /** Google's own words for what the place is, e.g. "מסעדה איטלקית" (#163). */
+  typeLabel?: string;
+  /** Google's one-line description, fetched with the details. Often absent. */
+  summary?: string;
 };
 
 /**
@@ -182,6 +186,8 @@ export type VenueSnapshot = {
   name: string;
   address: string | null;
   location: LatLng | null;
+  typeLabel?: string;
+  summary?: string;
 };
 
 /**

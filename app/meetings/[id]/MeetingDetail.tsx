@@ -29,6 +29,8 @@ type ResponseStatus = "pending" | "approved" | "cant_make_it" | "doesnt_suit";
 type Proposal = {
   venueName: string;
   venueAddress: string | null;
+  venueType: string | null;
+  venueSummary: string | null;
   start: string;
   end: string;
   justification: string | null;
@@ -133,6 +135,13 @@ function ProposalBlock({
     <section className="sl-panel">
       <h2 className="sl-sec">{heading}</h2>
       <p className="sl-ttl">{proposal.venueName}</p>
+      {(proposal.venueType || proposal.venueSummary) && (
+        <p className="sl-sub">
+          {[proposal.venueType, proposal.venueSummary]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      )}
       {proposal.venueAddress && (
         <p className="sl-sub">{proposal.venueAddress}</p>
       )}

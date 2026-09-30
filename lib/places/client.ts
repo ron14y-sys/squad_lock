@@ -49,7 +49,8 @@ const DETAILS_ENDPOINT = "https://places.googleapis.com/v1/places";
  * Essentials + Pro only (spec §6.3's table): enough to dedupe (`id`), name
  * and address the venue, compute distance (`location`), and drop a
  * permanently/temporarily closed result (`businessStatus`). Nothing that
- * would push the call into a paid-per-request tier.
+ * would push the call into a paid-per-request tier. `primaryTypeDisplayName`
+ * ("Italian restaurant") is Pro too, so it costs nothing extra (#163).
  */
 const SEARCH_FIELD_MASK = [
   "places.id",
@@ -57,16 +58,27 @@ const SEARCH_FIELD_MASK = [
   "places.formattedAddress",
   "places.location",
   "places.businessStatus",
+  "places.primaryTypeDisplayName",
 ].join(",");
 
 /**
- * Enterprise-tier only — the fields §6.3 gates to the shortlist. `priceLevel`
- * is in the same tier as the other two, so it rides in the same request:
- * no extra call, no tier escalation (#139).
+ * The fields §6.3 gates to the shortlist. `priceLevel` is in the same tier as
+ * the first two, so it rides in the same request (#139). `editorialSummary`
+ * is not: it moves this call from Enterprise to Enterprise + Atmosphere, a
+ * decision taken in #163 so the proposal can say a few words about the place.
  */
-const DETAILS_FIELD_MASK = ["rating", "regularOpeningHours", "priceLevel"].join(
-  ","
-);
+const DETAILS_FIELD_MASK = [
+  "rating",
+  "regularOpeningHours",
+  "priceLevel",
+  "editorialSummary",
+].join(",");
+
+/**
+ * The app is in Hebrew, so names, types and summaries are asked for in
+ * Hebrew. Google falls back to its default when it has no Hebrew text.
+ */
+const LANGUAGE_CODE = "he";
 
 /**
  * What the group is looking for. A constant, not a parameter, so every
@@ -98,6 +110,7 @@ type RawPlace = {
   formattedAddress?: string;
   location?: RawLocation;
   businessStatus?: string;
+  primaryTypeDisplayName?: { text: string };
 };
 
 type SearchTextResponse = {
@@ -111,6 +124,7 @@ type PlaceDetailsResponse = {
   regularOpeningHours?: {
     periods?: RawPeriod[];
   };
+  editorialSummary?: { text: string };
 };
 
 /**
@@ -210,6 +224,7 @@ function parseSearchResult(raw: RawPlace): Candidate | null {
     name: raw.displayName?.text ?? raw.id,
     address: raw.formattedAddress ?? null,
     location: { lat: raw.location.latitude, lng: raw.location.longitude },
+    typeLabel: raw.primaryTypeDisplayName?.text,
     // Neighbourhood is not a Places field — whoever calls this already knows
     // which neighbourhood query produced the result and can attach it.
     neighbourhood: null,
@@ -241,6 +256,7 @@ export async function searchNeighbourhood(
     },
     body: JSON.stringify({
       textQuery: TEXT_QUERY,
+      languageCode: LANGUAGE_CODE,
       locationBias: {
         circle: {
           center: { latitude: center.lat, longitude: center.lng },
@@ -273,8 +289,10 @@ export async function fetchPlaceDetails(placeId: string): Promise<{
   rating?: number;
   openingHours: LocalWindow[];
   budget?: SoftPreferences["budget"];
+  summary?: string;
 }> {
-  const response = await fetch(`${DETAILS_ENDPOINT}/${placeId}`, {
+  const url = `${DETAILS_ENDPOINT}/${placeId}?languageCode=${LANGUAGE_CODE}`;
+  const response = await fetch(url, {
     method: "GET",
     headers: {
       "X-Goog-FieldMask": DETAILS_FIELD_MASK,
@@ -295,5 +313,6 @@ export async function fetchPlaceDetails(placeId: string): Promise<{
     rating: data.rating,
     openingHours: parseOpeningHours(data.regularOpeningHours),
     budget: budgetFromPriceLevel(data.priceLevel),
+    summary: data.editorialSummary?.text,
   };
 }
