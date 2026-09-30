@@ -40,6 +40,7 @@ describe("recordNotification", () => {
         errorMessage: null,
         meetingId: "meeting-1",
         invitationId: null,
+        attempt: 1,
       },
     });
   });
@@ -67,6 +68,7 @@ describe("recordNotification", () => {
         errorMessage: "email: send failed (401): invalid api key",
         meetingId: "meeting-1",
         invitationId: null,
+        attempt: 1,
       },
     });
   });
@@ -94,7 +96,28 @@ describe("recordNotification", () => {
         errorMessage: null,
         meetingId: null,
         invitationId: "invitation-1",
+        attempt: 1,
       },
     });
+  });
+
+  it("defaults attempt to 1, and passes through an explicit higher one for a retry (B9 part one)", async () => {
+    const client = fakeClient();
+
+    await recordNotification(
+      {
+        kind: NotificationKind.stuck,
+        recipientEmail: "dana@example.test",
+        status: NotificationStatus.failed,
+        errorMessage: "still down",
+        meetingId: "meeting-1",
+        attempt: 3,
+      },
+      client
+    );
+
+    expect(client.notificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ attempt: 3 }) })
+    );
   });
 });

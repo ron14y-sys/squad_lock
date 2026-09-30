@@ -588,6 +588,19 @@ model NotificationLog {
   meetingId    String?
   invitationId String?
 
+  /// B9 part one -- how many times this logical notification has been
+  /// attempted, counting this row. The first send is 1; a retry writes a
+  /// *new* row with `attempt` one higher than the row it retried. Never
+  /// mutated -- this stays an append-only log, same as `MatchRun`.
+  attempt Int @default(1)
+  /// B9 part one -- set once this failed row has been claimed for a retry
+  /// (whether or not the retry itself succeeds). The optimistic lock
+  /// `retryDueNotifications` uses so two concurrent polls cannot both
+  /// retry the same failure -- same trick as `runDueMeetings`'s claim on
+  /// `Meeting.updatedAt`, aimed at this column instead. Always `null` on a
+  /// `sent` row.
+  retriedAt DateTime?
+
   createdAt DateTime @default(now())
 
   meeting    Meeting?    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
@@ -595,6 +608,7 @@ model NotificationLog {
 
   @@index([meetingId])
   @@index([invitationId])
+  @@index([status, retriedAt])
   @@map("notification_log")
 }
 
