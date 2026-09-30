@@ -1,14 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   formatCallRecord,
   isKnownThinkingLevel,
   isOverloaded,
   isRateLimited,
+  LlmConfigError,
   LlmTruncatedError,
   MAX_OUTPUT_TOKENS,
   resolveConfig,
   retryDelayMs,
+  serviceAccountAuth,
   type LlmCallRecord,
 } from "./client";
 
@@ -215,5 +217,34 @@ describe("formatCallRecord", () => {
   it("drops time-to-first-text on a call that did not stream", () => {
     const line = formatCallRecord({ ...record, msToFirstText: null });
     expect(line).not.toContain("ms_first_text");
+  });
+});
+
+describe("serviceAccountAuth", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("adds nothing when no key is set, leaving the SDK on ADC", () => {
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", "");
+    expect(serviceAccountAuth()).toEqual({});
+  });
+
+  it("hands a key's fields to the SDK as credentials", () => {
+    vi.stubEnv(
+      "GOOGLE_SERVICE_ACCOUNT_KEY",
+      JSON.stringify({ client_email: "sa@example.test", private_key: "k" })
+    );
+    expect(serviceAccountAuth()).toEqual({
+      googleAuthOptions: {
+        credentials: { client_email: "sa@example.test", private_key: "k" },
+      },
+    });
+  });
+
+  it("names the variable, not its value, when the key is not JSON", () => {
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", "secret-that-is-not-json");
+
+    expect(() => serviceAccountAuth()).toThrow(LlmConfigError);
+    expect(() => serviceAccountAuth()).toThrow(/GOOGLE_SERVICE_ACCOUNT_KEY/);
+    expect(() => serviceAccountAuth()).not.toThrow(/secret-that-is-not-json/);
   });
 });
