@@ -66,16 +66,20 @@ type NotificationRefs = {
  * what makes it safe to call from a route's `after()` (an unhandled
  * rejection there is somebody else's request falling over -- same reasoning
  * as `run-cycle.ts`'s own header comment on why *it* never throws).
+ *
+ * `content` is built in here, inside the catch, not by the caller: a
+ * template throws on a missing `APP_BASE_URL`, and on 30.9 that escaped
+ * `notifyProposalWaiting` and was logged as a failed matching run.
  */
 async function sendAndLog(
   kind: NotificationKind,
   recipientEmail: string,
-  subject: string,
-  html: string,
+  content: () => EmailContent,
   refs: NotificationRefs,
   client: Pick<NotifyClient, "notificationLog">
 ): Promise<void> {
   try {
+    const { subject, html } = content();
     const sent = await sendEmail({ to: recipientEmail, subject, html });
     await recordNotification(
       {
@@ -117,6 +121,22 @@ async function sendAndLog(
 }
 
 /**
+ * The same contract for what happens before `sendAndLog`: finding the
+ * recipients is a query, and a failed one is logged here rather than thrown
+ * at whatever triggered the email.
+ */
+async function neverThrow(
+  kind: NotificationKind,
+  work: () => Promise<void>
+): Promise<void> {
+  try {
+    await work();
+  } catch (error) {
+    console.error(`[email] notify failed before sending kind=${kind}`, error);
+  }
+}
+
+/**
  * Spec §5.5 trigger #2 -- "a proposal is waiting on you." Recipients are
  * exactly who the feed itself would call `waiting_on_you`
  * (`lib/db/meeting-cards.ts`'s `deriveMeetingCardStatus`): a still-open
@@ -137,25 +157,24 @@ export async function notifyProposalWaiting(
   meetingId: string,
   client: NotifyClient = getPrisma()
 ): Promise<void> {
-  const pendingResponses = await client.response.findMany({
-    where: { meetingId, status: ResponseStatus.pending },
-    include: { user: { select: { email: true } } },
-  });
+  await neverThrow(NotificationKind.proposal_waiting, async () => {
+    const pendingResponses = await client.response.findMany({
+      where: { meetingId, status: ResponseStatus.pending },
+      include: { user: { select: { email: true } } },
+    });
 
-  const { subject, html } = proposalWaitingEmail(meetingId);
-
-  await Promise.all(
-    pendingResponses.map((response) =>
-      sendAndLog(
-        NotificationKind.proposal_waiting,
-        response.user.email,
-        subject,
-        html,
-        { meetingId },
-        client
+    await Promise.all(
+      pendingResponses.map((response) =>
+        sendAndLog(
+          NotificationKind.proposal_waiting,
+          response.user.email,
+          () => proposalWaitingEmail(meetingId),
+          { meetingId },
+          client
+        )
       )
-    )
-  );
+    );
+  });
 }
 
 /**
@@ -180,23 +199,18 @@ async function stillInRecipients(
 async function notifyStillIn(
   kind: NotificationKind,
   meetingId: string,
-  content: EmailContent,
+  content: () => EmailContent,
   client: NotifyClient
 ): Promise<void> {
-  const recipients = await stillInRecipients(meetingId, client);
+  await neverThrow(kind, async () => {
+    const recipients = await stillInRecipients(meetingId, client);
 
-  await Promise.all(
-    recipients.map((email) =>
-      sendAndLog(
-        kind,
-        email,
-        content.subject,
-        content.html,
-        { meetingId },
-        client
+    await Promise.all(
+      recipients.map((email) =>
+        sendAndLog(kind, email, content, { meetingId }, client)
       )
-    )
-  );
+    );
+  });
 }
 
 /**
@@ -213,29 +227,29 @@ export async function notifyInvitation(
   invitationId: string,
   client: NotifyClient = getPrisma()
 ): Promise<void> {
-  const invitation = await client.invitation.findUnique({
-    where: { id: invitationId },
-    include: {
-      group: { select: { name: true } },
-      invitedBy: { select: { name: true } },
-    },
+  await neverThrow(NotificationKind.invitation, async () => {
+    const invitation = await client.invitation.findUnique({
+      where: { id: invitationId },
+      include: {
+        group: { select: { name: true } },
+        invitedBy: { select: { name: true } },
+      },
+    });
+    if (!invitation) return;
+
+    await sendAndLog(
+      NotificationKind.invitation,
+      invitation.email,
+      () =>
+        invitationEmail(
+          invitation.group.name,
+          invitation.invitedBy.name,
+          invitation.token
+        ),
+      { invitationId },
+      client
+    );
   });
-  if (!invitation) return;
-
-  const { subject, html } = invitationEmail(
-    invitation.group.name,
-    invitation.invitedBy.name,
-    invitation.token
-  );
-
-  await sendAndLog(
-    NotificationKind.invitation,
-    invitation.email,
-    subject,
-    html,
-    { invitationId },
-    client
-  );
 }
 
 /**
@@ -252,7 +266,7 @@ export async function notifyMeetingConfirmed(
   await notifyStillIn(
     NotificationKind.meeting_confirmed,
     meetingId,
-    meetingConfirmedEmail(meetingId),
+    () => meetingConfirmedEmail(meetingId),
     client
   );
 }
@@ -269,7 +283,7 @@ export async function notifyConflictReweigh(
   await notifyStillIn(
     NotificationKind.conflict_reweigh,
     meetingId,
-    conflictReweighEmail(meetingId),
+    () => conflictReweighEmail(meetingId),
     client
   );
 }
@@ -291,7 +305,7 @@ export async function notifyStuck(
   await notifyStillIn(
     NotificationKind.stuck,
     meetingId,
-    stuckEmail(meetingId),
+    () => stuckEmail(meetingId),
     client
   );
 }
