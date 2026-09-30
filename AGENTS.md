@@ -91,3 +91,14 @@ The shared lesson is worth stating once, because it is the reason both went unno
 **Hooks find Node themselves.** A git hook does not load your shell profile, so the `PATH` inside one is not the `PATH` you see in a terminal — and on at least one machine here Node was on neither. `.husky/common.sh` looks in the usual places (Homebrew, `/usr/local`, Volta, nvm) before anything runs, and fails with a readable message instead of `npm: command not found` if it comes up empty. If your Node lives somewhere unusual, add it to `PATH` in `~/.config/husky/init.sh`, which husky sources for every hook.
 
 **If a hook blocks you**, the fix is the failure it printed — not `--no-verify`. That flag skips the local gates and CI catches the same problem five minutes later, on a pull request everyone can see.
+
+# Migrations — applied by the production deploy
+
+**A production deploy applies pending migrations before it builds.** Vercel runs the `vercel-build` script in place of `build`; when `VERCEL_ENV` is `production` it runs `prisma migrate deploy` first, so the database is always ahead of the code that needs it. A migration that fails fails the build, and the previous deployment stays live.
+
+**Previews do not migrate**, because until a staging database exists they share production's (#153). Do not apply a migration from a PR branch by hand: merge it, and the deploy applies it.
+
+Two rules follow, because for about a minute the old code runs against the new schema:
+
+- **Additive changes are safe** — a new table, a nullable column.
+- **Removing or renaming a column takes two PRs**: first stop using it and deploy, then drop it.
