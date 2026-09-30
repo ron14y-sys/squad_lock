@@ -174,6 +174,12 @@ html[data-theme="light"] body {
   gap: 15px;
   padding: 16px 20px 24px;
   font-family: var(--sl-body);
+  /* #171: with no width limit here, every screen stretched edge to edge on
+     a wide viewport — fine on a phone, unintentional on a desktop. Same
+     column width as the header's own max-w-xl, so the two line up. */
+  width: 100%;
+  max-width: 576px;
+  margin-inline: auto;
 }
 .sl-logo {
   font-family: var(--sl-disp);

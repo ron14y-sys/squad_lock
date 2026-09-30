@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ScreenState } from "@/app/_components/ScreenState";
 
 type SubmitState = "idle" | "submitting" | "signed-out" | "not-found" | "error";
@@ -97,6 +98,9 @@ export function NewMeeting({ groupId }: { groupId: string }) {
 
   return (
     <div className="sl-page">
+      <Link href={`/groups/${groupId}`} className="sl-sub self-start">
+        &rsaquo; חזרה לקבוצה
+      </Link>
       <h1 className="sl-sec">פגישה חדשה</h1>
       <p className="sl-sub">
         כל השדות אופציונליים — אפשר לפתוח פגישה בלי למלא כלום, וזה בסדר גמור.

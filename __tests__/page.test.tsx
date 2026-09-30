@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Landing } from "@/app/_components/Landing";
 
@@ -6,7 +6,7 @@ import { Landing } from "@/app/_components/Landing";
 // user to /groups), which Vitest cannot render — so the landing it falls back
 // to is what is tested here.
 test("the landing page renders its heading", () => {
-  render(<Landing />);
+  render(<Landing onGoogleSignIn={vi.fn()} />);
 
   expect(
     screen.getByRole("heading", {

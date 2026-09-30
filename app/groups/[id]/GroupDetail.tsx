@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ScreenState } from "@/app/_components/ScreenState";
 
 type GroupMember = {
@@ -150,6 +151,9 @@ export function GroupDetail({ groupId }: { groupId: string }) {
 
   return (
     <div className="sl-page">
+      <Link href="/groups" className="sl-sub self-start">
+        &rsaquo; לכל הקבוצות
+      </Link>
       <h1 className="sl-sec">{group.name}</h1>
 
       <section className="flex flex-col gap-3">
