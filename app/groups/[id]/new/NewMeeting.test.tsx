@@ -111,6 +111,29 @@ test("shows a friendly message and no redirect when the group is at its cap", as
   expect(pushMock).not.toHaveBeenCalled();
 });
 
+test("shows a friendly message and no redirect when the group is too small (#174)", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          { error: "Group group-1 has 2 members; a meeting needs at least 3." },
+          409
+        )
+      )
+    )
+  );
+
+  render(<NewMeeting groupId="group-1" />);
+  await user.click(screen.getByRole("button", { name: "פתח פגישה" }));
+
+  expect(
+    await screen.findByText("אי אפשר לפתוח פגישה בקבוצה עם פחות מ-3 חברים.")
+  ).toBeInTheDocument();
+  expect(pushMock).not.toHaveBeenCalled();
+});
+
 test("shows a sign-in prompt when unauthenticated", async () => {
   const user = userEvent.setup();
   vi.stubGlobal(

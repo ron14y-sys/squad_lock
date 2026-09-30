@@ -14,6 +14,7 @@ import { meetingFromRow } from "@/lib/types/meeting-from-row";
 import { participantMeetingContextFromRow } from "@/lib/types/participant-meeting-context-from-row";
 
 import { canonicalMeetingPair, meetingsConflict } from "./conflict-dismissal";
+import { GROUP_SIZE_FLOOR, GroupTooSmallError } from "./groups";
 import { getPrisma } from "./client";
 
 import type { MeetingModel } from "@/lib/generated/prisma/models";
@@ -121,6 +122,13 @@ export async function initiateMeeting(
       where: { groupId },
       select: { userId: true },
     });
+
+    // #174, spec §5.3: "Groups of 3–6." — the lower bound is enforced here,
+    // at the one place a meeting is ever created, rather than trying to
+    // keep a group from shrinking below it (nothing removes a member yet).
+    if (members.length < GROUP_SIZE_FLOOR) {
+      throw new GroupTooSmallError(groupId, members.length);
+    }
 
     return tx.meeting.create({
       data: {

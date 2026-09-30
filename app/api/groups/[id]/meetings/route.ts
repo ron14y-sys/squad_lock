@@ -9,6 +9,7 @@ import { auth } from "@/auth";
 import { getPrisma } from "@/lib/db/client";
 import { runCycle, runDueMeetings } from "@/lib/matching/run-cycle";
 import { initiateMeeting, OpenMeetingCapReachedError } from "@/lib/db/meetings";
+import { GroupTooSmallError } from "@/lib/db/groups";
 import { listMeetingCardsForGroup } from "@/lib/db/meeting-cards";
 import { initiateMeetingSchema } from "@/lib/meetings/schema";
 
@@ -121,7 +122,10 @@ export async function POST(
 
     return Response.json(meeting, { status: 201 });
   } catch (error) {
-    if (error instanceof OpenMeetingCapReachedError) {
+    if (
+      error instanceof OpenMeetingCapReachedError ||
+      error instanceof GroupTooSmallError
+    ) {
       return Response.json({ error: error.message }, { status: 409 });
     }
     throw error;

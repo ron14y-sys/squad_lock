@@ -17,6 +17,13 @@ function capReachedMessage(message: string): string | null {
   return "כבר יש 3 פגישות פתוחות בקבוצה. סגרו אחת כדי לפתוח חדשה.";
 }
 
+function groupTooSmallMessage(message: string): string | null {
+  // GroupTooSmallError's text (#174), e.g. "Group g1 has 2 members; a
+  // meeting needs at least 3."
+  if (!/members; a meeting needs at least \d+\./.test(message)) return null;
+  return "אי אפשר לפתוח פגישה בקבוצה עם פחות מ-3 חברים.";
+}
+
 export function NewMeeting({ groupId }: { groupId: string }) {
   const router = useRouter();
   const [date, setDate] = useState("");
@@ -55,6 +62,7 @@ export function NewMeeting({ groupId }: { groupId: string }) {
         const responseBody = await res.json();
         const message =
           capReachedMessage(responseBody.error ?? "") ??
+          groupTooSmallMessage(responseBody.error ?? "") ??
           KNOWN_ERRORS[responseBody.error] ??
           "לא הצלחנו לפתוח את הפגישה. נסה שוב.";
         setErrorMessage(message);
