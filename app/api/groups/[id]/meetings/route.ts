@@ -8,6 +8,7 @@ import { after } from "next/server";
 import { auth } from "@/auth";
 import { getPrisma } from "@/lib/db/client";
 import { runCycle, runDueMeetings } from "@/lib/matching/run-cycle";
+import { retryDueNotifications } from "@/lib/email/retry";
 import { initiateMeeting, OpenMeetingCapReachedError } from "@/lib/db/meetings";
 import { GroupTooSmallError } from "@/lib/db/groups";
 import { listMeetingCardsForGroup } from "@/lib/db/meeting-cards";
@@ -53,6 +54,11 @@ export async function GET(
   // stays fast and the next one sees the result. `runDueMeetings` decides
   // whether anything is actually due, claims it, and never throws.
   after(() => runDueMeetings(groupId));
+
+  // B9 part one: the same poll retries any of this group's notifications
+  // that failed last time. No new poll surface -- same "no cron, no
+  // background job" reasoning as `runDueMeetings` just above (spec §3.2).
+  after(() => retryDueNotifications(groupId));
 
   return Response.json(feed);
 }

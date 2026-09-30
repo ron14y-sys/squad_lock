@@ -10,6 +10,10 @@
  * *when* to log, or what to do about a failure -- that is
  * `lib/email/notify.ts`'s never-throw orchestration layer. This file just
  * writes the row.
+ *
+ * B9 part one added `attempt`: still just a field this file passes through
+ * on `create`, same as every other column -- the retry decision itself
+ * lives in `lib/email/retry.ts`, not here.
  */
 
 import { getPrisma } from "./client";
@@ -31,6 +35,8 @@ export type RecordNotificationInput = {
   errorMessage?: string;
   meetingId?: string;
   invitationId?: string;
+  /** Defaults to 1 -- the first send. A retry passes its own higher count. */
+  attempt?: number;
 };
 
 /**
@@ -52,6 +58,7 @@ export async function recordNotification(
       errorMessage: input.errorMessage ?? null,
       meetingId: input.meetingId ?? null,
       invitationId: input.invitationId ?? null,
+      attempt: input.attempt ?? 1,
     },
   });
 }

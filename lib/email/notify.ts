@@ -55,7 +55,7 @@ type NotifyClient = {
   notificationLog: Pick<PrismaClient["notificationLog"], "create">;
 };
 
-type NotificationRefs = {
+export type NotificationRefs = {
   meetingId?: string;
   invitationId?: string;
 };
@@ -70,13 +70,20 @@ type NotificationRefs = {
  * `content` is built in here, inside the catch, not by the caller: a
  * template throws on a missing `APP_BASE_URL`, and on 30.9 that escaped
  * `notifyProposalWaiting` and was logged as a failed matching run.
+ *
+ * `attempt` defaults to 1 (the first send) and is otherwise left to the
+ * caller -- every `notify*` function below leaves it at the default.
+ * `lib/email/retry.ts` (B9 part one) is the one caller that passes a higher
+ * number, and exporting this is what lets it reuse the exact same send/log
+ * path rather than duplicating it.
  */
-async function sendAndLog(
+export async function sendAndLog(
   kind: NotificationKind,
   recipientEmail: string,
   content: () => EmailContent,
   refs: NotificationRefs,
-  client: Pick<NotifyClient, "notificationLog">
+  client: Pick<NotifyClient, "notificationLog">,
+  attempt: number = 1
 ): Promise<void> {
   try {
     const { subject, html } = content();
@@ -87,6 +94,7 @@ async function sendAndLog(
         recipientEmail,
         status: NotificationStatus.sent,
         providerMessageId: sent.id,
+        attempt,
         ...refs,
       },
       client
@@ -104,6 +112,7 @@ async function sendAndLog(
           recipientEmail,
           status: NotificationStatus.failed,
           errorMessage,
+          attempt,
           ...refs,
         },
         client
@@ -125,7 +134,7 @@ async function sendAndLog(
  * recipients is a query, and a failed one is logged here rather than thrown
  * at whatever triggered the email.
  */
-async function neverThrow(
+export async function neverThrow(
   kind: NotificationKind,
   work: () => Promise<void>
 ): Promise<void> {
