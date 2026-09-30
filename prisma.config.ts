@@ -25,7 +25,12 @@ export default defineConfig({
   // migration / introspection commands"), so migrate, studio and introspect
   // still fail loudly, with prisma's own message, when the variable really is
   // missing. Do not put `env()` back.
+  //
+  // `DIRECT_URL` first: in production `DATABASE_URL` is Supabase's
+  // transaction pooler, which the app needs and migrations cannot use, so
+  // migrate reads the session-mode URL instead. Unset locally, where one
+  // database serves both.
   datasource: {
-    url: process.env.DATABASE_URL,
+    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
   },
 });
