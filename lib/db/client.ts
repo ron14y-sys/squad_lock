@@ -8,6 +8,8 @@
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+const POOL_MAX = 3;
+
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createClient(): PrismaClient {
@@ -15,7 +17,12 @@ function createClient(): PrismaClient {
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set — see .env.example.");
   }
-  const adapter = new PrismaPg(connectionString);
+  // A few connections per instance, not pg's default of ten. Vercel runs
+  // several instances at once and Supabase's pooler allows 15 clients in
+  // session mode, so two instances at ten each took the site down on 30.9 —
+  // a run's parallel Places-cache reads filled one, the polling screens the
+  // other. Queries past the cap wait for a free connection instead.
+  const adapter = new PrismaPg({ connectionString, max: POOL_MAX });
   return new PrismaClient({ adapter });
 }
 

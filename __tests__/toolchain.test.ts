@@ -39,7 +39,9 @@ describe("prisma toolchain", () => {
     expect(config).not.toMatch(
       /import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["']prisma\/config["']/
     );
-    expect(config).toMatch(/url:\s*process\.env\.DATABASE_URL/);
+    expect(config).toMatch(
+      /url:\s*process\.env\.DIRECT_URL \?\? process\.env\.DATABASE_URL/
+    );
   });
 
   it("migrates the database before a production build, and only then", () => {
