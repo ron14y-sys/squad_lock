@@ -59,6 +59,7 @@ import { persistMatchRun } from "@/lib/db/match-run";
 import { MeetingStatus, type RunStage } from "@/lib/generated/prisma/enums";
 import { commonFreeWindows } from "./availability";
 import { runMatchingAgent } from "./agent";
+import { LlmCallError, retryDelayMs } from "@/lib/llm/client";
 import { originOf } from "./distance";
 import { pairId } from "./schemas";
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
@@ -697,8 +698,8 @@ export async function runCycle(
   try {
     return await weigh(meetingId, now, busyFor);
   } catch (error) {
-    await clearStage(meetingId);
     if (error instanceof NoSolutionError) {
+      await clearStage(meetingId);
       // Conditional on the status, so a meeting somebody closed or cancelled
       // while this was running is not dragged back to `stuck`.
       const claimed = await getPrisma().meeting.updateMany({
@@ -720,6 +721,14 @@ export async function runCycle(
       return null;
     }
 
+    // B9 part two + #155: one write, clearing the stage and setting (or
+    // clearing) the fault's retry cooldown together -- no reason to split
+    // what used to be `clearStage` alone into two round trips now that this
+    // branch has a second thing to record. `faultRetryNotBefore` is `null`
+    // for everything except a rate-limited Gemini call -- see its own
+    // header comment for why only that one case gets special treatment.
+    await clearStageAndSetRetry(meetingId, faultRetryNotBefore(error, now));
+
     // One line, greppable, in the shape A1's cost log and A7's extraction
     // failure already use. The meeting stays in `weighing`, so the next poll
     // picks it up again — a missing key is fixed in a minute, and a group
@@ -727,6 +736,39 @@ export async function runCycle(
     console.error(`[a8] cycle failed meeting=${meetingId}`, error);
     return null;
   }
+}
+
+/**
+ * What `runCycle`'s fault branch should write to `Meeting.retryNotBefore`,
+ * given the error that was actually thrown. Pure, so it is tested without a
+ * clock beyond the `now` it is handed.
+ *
+ * Google's own number always wins when the error message carries one
+ * (`retryDelayMs`) — true of both an overloaded call and a rate-limited one,
+ * and "its own number beats any backoff we invent" is `retryDelayMs`'s own
+ * stated reason for existing. Failing that, only `LlmCallError.rateLimited`
+ * gets a special-cased wait: a quota wall (Gemini's free tier allows 20
+ * requests a **day**, spec §6.4) does not open again in 90 seconds, so
+ * retrying it on the flat cooldown is pure waste. Every other fault —
+ * Calendar, Places, an overloaded call with no explicit delay, a missing
+ * credential — returns `null` and keeps today's flat `RUN_ATTEMPT_COOLDOWN_MS`
+ * as the only guard. Expanding this to Calendar/Places would need a
+ * rate-limit signal from those clients that does not exist yet — out of
+ * scope here, not forgotten.
+ */
+export function faultRetryNotBefore(error: unknown, now: Date): Date | null {
+  if (!(error instanceof LlmCallError)) return null;
+
+  const suggested = retryDelayMs(error.message);
+  if (suggested !== null) {
+    return new Date(now.getTime() + suggested);
+  }
+
+  if (error.rateLimited) {
+    return new Date(now.getTime() + RATE_LIMIT_RETRY_COOLDOWN_MS);
+  }
+
+  return null;
 }
 
 /**
@@ -761,6 +803,28 @@ async function clearStage(meetingId: string) {
     });
   } catch (error) {
     console.warn(`[a8] stage not cleared meeting=${meetingId}`, error);
+  }
+}
+
+/**
+ * `clearStage`, plus B9 part two's `retryNotBefore` -- the one write the
+ * generic fault branch needs, since a run that failed with a fault is
+ * leaving `weighing` behind no more than one that failed with no solution
+ * does. No status guard, same as `clearStage`: a meeting someone else moved
+ * off `weighing` concurrently is never read by `isDue` again regardless of
+ * what either column holds, so there is nothing to race.
+ */
+async function clearStageAndSetRetry(
+  meetingId: string,
+  retryNotBefore: Date | null
+) {
+  try {
+    await getPrisma().meeting.updateMany({
+      where: { id: meetingId },
+      data: { runStage: null, retryNotBefore },
+    });
+  } catch (error) {
+    console.warn(`[a8] stage/retry not cleared meeting=${meetingId}`, error);
   }
 }
 
@@ -840,6 +904,9 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
         currentDatetime: top.proposedDatetime,
         // The run is over, in the same write that says what it produced.
         runStage: null,
+        // B9 part two: a completed call means whatever quota wall blocked
+        // an earlier attempt is no longer the story, win or lose this time.
+        retryNotBefore: null,
       },
     });
 
@@ -907,6 +974,18 @@ export const MIN_PROPOSAL_LIFETIME_MS = 5 * 60_000;
  */
 export const RUN_ATTEMPT_COOLDOWN_MS = 90_000;
 
+/**
+ * B9 part two — how long to wait before retrying a meeting whose fault was
+ * Gemini's own quota wall (`LlmCallError.rateLimited`), when the error
+ * message gave no `retry in Xs` figure of its own (`retryDelayMs`) to use
+ * instead. The free tier's quota is daily (spec §6.4's 20 requests/day) and
+ * nothing here knows the exact reset time, so this is a conservative
+ * "check back later" rather than a computed one — long enough that it stops
+ * hammering the wall, short enough that a quota freed early in the day is
+ * not left idle until tomorrow.
+ */
+export const RATE_LIMIT_RETRY_COOLDOWN_MS = 60 * 60_000;
+
 export type DueInput = {
   /** Last time anything wrote to the meeting — including a claim. */
   updatedAt: Date;
@@ -921,18 +1000,31 @@ export type DueInput = {
    * answers the question exactly instead of approximately.
    */
   firstRejectionAt: Date | null;
+  /**
+   * B9 part two — set only after a rate-limited fault (`faultRetryNotBefore`),
+   * `null` otherwise. When set, no attempt is due before it, however long
+   * ago `updatedAt` was — see `Meeting.retryNotBefore`'s own comment.
+   */
+  retryNotBefore: Date | null;
 };
 
 /**
  * Is this meeting waiting for a run right now?
  *
- * Pure, so the three timers above can be tested without a database, a clock
- * or a model. The caller has already narrowed to `status === "weighing"` —
+ * Pure, so the timers above can be tested without a database, a clock or a
+ * model. The caller has already narrowed to `status === "weighing"` —
  * `awaiting` means a proposal is out and nobody has objected, and `stuck`,
  * `closed` and `cancelled` are not weighed again.
  */
 export function isDue(meeting: DueInput, now: Date): boolean {
   if (now.getTime() - meeting.updatedAt.getTime() < RUN_ATTEMPT_COOLDOWN_MS) {
+    return false;
+  }
+
+  if (
+    meeting.retryNotBefore !== null &&
+    now.getTime() < meeting.retryNotBefore.getTime()
+  ) {
     return false;
   }
 
@@ -976,6 +1068,7 @@ export async function runDueMeetings(
     select: {
       id: true,
       updatedAt: true,
+      retryNotBefore: true,
       matchRuns: {
         orderBy: { cycleNumber: "desc" },
         take: 1,
@@ -998,7 +1091,15 @@ export async function runDueMeetings(
     const firstRejectionAt = meeting.participantContexts[0]?.createdAt ?? null;
 
     if (
-      !isDue({ updatedAt: meeting.updatedAt, lastRunAt, firstRejectionAt }, now)
+      !isDue(
+        {
+          updatedAt: meeting.updatedAt,
+          lastRunAt,
+          firstRejectionAt,
+          retryNotBefore: meeting.retryNotBefore,
+        },
+        now
+      )
     ) {
       continue;
     }
