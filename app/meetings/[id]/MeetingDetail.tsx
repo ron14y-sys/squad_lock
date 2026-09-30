@@ -8,8 +8,10 @@ import { APP_TIME_ZONE } from "@/lib/types/primitives";
 import {
   MEETING_CARD_STATUS_LABELS,
   RESPONSE_STATUS_LABELS,
+  RUN_STAGE_LABELS,
   unverifiedNote,
 } from "@/lib/format/hebrew-labels";
+import type { RunStage } from "@/lib/generated/prisma/enums";
 import { ResponseControls } from "./respond/ResponseControls";
 import { ConflictWarning, type Conflict } from "./respond/ConflictWarning";
 import { StuckPanel } from "./StuckPanel";
@@ -78,6 +80,7 @@ type MeetingDetail = {
   pinnedVenue: string | null;
   occasion: string | null;
   proposal: Proposal | null;
+  runStage: RunStage | null;
   participants: Participant[];
   approvedCount: number;
   totalCount: number;
@@ -165,6 +168,25 @@ function ProposalBlock({
       {proposal.alsoConsidered.length > 0 && (
         <p className="sl-sub">גם שקלנו: {proposal.alsoConsidered.join(", ")}</p>
       )}
+    </section>
+  );
+}
+
+/**
+ * #169: once a rejection sends a meeting back to `reweighing`, the old
+ * proposal is no longer on the table — showing it (and its approve/reject
+ * buttons) invites acting on something already gone. This replaces it until
+ * the poll above lands the next one. `runStage` is null during the short
+ * batching window before the run itself starts (spec's own convention, #155).
+ */
+function ReweighingBlock({ runStage }: { runStage: RunStage | null }) {
+  return (
+    <section className="sl-panel" role="status" aria-busy="true">
+      <h2 className="sl-sec">מחפשים הצעה חדשה</h2>
+      <div className="sl-skel" aria-hidden="true" />
+      <p className="sl-sub">
+        {runStage ? RUN_STAGE_LABELS[runStage] : "מחפשים הצעה חדשה…"}
+      </p>
     </section>
   );
 }
@@ -402,29 +424,35 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
           onCancelled={refresh}
         />
       )}
-      <ProposalBlock proposal={detail.proposal} stuck={detail.isStuck} />
-      <ResponseControls
-        meetingId={detail.id}
-        myStatus={
-          detail.participants.find((p) => p.userId === detail.viewerId)
-            ?.status ?? "pending"
-        }
-        remainingCycles={detail.remainingCycles}
-        disabled={detail.status === "closed"}
-        onResponded={refresh}
-        aboveApprove={
-          detail.conflicts.length > 0 ? (
-            <ConflictWarning
-              meetingId={detail.id}
-              thisMeetingName={
-                detail.proposal?.venueName ?? detail.occasion ?? "ללא שם"
-              }
-              conflicts={detail.conflicts}
-              onResolved={refresh}
-            />
-          ) : undefined
-        }
-      />
+      {reweighing && !detail.isStuck ? (
+        <ReweighingBlock runStage={detail.runStage} />
+      ) : (
+        <>
+          <ProposalBlock proposal={detail.proposal} stuck={detail.isStuck} />
+          <ResponseControls
+            meetingId={detail.id}
+            myStatus={
+              detail.participants.find((p) => p.userId === detail.viewerId)
+                ?.status ?? "pending"
+            }
+            remainingCycles={detail.remainingCycles}
+            disabled={detail.status === "closed"}
+            onResponded={refresh}
+            aboveApprove={
+              detail.conflicts.length > 0 ? (
+                <ConflictWarning
+                  meetingId={detail.id}
+                  thisMeetingName={
+                    detail.proposal?.venueName ?? detail.occasion ?? "ללא שם"
+                  }
+                  conflicts={detail.conflicts}
+                  onResolved={refresh}
+                />
+              ) : undefined
+            }
+          />
+        </>
+      )}
       <StatusBlock detail={detail} />
       <TimelineBlock timeline={detail.timeline} />
     </div>

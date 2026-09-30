@@ -47,6 +47,7 @@ function detail(overrides: Record<string, unknown> = {}) {
     ],
     approvedCount: 1,
     totalCount: 2,
+    runStage: null,
     timeline: [
       { kind: "initiated", at: "2026-09-13T10:00:00.000Z", by: "אלדד" },
     ],
@@ -424,7 +425,10 @@ test("asks again every ~3s while re-weighing, and stops once a proposal is back"
   vi.stubGlobal("fetch", fetchMock);
 
   render(<MeetingDetail meetingId="meeting-1" />);
-  expect(await screen.findByText("בית קפה נורדאו")).toBeInTheDocument();
+  expect(await screen.findByText("משוקלל מחדש")).toBeInTheDocument();
+  // #169: the rejected proposal is off the table — it must not show while
+  // a new one is being worked out.
+  expect(screen.queryByText("בית קפה נורדאו")).not.toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledTimes(1);
 
   await vi.advanceTimersByTimeAsync(3000);
@@ -440,10 +444,50 @@ test("asks again every ~3s while re-weighing, and stops once a proposal is back"
   await vi.waitFor(() =>
     expect(screen.queryByText("משוקלל מחדש")).not.toBeInTheDocument()
   );
+  expect(screen.getByText("בית קפה נורדאו")).toBeInTheDocument();
   const settled = fetchMock.mock.calls.length;
   await vi.advanceTimersByTimeAsync(9000);
   expect(fetchMock).toHaveBeenCalledTimes(settled);
   vi.useRealTimers();
+});
+
+test("names the stage while a run works through it (#169, #155)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(detail({ status: "reweighing", runStage: "places" }))
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(await screen.findByText("מחפשים מקומות")).toBeInTheDocument();
+});
+
+test("a stuck meeting shows the stuck panel, not the re-weighing spinner", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            status: "stuck",
+            isStuck: true,
+            timeline: [
+              { kind: "initiated", at: "2026-09-13T10:00:00.000Z", by: "אלדד" },
+            ],
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(await screen.findByText("הפגישה הזו תקועה")).toBeInTheDocument();
+  expect(screen.queryByText("מחפשים הצעה חדשה")).not.toBeInTheDocument();
 });
 
 test("a failed poll leaves the page on screen", async () => {
@@ -455,10 +499,10 @@ test("a failed poll leaves the page on screen", async () => {
   vi.stubGlobal("fetch", fetchMock);
 
   render(<MeetingDetail meetingId="meeting-1" />);
-  expect(await screen.findByText("בית קפה נורדאו")).toBeInTheDocument();
+  expect(await screen.findByText("מחפשים הצעה חדשה")).toBeInTheDocument();
 
   await vi.advanceTimersByTimeAsync(3000);
   expect(fetchMock).toHaveBeenCalledTimes(2);
-  expect(screen.getByText("בית קפה נורדאו")).toBeInTheDocument();
+  expect(screen.getByText("מחפשים הצעה חדשה")).toBeInTheDocument();
   vi.useRealTimers();
 });
