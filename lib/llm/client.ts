@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, type GoogleGenAIOptions } from "@google/genai";
 
 import {
   describeCost,
@@ -321,10 +321,38 @@ const DEFAULT_VERTEX_LOCATION = "global";
  * which is its own piece of work. `GOOGLE_CLOUD_PROJECT` is the switch: set
  * it and this talks to Vertex, leave it unset and nothing changes.
  *
+ * **On Vercel, a service account.** There is no `gcloud` login there, so
+ * `GOOGLE_SERVICE_ACCOUNT_KEY` carries one's JSON key — a dedicated account
+ * holding `roles/aiplatform.user` and nothing else. Unset locally, where ADC
+ * does the same job.
+ *
  * `location` defaults to `global` because that is where these models are.
  * `us-central1`, the usual first guess, returns 404 for both of them —
  * measured, not assumed.
  */
+/**
+ * Vertex credentials from `GOOGLE_SERVICE_ACCOUNT_KEY`, or nothing, which
+ * leaves the SDK on ADC. A key that does not parse fails here, naming the
+ * variable and never quoting it — it is a secret.
+ */
+export function serviceAccountAuth(): Pick<
+  GoogleGenAIOptions,
+  "googleAuthOptions"
+> {
+  const key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.trim();
+  if (!key) return {};
+
+  let credentials: unknown;
+  try {
+    credentials = JSON.parse(key);
+  } catch {
+    throw new LlmConfigError(
+      "GOOGLE_SERVICE_ACCOUNT_KEY is not valid JSON. Paste the whole key file `gcloud iam service-accounts keys create` wrote. See .env.example."
+    );
+  }
+  return { googleAuthOptions: { credentials: credentials as object } };
+}
+
 function connect(): GoogleGenAI {
   const project = process.env.GOOGLE_CLOUD_PROJECT?.trim();
   if (project) {
@@ -333,6 +361,7 @@ function connect(): GoogleGenAI {
       project,
       location:
         process.env.GOOGLE_CLOUD_LOCATION?.trim() || DEFAULT_VERTEX_LOCATION,
+      ...serviceAccountAuth(),
     });
   }
 
