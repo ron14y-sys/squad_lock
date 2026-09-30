@@ -135,6 +135,7 @@ from the cross-group query plus `ConflictDismissal`.
 | `pinnedVenue`           | `String?`       | optionally set at initiation                                                         |
 | `occasion`              | `String?`       | free text, an input to the Context Resolver (spec §6.2)                              |
 | `currentDatetime`       | `DateTime?`     | **denormalized** — see below                                                         |
+| `runStage`              | `RunStage?`     | where the run is now (#155) — see below                                              |
 | `createdAt`/`updatedAt` | `DateTime`      |                                                                                      |
 
 **`currentDatetime` is not in spec §6.2 verbatim.** It mirrors the datetime
@@ -143,6 +144,13 @@ in sync by the application whenever a new top option is chosen. Without it,
 sorting the feed by date or scanning "open meetings at time T" would need a
 join through `MatchRun` → `MatchOption` on every read; with it, both are a
 direct read off `meetings`.
+
+**`runStage` is progress, not state (#155).** `runCycle` writes each stage
+as it enters it — `calendars`, `places`, `venue_details`, `model`, `saving` —
+and clears it when the run ends, however it ends, so the screens that already
+poll can show where a run is. A run killed mid-stage leaves its stage on the
+row until the retry overwrites it, so readers go through `runStageOf`, which
+returns it only while `status` is `weighing`.
 
 **Relations:** many `MatchRun`, `Response`, `ParticipantMeetingContext`; two
 named relations into `ConflictDismissal` (`MeetingA` / `MeetingB` — see
@@ -416,6 +424,7 @@ never neither. The database does not enforce this; the senders do.
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `MeetingStatus`      | `weighing` · `awaiting` · `closed` · `stuck` · `cancelled`                                                                                 |
 | `ResponseStatus`     | `pending` · `approved` · `cant_make_it` · `doesnt_suit`                                                                                    |
+| `RunStage`           | `calendars` · `places` · `venue_details` · `model` · `saving`                                                                              |
 | `InvitationStatus`   | `pending` · `accepted`                                                                                                                     |
 | `ExtractionOutcome`  | `soft` · `distance` · `time` · `venue_identity` · `none` — or why nothing was extracted: `failed_quota` · `failed_call` · `failed_invalid` |
 | `NotificationKind`   | `invitation` · `proposal_waiting` · `meeting_confirmed` · `conflict_reweigh` · `stuck`                                                     |

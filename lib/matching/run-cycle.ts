@@ -55,7 +55,7 @@ import {
   SEARCH_RADIUS_METERS,
 } from "@/lib/places/search-area";
 import { persistMatchRun } from "@/lib/db/match-run";
-import { MeetingStatus } from "@/lib/generated/prisma/enums";
+import { MeetingStatus, type RunStage } from "@/lib/generated/prisma/enums";
 import { commonFreeWindows } from "./availability";
 import { runMatchingAgent } from "./agent";
 import { originOf } from "./distance";
@@ -299,10 +299,14 @@ export type BusyLookup = (
   window: TimeSlot
 ) => Promise<Map<string, TimeSlot[]>>;
 
+/** Told as a run enters each stage (#155). `runCycle` writes it to the meeting. */
+export type StageReport = (stage: RunStage) => Promise<void>;
+
 export async function assembleRun(
   meetingId: string,
   now: Date = new Date(),
-  busyFor: BusyLookup = fetchBusyForUsers
+  busyFor: BusyLookup = fetchBusyForUsers,
+  reportStage: StageReport = async () => {}
 ): Promise<AssembledRun> {
   const prisma = getPrisma();
 
@@ -365,6 +369,7 @@ export async function assembleRun(
   );
 
   const window = searchWindow(meeting.pinnedDate, now);
+  await reportStage("calendars");
   const busyByUser = await busyFor(
     attending.map((response) => response.userId),
     window
@@ -407,6 +412,7 @@ export async function assembleRun(
   // that cannot finish should not first spend Enterprise-tier Places calls.
   const origins = participants.map(originOf);
 
+  await reportStage("places");
   const pools = await Promise.all(
     deriveSearchCentres(origins).map((centre) =>
       searchNeighbourhoodCached(centre, SEARCH_RADIUS_METERS)
@@ -432,6 +438,7 @@ export async function assembleRun(
     slots,
   });
 
+  await reportStage("venue_details");
   const detailed = await Promise.all(
     provisional.shortlist.map(async (score) => ({
       candidate: score.candidate,
@@ -578,6 +585,7 @@ export async function runCycle(
   try {
     return await weigh(meetingId, now, busyFor);
   } catch (error) {
+    await clearStage(meetingId);
     if (error instanceof NoSolutionError) {
       // Conditional on the status, so a meeting somebody closed or cancelled
       // while this was running is not dragged back to `stuck`.
@@ -609,9 +617,52 @@ export async function runCycle(
   }
 }
 
+/**
+ * Writes each stage onto the meeting (#155). Only while it is `weighing`, so
+ * a meeting cancelled mid-run is not marked as working.
+ *
+ * Progress is cosmetic, so a failed write is logged and the run goes on: the
+ * group would rather have a proposal without a progress line than neither.
+ */
+function stageWriter(meetingId: string): StageReport {
+  return async (stage) => {
+    try {
+      await getPrisma().meeting.updateMany({
+        where: { id: meetingId, status: MeetingStatus.weighing },
+        data: { runStage: stage },
+      });
+    } catch (error) {
+      console.warn(
+        `[a8] stage=${stage} not written meeting=${meetingId}`,
+        error
+      );
+    }
+  };
+}
+
+/** A run that failed is not in any stage. Never throws, as `runCycle` never does. */
+async function clearStage(meetingId: string) {
+  try {
+    await getPrisma().meeting.updateMany({
+      where: { id: meetingId },
+      data: { runStage: null },
+    });
+  } catch (error) {
+    console.warn(`[a8] stage not cleared meeting=${meetingId}`, error);
+  }
+}
+
 async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
-  const { input, contextIds } = await assembleRun(meetingId, now, busyFor);
+  const reportStage = stageWriter(meetingId);
+  const { input, contextIds } = await assembleRun(
+    meetingId,
+    now,
+    busyFor,
+    reportStage
+  );
+  await reportStage("model");
   const { draft, call } = await runMatchingAgent(input);
+  await reportStage("saving");
 
   const top = draft.options.find((option) => option.rank === 1);
   if (!top) {
@@ -675,6 +726,8 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
         // With this it is cycles 2, 3 and 4. §3.1 defines the cap.)
         cycleCount: draft.cycleNumber - 1,
         currentDatetime: top.proposedDatetime,
+        // The run is over, in the same write that says what it produced.
+        runStage: null,
       },
     });
 
