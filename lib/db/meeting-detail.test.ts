@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { withoutOrigin } from "./meeting-detail";
+import { describeContext, withoutOrigin } from "./meeting-detail";
 
 const people = [
   { userId: "u1", name: "רון" },
@@ -58,5 +58,53 @@ describe("withoutOrigin", () => {
     );
 
     expect(result).toEqual([people[0]]);
+  });
+});
+
+describe("describeContext", () => {
+  it("names each mobility mode in Hebrew, never the stored enum (#175)", () => {
+    expect(
+      describeContext({
+        note: null,
+        originLabel: null,
+        mobilityWindows: [{ mode: "car", available: false }],
+      })
+    ).toBe("אין רכב הערב");
+
+    expect(
+      describeContext({
+        note: null,
+        originLabel: null,
+        mobilityWindows: [{ mode: "transit", available: false }],
+      })
+    ).toBe("אין תחבורה ציבורית הערב");
+
+    expect(
+      describeContext({
+        note: null,
+        originLabel: null,
+        mobilityWindows: [{ mode: "walk", available: false }],
+      })
+    ).toBe("אין הליכה הערב");
+  });
+
+  it("prefers the free-text note over everything else", () => {
+    expect(
+      describeContext({
+        note: "יוצא מוקדם הערב",
+        originLabel: "תל אביב",
+        mobilityWindows: [{ mode: "car", available: false }],
+      })
+    ).toBe("יוצא מוקדם הערב");
+  });
+
+  it("falls back to the origin label when there is no note", () => {
+    expect(
+      describeContext({
+        note: null,
+        originLabel: "תל אביב",
+        mobilityWindows: [],
+      })
+    ).toBe("מגיע/ה מתל אביב");
   });
 });
