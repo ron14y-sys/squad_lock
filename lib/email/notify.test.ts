@@ -253,3 +253,61 @@ describe("notifyStuck", () => {
     );
   });
 });
+
+describe("never throws, whatever fails before the send", () => {
+  // 30.9, production: APP_BASE_URL was unset, the template threw outside
+  // `sendAndLog`, and a matching run that had already saved its proposal
+  // was logged as failed.
+  it("records a missing APP_BASE_URL as a failed send", async () => {
+    vi.stubEnv("APP_BASE_URL", "");
+    const client = fakeClient();
+    client.response.findMany.mockResolvedValueOnce([
+      { user: { email: "dana@example.test" } },
+    ]);
+
+    await expect(
+      notifyProposalWaiting("meeting-1", client)
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(client.notificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: NotificationKind.proposal_waiting,
+          recipientEmail: "dana@example.test",
+          status: NotificationStatus.failed,
+          errorMessage: expect.stringContaining("APP_BASE_URL"),
+        }),
+      })
+    );
+  });
+
+  it("does the same for the emails sent to everyone still in", async () => {
+    vi.stubEnv("APP_BASE_URL", "");
+    const client = fakeClient();
+    client.response.findMany.mockResolvedValueOnce([
+      { user: { email: "dana@example.test" } },
+    ]);
+
+    await expect(notifyStuck("meeting-1", client)).resolves.toBeUndefined();
+
+    expect(client.notificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: NotificationKind.stuck,
+          status: NotificationStatus.failed,
+        }),
+      })
+    );
+  });
+
+  it("does not throw when finding the recipients fails", async () => {
+    const client = fakeClient();
+    client.response.findMany.mockRejectedValueOnce(new Error("pool exhausted"));
+
+    await expect(
+      notifyProposalWaiting("meeting-1", client)
+    ).resolves.toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
