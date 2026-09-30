@@ -3,8 +3,12 @@
 // never committed; it comes from the environment only (Vercel env vars in
 // production, .env locally — see .env.example).
 
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "prisma/config";
+
+// `.env.local` first, as Next.js reads it, so `prisma migrate dev` hits the
+// same database as `npm run dev`. With `.env` alone it found no URL at all.
+config({ path: [".env.local", ".env"], quiet: true });
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
