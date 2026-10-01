@@ -38,6 +38,7 @@ model User {
   conflictDismissals  ConflictDismissal[]
   sentInvitations     Invitation[]                @relation("InvitationSender")
   acceptedInvitations Invitation[]                @relation("InvitationAcceptor")
+  notifications       Notification[]
 
   @@map("users")
 }
@@ -236,6 +237,7 @@ model Meeting {
   dismissalsAsA       ConflictDismissal[]         @relation("MeetingA")
   dismissalsAsB       ConflictDismissal[]         @relation("MeetingB")
   notificationLogs    NotificationLog[]
+  notifications       Notification[]
 
   @@index([groupId])
   @@index([status, currentDatetime])
@@ -619,6 +621,44 @@ model NotificationLog {
   @@index([invitationId])
   @@index([status, retriedAt])
   @@map("notification_log")
+}
+
+/// C9 — the "in-app" half of spec §5.5's "v1 notifications are in-app +
+/// email." One row per recipient per trigger, written alongside (never
+/// instead of) the `NotificationLog` row `lib/email/notify.ts` already
+/// creates for the same event.
+///
+/// Deliberately a separate table from `NotificationLog`, not an added
+/// column on it: that table is a delivery log keyed on `recipientEmail`,
+/// with no per-user read state and no guarantee a `User` row exists yet —
+/// an invitation can be sent to someone who has never signed up (see that
+/// model's own comment). This table exists only for the four triggers
+/// where a `User` definitely does: `invitation` is a valid NotificationKind
+/// here too (one enum, not two) but is never actually written to this
+/// table — there is nobody signed in yet to show it to.
+model Notification {
+  id     String           @id @default(cuid())
+  userId String
+  kind   NotificationKind
+
+  /// Always set in practice (every kind this table is written for is
+  /// meeting-related) — nullable only because the shared enum still
+  /// includes `invitation`, which has none.
+  meetingId String?
+
+  /// NULL means unread. A timestamp rather than a boolean for the same
+  /// reason `Response.respondedAt` is one — "whether" and "when" are both
+  /// worth keeping, and a boolean would have to throw one away.
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meeting Meeting? @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  /// The one query this table exists to answer: this user's, unread first.
+  @@index([userId, readAt])
+  @@map("notifications")
 }
 
 /// The five spec §5.5 triggers. Only `proposal_waiting` is wired to a
