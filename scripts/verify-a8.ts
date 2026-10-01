@@ -1,23 +1,26 @@
 /**
  * A8, against the real database: the loop, the cap arithmetic, and the two
- * ways a cycle can fail.
+ * ways a cycle can fail. Section 5 is B11: the same batching machinery,
+ * proven to also fire for an amendment, not only a rejection.
  *
  *   npm run verify:a8
  *
  * Every test in this repo runs with no database, no network and no key —
  * deliberately, because a suite that spends quota is a suite nobody can
- * afford to run twice. That leaves A8's whole point unproven, because what
- * could actually be wrong is not an arithmetic rule but whether a rejection
- * reaches it at all. This script is that half, in the shape
- * `verify-a7-db.ts` already set: it creates its own rows and deletes them in
- * a `finally`, and the group and users cascade so everything below them goes
- * too. Nothing here touches a row it did not create.
+ * afford to run twice. That leaves A8's (and B11's) whole point unproven,
+ * because what could actually be wrong is not an arithmetic rule but
+ * whether a rejection or amendment reaches it at all. This script is that
+ * half, in the shape `verify-a7-db.ts` already set: it creates its own rows
+ * and deletes them in a `finally`, and the group and users cascade so
+ * everything below them goes too. Nothing here touches a row it did not
+ * create.
  *
  * ## What it costs, and what it does not
  *
- * **Four real matching calls** — one per proposal — out of Gemini's twenty a
- * day. That is the price of proving the sequence end to end, and the count is
- * printed at the end so it is never a surprise.
+ * **Six real matching calls** — one per proposal, plus two more for B11's
+ * amendment-batching scenario below — out of Gemini's twenty a day. That is
+ * the price of proving the sequence end to end, and the count is printed at
+ * the end so it is never a surprise.
  *
  * **No Places calls at all.** `place_search_cache` and
  * `place_details_cache` are seeded first, through `saveCachedSearch` and
@@ -45,6 +48,7 @@ import {
 import {
   assembleRun,
   runCycle,
+  runDueMeetings,
   type BusyLookup,
 } from "@/lib/matching/run-cycle";
 import type { Candidate, LatLng, TimeSlot } from "@/lib/types";
@@ -405,6 +409,115 @@ async function main(): Promise<void> {
         where: { meetingId: faultMeeting.id },
       })) === 0
     );
+
+    /* 5 — B11: two amendments inside the window make one run ------------- */
+
+    // A fresh meeting, not the stuck/exhausted one from section 3 —
+    // `backToWeighing` reads `cycleCount` against the cap, so starting from a
+    // meeting already at the cap would re-close it to `stuck` before
+    // `runDueMeetings` ever got a look, and prove nothing about batching.
+    const amendMeeting = await initiateMeeting(group.id, dana.id, {
+      date: PINNED.toISOString().slice(0, 10),
+    });
+    await runCycle(amendMeeting.id, new Date(), FREE);
+    modelCalls += 1;
+
+    const beforeAmend = await statusOf(amendMeeting.id);
+    const amendReachable = beforeAmend.status === "awaiting";
+    if (!amendReachable) {
+      skip("B11 amendment batching", "needs a proposal to amend");
+    } else {
+      // Dana's first amendment for this meeting — free (spec §3.1).
+      await respondToMeeting(amendMeeting.id, dana.id, {
+        kind: "amendment",
+        originLabel: "עכשיו קרוב יותר לדיזנגוף",
+        mobilityWindows: [
+          {
+            mode: "transit",
+            available: true,
+            window: {
+              weekdays: [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+              ],
+              from: "17:00",
+              to: "23:00",
+            },
+          },
+        ],
+      });
+      const afterDanaAmend = await statusOf(amendMeeting.id);
+      check(
+        "dana's first (free) amendment returns the meeting to weighing, spending no cycle yet",
+        afterDanaAmend.status === "weighing" && afterDanaAmend.cycleCount === 0,
+        `${afterDanaAmend.status}, cycleCount=${afterDanaAmend.cycleCount}`
+      );
+
+      // Yael's first amendment too, well inside the ~90s window dana's just
+      // opened — this is the case B11 fixes: before it, nothing read this
+      // row either, because `isDue`'s query only ever looked for a rejection.
+      await respondToMeeting(amendMeeting.id, yael.id, {
+        kind: "amendment",
+        originLabel: "גם אני גמישה יותר הערב",
+      });
+      const afterYaelAmend = await statusOf(amendMeeting.id);
+      check(
+        "yael's first (free) amendment also spends no cycle",
+        afterYaelAmend.status === "weighing" && afterYaelAmend.cycleCount === 0,
+        `${afterYaelAmend.status}, cycleCount=${afterYaelAmend.cycleCount}`
+      );
+
+      // The same query `runDueMeetings` itself runs, so the anchor below is
+      // exactly what production code would see — not a guess from wall-clock
+      // timestamps taken on this side of the DB round trip.
+      const oldestUnseen = await prisma.participantMeetingContext.findFirst({
+        where: { meetingId: amendMeeting.id, seenByRuns: { none: {} } },
+        orderBy: { createdAt: "asc" },
+      });
+      const anchor = oldestUnseen!.createdAt;
+
+      // Well inside both the ~90s batching window and the ~90s poll cooldown
+      // (RUN_ATTEMPT_COOLDOWN_MS) — nothing should be due yet.
+      await runDueMeetings(group.id, new Date(anchor.getTime() + 30_000));
+      const stillOneRun = await topOptionOf(amendMeeting.id);
+      check(
+        "a poll from inside the window runs nothing yet",
+        stillOneRun?.cycleNumber === 1,
+        `latest cycleNumber=${stillOneRun?.cycleNumber}`
+      );
+
+      // Six minutes past the anchor clears both the ~90s batching window and
+      // MIN_PROPOSAL_LIFETIME_MS's 5-minute floor, measured from the opening
+      // proposal rather than from either amendment.
+      await runDueMeetings(group.id, new Date(anchor.getTime() + 6 * 60_000));
+      modelCalls += 1;
+
+      const afterBatchedRun = await statusOf(amendMeeting.id);
+      const batchedRun = await topOptionOf(amendMeeting.id);
+      check(
+        "exactly one batched run answers both amendments",
+        batchedRun?.cycleNumber === 2,
+        `cycleNumber=${batchedRun?.cycleNumber}`
+      );
+      check(
+        "that run saw both unseen context rows, not just the oldest",
+        batchedRun?.seenContexts.length === 2,
+        `${batchedRun?.seenContexts.length ?? 0} row(s)`
+      );
+      check(
+        "two free amendments close together still cost the group one rematch, not two",
+        afterBatchedRun.cycleCount === 1,
+        `cycleCount=${afterBatchedRun.cycleCount}`
+      );
+      check(
+        "the meeting is awaiting the new proposal, not left weighing",
+        afterBatchedRun.status === "awaiting",
+        afterBatchedRun.status
+      );
+    }
   } finally {
     await prisma.group.deleteMany({ where: { name: tag } });
     await prisma.user.deleteMany({ where: { googleId: { startsWith: tag } } });
