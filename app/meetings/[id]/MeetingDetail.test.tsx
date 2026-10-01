@@ -18,6 +18,7 @@ function detail(overrides: Record<string, unknown> = {}) {
     status: "waiting_on_you",
     viewerId: "u2",
     remainingCycles: 3,
+    viewerAmendmentIsFree: true,
     isStuck: false,
     isInitiator: false,
     conflicts: [],
