@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { auth } from "@/auth";
 import { countUnreadNotifications } from "@/lib/db/notifications";
+import { Logo3D } from "./Logo3D";
 import { ThemeToggle } from "./ThemeToggle";
 
 // No task ever asked for this — B2 built sign-in itself, C1-C7 built the
@@ -26,26 +27,14 @@ export async function AppHeader() {
   return (
     <header className="safe-top sticky top-0 z-10 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-xl items-center justify-between gap-2 px-4">
-        {session?.user ? (
-          <Link href="/groups" className="sl-logo">
-            SquadLock
-          </Link>
-        ) : (
-          <span className="sl-logo">SquadLock</span>
-        )}
+        <Logo3D href={session?.user ? "/groups" : undefined} />
         <ThemeToggle />
         {session?.user ? (
           <div className="flex items-center gap-3">
-            <Link
-              href="/groups"
-              className="text-sm font-bold whitespace-nowrap"
-            >
+            <Link href="/groups" className="sl-navlink">
               קבוצות
             </Link>
-            <Link
-              href="/notifications"
-              className="relative text-sm font-bold whitespace-nowrap"
-            >
+            <Link href="/notifications" className="sl-navlink relative">
               התראות
               {unreadCount > 0 && (
                 <span
@@ -59,19 +48,13 @@ export async function AppHeader() {
                 </span>
               )}
             </Link>
-            <Link
-              href="/profile"
-              className="text-sm font-bold whitespace-nowrap"
-            >
+            <Link href="/profile" className="sl-navlink">
               פרופיל
             </Link>
             <span className="sl-sub hidden whitespace-nowrap sm:inline">
               {session.user.name}
             </span>
-            <Link
-              href="/api/auth/signout"
-              className="text-sm font-bold whitespace-nowrap"
-            >
+            <Link href="/api/auth/signout" className="sl-navlink">
               התנתק
             </Link>
           </div>
