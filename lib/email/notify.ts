@@ -29,10 +29,19 @@
  * `stillInRecipients` is the query three of those four share -- everyone
  * on a meeting who has not dropped out, same definition as
  * `allStillInHaveApproved` and `assembleRun`'s `attending`.
+ *
+ * #46 (C9) added the other half of "v1 notifications are in-app + email":
+ * every `notify*` function below except `notifyInvitation` also calls
+ * `recordInAppNotification` (`lib/db/notifications.ts`) for each recipient,
+ * right alongside `sendAndLog` -- one trigger, two channels, each failing
+ * independently of the other. `notifyInvitation` is the one exception,
+ * same reason it has no `User` lookup: the recipient may not have signed
+ * up yet, so there is nobody to show an in-app notification to.
  */
 
 import { getPrisma } from "@/lib/db/client";
 import { recordNotification } from "@/lib/db/notification-log";
+import { recordInAppNotification } from "@/lib/db/notifications";
 import { sendEmail } from "./client";
 import {
   calendarReconnectEmail,
@@ -55,6 +64,7 @@ type NotifyClient = {
   invitation: Pick<PrismaClient["invitation"], "findUnique">;
   user: Pick<PrismaClient["user"], "findUnique">;
   notificationLog: Pick<PrismaClient["notificationLog"], "create">;
+  notification: Pick<PrismaClient["notification"], "create">;
 };
 
 export type NotificationRefs = {
@@ -176,13 +186,23 @@ export async function notifyProposalWaiting(
 
     await Promise.all(
       pendingResponses.map((response) =>
-        sendAndLog(
-          NotificationKind.proposal_waiting,
-          response.user.email,
-          () => proposalWaitingEmail(meetingId),
-          { meetingId },
-          client
-        )
+        Promise.all([
+          sendAndLog(
+            NotificationKind.proposal_waiting,
+            response.user.email,
+            () => proposalWaitingEmail(meetingId),
+            { meetingId },
+            client
+          ),
+          recordInAppNotification(
+            {
+              userId: response.userId,
+              kind: NotificationKind.proposal_waiting,
+              meetingId,
+            },
+            client
+          ),
+        ])
       )
     );
   });
@@ -198,15 +218,18 @@ export async function notifyProposalWaiting(
 async function stillInRecipients(
   meetingId: string,
   client: Pick<NotifyClient, "response">
-): Promise<string[]> {
+): Promise<{ userId: string; email: string }[]> {
   const responses = await client.response.findMany({
     where: { meetingId, status: { not: ResponseStatus.cant_make_it } },
     include: { user: { select: { email: true } } },
   });
-  return responses.map((response) => response.user.email);
+  return responses.map((response) => ({
+    userId: response.userId,
+    email: response.user.email,
+  }));
 }
 
-/** `sendAndLog` to everyone `stillInRecipients` returns, in parallel. */
+/** `sendAndLog` and `recordInAppNotification` for everyone `stillInRecipients` returns, in parallel. */
 async function notifyStillIn(
   kind: NotificationKind,
   meetingId: string,
@@ -217,8 +240,14 @@ async function notifyStillIn(
     const recipients = await stillInRecipients(meetingId, client);
 
     await Promise.all(
-      recipients.map((email) =>
-        sendAndLog(kind, email, content, { meetingId }, client)
+      recipients.map((recipient) =>
+        Promise.all([
+          sendAndLog(kind, recipient.email, content, { meetingId }, client),
+          recordInAppNotification(
+            { userId: recipient.userId, kind, meetingId },
+            client
+          ),
+        ])
       )
     );
   });
@@ -342,12 +371,18 @@ export async function notifyCalendarReconnect(
     });
     if (!user) return;
 
-    await sendAndLog(
-      NotificationKind.calendar_reconnect,
-      user.email,
-      () => calendarReconnectEmail(),
-      {},
-      client
-    );
+    await Promise.all([
+      sendAndLog(
+        NotificationKind.calendar_reconnect,
+        user.email,
+        () => calendarReconnectEmail(),
+        {},
+        client
+      ),
+      recordInAppNotification(
+        { userId, kind: NotificationKind.calendar_reconnect },
+        client
+      ),
+    ]);
   });
 }

@@ -5,7 +5,7 @@
 import type { LocalWeekday, MobilityMode } from "@/lib/types";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
 import type { MeetingCardStatus, ResponseStatus } from "@/lib/types/meeting";
-import type { RunStage } from "@/lib/generated/prisma/enums";
+import type { NotificationKind, RunStage } from "@/lib/generated/prisma/enums";
 
 export const WEEKDAY_LABELS: Record<LocalWeekday, string> = {
   sunday: "א׳",
@@ -117,3 +117,20 @@ export function unverifiedNote(
 export function membersLabel(count: number): string {
   return count === 1 ? "חבר אחד" : `${count} חברים`;
 }
+
+/**
+ * #46 (C9): what each trigger says in the notification center — the same
+ * five (now six, with `calendar_reconnect`) events `lib/email/notify.ts`
+ * already emails about, in one short line instead of the email's full
+ * paragraph. `invitation` is included for completeness (the enum has it)
+ * even though `lib/db/notifications.ts` never actually writes one of this
+ * kind — see that file's own comment.
+ */
+export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
+  invitation: "הוזמנת לקבוצה",
+  proposal_waiting: "הוצעה פגישה — ממתינה לתשובה שלך",
+  meeting_confirmed: "הפגישה אושרה",
+  conflict_reweigh: "הפגישה נפתחה מחדש בגלל התנגשות",
+  stuck: "לא מצאנו הצעה לפגישה — צריך להחליט ידנית",
+  calendar_reconnect: "החיבור ליומן Google שלך הפסיק לעבוד",
+};

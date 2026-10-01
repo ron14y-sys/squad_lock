@@ -17,8 +17,8 @@ import {
  * No real database and no real network anywhere in this file -- same
  * discipline as `lib/db/places-cache.test.ts`. The DB side is a hand-built
  * fake (`response.findMany`, `invitation.findUnique`,
- * `notificationLog.create`); `fetch` is mocked the same way
- * `lib/email/client.test.ts` mocks it.
+ * `notificationLog.create`, `notification.create` -- #46's in-app half);
+ * `fetch` is mocked the same way `lib/email/client.test.ts` mocks it.
  */
 
 function fakeClient() {
@@ -27,6 +27,7 @@ function fakeClient() {
     invitation: { findUnique: vi.fn() },
     user: { findUnique: vi.fn() },
     notificationLog: { create: vi.fn() },
+    notification: { create: vi.fn() },
   };
 }
 
@@ -60,8 +61,8 @@ describe("notifyProposalWaiting", () => {
   it("emails only the pending responses, and logs each as sent", async () => {
     const client = fakeClient();
     client.response.findMany.mockResolvedValueOnce([
-      { user: { email: "dana@example.test" } },
-      { user: { email: "yoav@example.test" } },
+      { userId: "dana-id", user: { email: "dana@example.test" } },
+      { userId: "yoav-id", user: { email: "yoav@example.test" } },
     ]);
     fetchMock.mockResolvedValue(fakeResponse(true, { id: "email-x" }));
 
@@ -84,6 +85,23 @@ describe("notifyProposalWaiting", () => {
         }),
       })
     );
+
+    // #46: the in-app half fires for the same two recipients.
+    expect(client.notification.create).toHaveBeenCalledTimes(2);
+    expect(client.notification.create).toHaveBeenCalledWith({
+      data: {
+        userId: "dana-id",
+        kind: NotificationKind.proposal_waiting,
+        meetingId: "meeting-1",
+      },
+    });
+    expect(client.notification.create).toHaveBeenCalledWith({
+      data: {
+        userId: "yoav-id",
+        kind: NotificationKind.proposal_waiting,
+        meetingId: "meeting-1",
+      },
+    });
   });
 
   it("sends nobody, and logs nothing, when nobody is pending", async () => {
@@ -94,12 +112,13 @@ describe("notifyProposalWaiting", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(client.notificationLog.create).not.toHaveBeenCalled();
+    expect(client.notification.create).not.toHaveBeenCalled();
   });
 
-  it("logs a failure and does not throw when the send itself fails", async () => {
+  it("logs a failure and does not throw when the send itself fails, but still records the in-app notification (#46)", async () => {
     const client = fakeClient();
     client.response.findMany.mockResolvedValueOnce([
-      { user: { email: "dana@example.test" } },
+      { userId: "dana-id", user: { email: "dana@example.test" } },
     ]);
     fetchMock.mockResolvedValueOnce(fakeResponse(false, "quota exceeded"));
 
@@ -115,12 +134,21 @@ describe("notifyProposalWaiting", () => {
         }),
       })
     );
+    // The in-app notification is a separate channel — an email failure
+    // doesn't say anything about whether the proposal itself exists.
+    expect(client.notification.create).toHaveBeenCalledWith({
+      data: {
+        userId: "dana-id",
+        kind: NotificationKind.proposal_waiting,
+        meetingId: "meeting-1",
+      },
+    });
   });
 
   it("does not throw even when recordNotification itself fails on both the success and the failure path", async () => {
     const client = fakeClient();
     client.response.findMany.mockResolvedValueOnce([
-      { user: { email: "dana@example.test" } },
+      { userId: "dana-id", user: { email: "dana@example.test" } },
     ]);
     client.notificationLog.create.mockRejectedValue(new Error("db down"));
     fetchMock.mockResolvedValueOnce(fakeResponse(true, { id: "email-x" }));
@@ -128,6 +156,25 @@ describe("notifyProposalWaiting", () => {
     await expect(
       notifyProposalWaiting("meeting-1", client)
     ).resolves.toBeUndefined();
+  });
+
+  it("does not throw, and the email still sends, when recording the in-app notification fails (#46)", async () => {
+    const client = fakeClient();
+    client.response.findMany.mockResolvedValueOnce([
+      { userId: "dana-id", user: { email: "dana@example.test" } },
+    ]);
+    client.notification.create.mockRejectedValue(new Error("db down"));
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, { id: "email-x" }));
+
+    await expect(
+      notifyProposalWaiting("meeting-1", client)
+    ).resolves.toBeUndefined();
+
+    expect(client.notificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: NotificationStatus.sent }),
+      })
+    );
   });
 });
 
@@ -170,6 +217,10 @@ describe("notifyInvitation", () => {
         }),
       })
     );
+    // #46: an invitation's recipient may not have a User row yet, so this
+    // is the one trigger with no in-app half — see notifyInvitation's own
+    // comment.
+    expect(client.notification.create).not.toHaveBeenCalled();
   });
 
   it("sends nothing when the invitation row is gone by the time this runs", async () => {
@@ -189,8 +240,8 @@ describe("notifyMeetingConfirmed", () => {
   it("emails everyone still in, not someone who dropped out", async () => {
     const client = fakeClient();
     client.response.findMany.mockResolvedValueOnce([
-      { user: { email: "dana@example.test" } },
-      { user: { email: "yoav@example.test" } },
+      { userId: "dana-id", user: { email: "dana@example.test" } },
+      { userId: "yoav-id", user: { email: "yoav@example.test" } },
     ]);
     fetchMock.mockResolvedValue(fakeResponse(true, { id: "email-x" }));
 
@@ -209,6 +260,14 @@ describe("notifyMeetingConfirmed", () => {
         }),
       })
     );
+    expect(client.notification.create).toHaveBeenCalledTimes(2);
+    expect(client.notification.create).toHaveBeenCalledWith({
+      data: {
+        userId: "dana-id",
+        kind: NotificationKind.meeting_confirmed,
+        meetingId: "meeting-1",
+      },
+    });
   });
 });
 
@@ -216,7 +275,7 @@ describe("notifyConflictReweigh", () => {
   it("emails still-in participants of the cancelled meeting", async () => {
     const client = fakeClient();
     client.response.findMany.mockResolvedValueOnce([
-      { user: { email: "yoav@example.test" } },
+      { userId: "yoav-id", user: { email: "yoav@example.test" } },
     ]);
     fetchMock.mockResolvedValueOnce(fakeResponse(true, { id: "email-x" }));
 
@@ -232,6 +291,13 @@ describe("notifyConflictReweigh", () => {
         }),
       })
     );
+    expect(client.notification.create).toHaveBeenCalledWith({
+      data: {
+        userId: "yoav-id",
+        kind: NotificationKind.conflict_reweigh,
+        meetingId: "meeting-2",
+      },
+    });
   });
 });
 
@@ -239,7 +305,7 @@ describe("notifyStuck", () => {
   it("emails everyone still in the stuck meeting", async () => {
     const client = fakeClient();
     client.response.findMany.mockResolvedValueOnce([
-      { user: { email: "dana@example.test" } },
+      { userId: "dana-id", user: { email: "dana@example.test" } },
     ]);
     fetchMock.mockResolvedValueOnce(fakeResponse(true, { id: "email-x" }));
 
@@ -253,6 +319,13 @@ describe("notifyStuck", () => {
         }),
       })
     );
+    expect(client.notification.create).toHaveBeenCalledWith({
+      data: {
+        userId: "dana-id",
+        kind: NotificationKind.stuck,
+        meetingId: "meeting-3",
+      },
+    });
   });
 });
 
@@ -344,6 +417,15 @@ describe("notifyCalendarReconnect", () => {
         }),
       })
     );
+    // #46: unlike every meeting-scoped trigger, this one is addressed to the
+    // user directly — the userId it was called with, no meeting ref.
+    expect(client.notification.create).toHaveBeenCalledWith({
+      data: {
+        userId: "user-1",
+        kind: NotificationKind.calendar_reconnect,
+        meetingId: null,
+      },
+    });
   });
 
   it("sends nothing when the user row is gone", async () => {
@@ -356,6 +438,7 @@ describe("notifyCalendarReconnect", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(client.notificationLog.create).not.toHaveBeenCalled();
+    expect(client.notification.create).not.toHaveBeenCalled();
   });
 
   it("does not throw when looking the user up fails", async () => {
