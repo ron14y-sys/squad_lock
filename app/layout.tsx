@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Heebo, Rubik, Secular_One } from "next/font/google";
 import Script from "next/script";
 import { AppHeader } from "./_components/AppHeader";
+import { Scene3D } from "./_components/Scene3D";
 import { THEME_INIT_SCRIPT } from "./_components/theme";
 import "./globals.css";
 
@@ -59,6 +60,7 @@ export default function RootLayout({
           <i />
           <i />
         </div>
+        <Scene3D />
         <AppHeader />
         <main className="safe-bottom relative z-[1] flex flex-1 flex-col">
           {children}
