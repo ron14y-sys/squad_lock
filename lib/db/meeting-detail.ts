@@ -1,9 +1,9 @@
 // One meeting in full — the three blocks (C6, spec §5.6, issue #42): the
-// current proposal, where it stands, and what happened so far. B11 (which
-// will call `persistMatchRun`) hasn't shipped, so no meeting has a real
-// `MatchRun` yet — this reads whatever exists and returns `proposal: null`
-// otherwise, the same forward-compatible shape `meeting-cards.ts` already
-// uses for `currentDatetime`.
+// current proposal, where it stands, and what happened so far. Before B11
+// shipped, no meeting ever had a real `MatchRun` — this still reads
+// whatever exists and returns `proposal: null` otherwise, the same
+// forward-compatible shape `meeting-cards.ts` already uses for
+// `currentDatetime`.
 
 import { meetingFromRow } from "@/lib/types/meeting-from-row";
 
@@ -58,6 +58,17 @@ export type TimelineEvent =
       by: string;
       status: ResponseStatus;
       reasonText: string | null;
+    }
+  | {
+      /**
+       * B11: a context row with no `rejectionText` — "my situation
+       * tonight is different" (spec §3.2), shown the moment it is made
+       * rather than only inferred from a later run's `reweighedBecause`.
+       */
+      kind: "amendment";
+      at: string;
+      by: string;
+      description: string;
     };
 
 /** The other side of a clash — enough to say what approving here would undo. */
@@ -79,6 +90,13 @@ export type MeetingDetailDTO = {
   viewerId: string;
   /** Cycles left before the meeting goes `stuck` — shown before "something doesn't work" spends one. */
   remainingCycles: number;
+  /**
+   * Whether an amendment from the viewer right now would be their first for
+   * this meeting (spec §3.1's one free correction). Mirrors `priorAmendments`
+   * in `lib/db/meetings.ts` exactly — see its own comment for why both the
+   * `rejectionText` and `softPreferences` clauses are load-bearing.
+   */
+  viewerAmendmentIsFree: boolean;
   /** The stored status is `stuck` — separate from `status`, because a clash outranks it on the card. */
   isStuck: boolean;
   /** Where the run weighing it is, while one is (#155). */
@@ -190,12 +208,13 @@ export async function getMeetingDetail(
     include: {
       initiator: { select: { name: true } },
       responses: { include: { user: { select: { name: true } } } },
-      // Every rejection, each with its own words and its own time. A
-      // `Response` row is *updated*, so its `reasonText` and `respondedAt`
-      // only ever hold the last one — see the note on `responses` in
-      // docs/database-schema.md.
+      // Every rejection and every amendment, each with its own words and
+      // its own time. A `Response` row is *updated*, so its `reasonText`
+      // and `respondedAt` only ever hold the last one — see the note on
+      // `responses` in docs/database-schema.md. B11: no longer filtered to
+      // rejections — an amendment now gets its own timeline entry too,
+      // not only a mention inside a later run's `reweighedBecause`.
       participantContexts: {
-        where: { NOT: { rejectionText: null } },
         orderBy: { createdAt: "asc" },
         include: { user: { select: { name: true } } },
       },
@@ -211,6 +230,17 @@ export async function getMeetingDetail(
   if (!row) return null;
 
   const meeting: Meeting = meetingFromRow(row);
+
+  // Mirrors `priorAmendments` in `lib/db/meetings.ts` exactly, read-side:
+  // both clauses matter, because every rejection now writes a context row
+  // too (A7), and a NULL `softPreferences` alone would miscount one as an
+  // amendment.
+  const viewerAmendmentIsFree = !row.participantContexts.some(
+    (c) =>
+      c.userId === viewerId &&
+      c.rejectionText === null &&
+      c.softPreferences === null
+  );
 
   const conflictPairs = await findConflictingMeetings(viewerId);
   const otherMeetingIds = conflictPairs.flatMap((pair) => {
@@ -324,23 +354,35 @@ export async function getMeetingDetail(
     }
   }
 
-  // Everything somebody said when rejecting, one event each. A person who
-  // objected three times belongs in the timeline three times, at the three
-  // moments they did it — those are the moments that caused the re-weighings
-  // around them.
+  // Everything somebody said when rejecting or amending, one event each. A
+  // person who objected (or amended) three times belongs in the timeline
+  // three times, at the three moments they did it — those are the moments
+  // that caused the re-weighings around them. B11: a row with no
+  // `rejectionText` is an amendment, not a rejection — same table, same
+  // `describeContext` `reweighedBecause` already uses, a different timeline
+  // shape.
   const rejectionsByUser = new Map<string, number>();
   for (const context of row.participantContexts) {
-    rejectionsByUser.set(
-      context.userId,
-      (rejectionsByUser.get(context.userId) ?? 0) + 1
-    );
-    timeline.push({
-      kind: "response",
-      at: context.createdAt.toISOString(),
-      by: context.user.name,
-      status: "doesnt_suit",
-      reasonText: context.rejectionText,
-    });
+    if (context.rejectionText !== null) {
+      rejectionsByUser.set(
+        context.userId,
+        (rejectionsByUser.get(context.userId) ?? 0) + 1
+      );
+      timeline.push({
+        kind: "response",
+        at: context.createdAt.toISOString(),
+        by: context.user.name,
+        status: "doesnt_suit",
+        reasonText: context.rejectionText,
+      });
+    } else {
+      timeline.push({
+        kind: "amendment",
+        at: context.createdAt.toISOString(),
+        by: context.user.name,
+        description: describeContext(context),
+      });
+    }
   }
 
   for (const response of responses) {
@@ -373,6 +415,7 @@ export async function getMeetingDetail(
     status,
     viewerId,
     remainingCycles: Math.max(0, CYCLE_CAP - meeting.cycleCount),
+    viewerAmendmentIsFree,
     isStuck: row.status === "stuck",
     runStage: runStageOf(row),
     isInitiator: row.initiatorId === viewerId,

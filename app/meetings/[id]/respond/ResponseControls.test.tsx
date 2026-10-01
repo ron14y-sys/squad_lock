@@ -26,6 +26,7 @@ test("approving posts kind: approve and reports back", async () => {
       meetingId="meeting-1"
       myStatus="pending"
       remainingCycles={3}
+      amendmentIsFree={true}
       disabled={false}
       onResponded={onResponded}
     />
@@ -52,6 +53,7 @@ test("can't-make-it posts kind: cant_make_it", async () => {
       meetingId="meeting-1"
       myStatus="pending"
       remainingCycles={3}
+      amendmentIsFree={true}
       disabled={false}
       onResponded={vi.fn()}
     />
@@ -73,6 +75,7 @@ test("something doesn't work shows the remaining cycle count and requires text",
       meetingId="meeting-1"
       myStatus="pending"
       remainingCycles={2}
+      amendmentIsFree={true}
       disabled={false}
       onResponded={vi.fn()}
     />
@@ -107,6 +110,7 @@ test("an amendment sends only the fields that were filled in, meeting-scoped", a
       meetingId="meeting-1"
       myStatus="pending"
       remainingCycles={3}
+      amendmentIsFree={true}
       disabled={false}
       onResponded={vi.fn()}
     />
@@ -134,6 +138,38 @@ test("an amendment sends only the fields that were filled in, meeting-scoped", a
   });
 });
 
+test("the amendment panel's copy follows whether this would be the viewer's free one (B11)", async () => {
+  const user = userEvent.setup();
+
+  const { unmount } = render(
+    <ResponseControls
+      meetingId="meeting-1"
+      myStatus="pending"
+      remainingCycles={3}
+      amendmentIsFree={true}
+      disabled={false}
+      onResponded={vi.fn()}
+    />
+  );
+  await user.click(screen.getByRole("button", { name: "המצב שלי הערב שונה" }));
+  expect(screen.getByText(/זה התיקון החינמי שלך/)).toBeInTheDocument();
+  unmount();
+
+  render(
+    <ResponseControls
+      meetingId="meeting-1"
+      myStatus="pending"
+      remainingCycles={2}
+      amendmentIsFree={false}
+      disabled={false}
+      onResponded={vi.fn()}
+    />
+  );
+  await user.click(screen.getByRole("button", { name: "המצב שלי הערב שונה" }));
+  expect(screen.getByText(/התיקון החינמי כבר נוצל/)).toBeInTheDocument();
+  expect(screen.getByText(/נשארו 2 ניסיונות/)).toBeInTheDocument();
+});
+
 test("shows a friendly message when the meeting is no longer open", async () => {
   const user = userEvent.setup();
   vi.stubGlobal(
@@ -150,6 +186,7 @@ test("shows a friendly message when the meeting is no longer open", async () => 
       meetingId="meeting-1"
       myStatus="pending"
       remainingCycles={3}
+      amendmentIsFree={true}
       disabled={false}
       onResponded={vi.fn()}
     />
@@ -168,6 +205,7 @@ test("disables every control when the meeting is closed", () => {
       meetingId="meeting-1"
       myStatus="approved"
       remainingCycles={3}
+      amendmentIsFree={true}
       disabled
       onResponded={vi.fn()}
     />

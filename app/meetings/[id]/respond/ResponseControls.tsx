@@ -37,6 +37,7 @@ export function ResponseControls({
   meetingId,
   myStatus,
   remainingCycles,
+  amendmentIsFree,
   disabled,
   onResponded,
   aboveApprove,
@@ -44,6 +45,12 @@ export function ResponseControls({
   meetingId: string;
   myStatus: ResponseStatus;
   remainingCycles: number;
+  /** B11: whether an amendment submitted right now would be the viewer's
+   * free one for this meeting (spec §3.1) — `getMeetingDetail`'s
+   * `viewerAmendmentIsFree`, read-side mirror of `respondToMeeting`'s own
+   * `priorAmendments` count. Drives which half of the amendment form's
+   * copy is shown. */
+  amendmentIsFree: boolean;
   disabled: boolean;
   onResponded: () => void;
   /** Rendered directly above the approve button — the conflict warning lives here (spec §5.7). */
@@ -178,7 +185,9 @@ export function ResponseControls({
       {open === "amendment" && (
         <div className="sl-panel">
           <p className="sl-sub">
-            זה לא דחייה — ההצעה תישקל מחדש עם המידע הזה, ולא ייספר לך כניסיון.
+            {amendmentIsFree
+              ? "זה לא דחייה — ההצעה תישקל מחדש עם המידע הזה. זה התיקון החינמי שלך לפגישה הזו, והוא לא ייספר כניסיון; תיקון נוסף כבר יעלה סבב שקלול."
+              : `זה לא דחייה — ההצעה תישקל מחדש עם המידע הזה. התיקון החינמי כבר נוצל בפגישה הזו, אז הפעם זה כן יעלה סבב שקלול (נשארו ${remainingCycles} ניסיונות).`}
           </p>
           <label className="flex flex-col gap-1">
             <span className="sl-sub">מגיע/ה מ... (אופציונלי)</span>

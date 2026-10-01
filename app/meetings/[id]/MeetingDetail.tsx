@@ -62,6 +62,14 @@ type TimelineEvent =
       by: string;
       status: ResponseStatus;
       reasonText: string | null;
+    }
+  | {
+      /** B11: "my situation tonight is different" — shown the moment it
+       * is made, mirrored from `lib/db/meeting-detail.ts`'s own TimelineEvent. */
+      kind: "amendment";
+      at: string;
+      by: string;
+      description: string;
     };
 
 type MissingHome = { userId: string; name: string };
@@ -72,6 +80,7 @@ type MeetingDetail = {
   status: MeetingCardStatus;
   viewerId: string;
   remainingCycles: number;
+  viewerAmendmentIsFree: boolean;
   isStuck: boolean;
   isInitiator: boolean;
   conflicts: Conflict[];
@@ -225,6 +234,8 @@ function StatusBlock({ detail }: { detail: MeetingDetail }) {
 
 function timelineLine(event: TimelineEvent): string {
   if (event.kind === "initiated") return `${event.by} יזם/ה את הפגישה`;
+  if (event.kind === "amendment")
+    return `${event.by} עדכנ/ה את המצב: "${event.description}"`;
   if (event.kind === "proposed") {
     const base =
       event.cycleNumber === 1
@@ -436,6 +447,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
                 ?.status ?? "pending"
             }
             remainingCycles={detail.remainingCycles}
+            amendmentIsFree={detail.viewerAmendmentIsFree}
             disabled={detail.status === "closed"}
             onResponded={refresh}
             aboveApprove={
