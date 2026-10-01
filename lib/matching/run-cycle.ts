@@ -908,19 +908,19 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
       });
     }
 
-    // A rejection written while this run was in flight was never in front of
-    // the model — `assembleRun` read the rows 6-23 seconds ago. Leaving the
-    // meeting in `weighing` is what gets it answered, by the next poll.
+    // A rejection or amendment (B11) written while this run was in flight
+    // was never in front of the model — `assembleRun` read the rows 6-23
+    // seconds ago. Leaving the meeting in `weighing` is what gets it
+    // answered, by the next poll.
     //
     // "In flight" is not a window of time here: a `MatchRun`'s `createdAt` is
-    // stamped when it is *written*, at the end, so a rejection made during the
-    // run is older than the run that did not see it and no timestamp
-    // comparison can tell them apart. The rows this run saw were just recorded
-    // above, so the question is simply whether any rejection is still unseen.
+    // stamped when it is *written*, at the end, so a row made during the run
+    // is older than the run that did not see it and no timestamp comparison
+    // can tell them apart. The rows this run saw were just recorded above,
+    // so the question is simply whether any row is still unseen.
     const unanswered = await tx.participantMeetingContext.count({
       where: {
         meetingId,
-        NOT: { rejectionText: null },
         seenByRuns: { none: {} },
       },
     });
@@ -981,18 +981,30 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
  * ---------------------------------------------------------------------- */
 
 /**
- * How long rejections of one proposal are collected before it is answered.
+ * How long new ParticipantMeetingContext rows -- rejections or amendments --
+ * are collected before they are answered with one run.
  *
- * Measured from the **first** rejection since the last run, not the latest:
- * a fixed window is a thing that can be explained to somebody, and one that
- * reset on every rejection could keep sliding while objections trickle in.
+ * B11: this was rejection-only until amendments needed the identical thing
+ * (spec §3.2: "an amendment opens a ~90-second window; further amendments
+ * reset it; when it closes, one run covers all of them") -- the same
+ * reasoning A8 already had for rejections clustering (below), so one window
+ * now serves both rather than two copies of the same idea.
  *
- * This is what makes the cap mean anything. "A cycle is a proposal" (#125)
- * bounds nothing on its own, because every run produces something new to
- * reject — three rejections twenty seconds apart would otherwise reach the
- * cap in under a minute, with three proposals nobody read.
+ * Measured from the **first** unanswered row since the last run, not the
+ * latest: a fixed window is a thing that can be explained to somebody, and
+ * one that reset on every row could keep sliding while objections or
+ * amendments trickle in.
+ *
+ * This is what makes the cap mean anything for a rejection. "A cycle is a
+ * proposal" (#125) bounds nothing on its own, because every run produces
+ * something new to reject — three rejections twenty seconds apart would
+ * otherwise reach the cap in under a minute, with three proposals nobody
+ * read. An amendment has no such cap concern (the first is free, spec
+ * §3.1), but clusters the same way: several people open the same proposal
+ * within the same couple of minutes, and firing one run per amendment would
+ * replace it before anyone finished reading it either.
  */
-export const REJECTION_BATCH_MS = 90_000;
+export const CONTEXT_BATCH_MS = 90_000;
 
 /**
  * Every proposal gets this long on screen before it can be replaced.
@@ -1000,7 +1012,7 @@ export const REJECTION_BATCH_MS = 90_000;
  * The other half of bounding the cap, and the more useful half: the wait is
  * longest exactly when the proposal is newest, which is when the rest of the
  * group is most likely still to join the same batch. A proposal two hours old
- * that somebody rejects waits only `REJECTION_BATCH_MS`, because there is
+ * that somebody rejects waits only `CONTEXT_BATCH_MS`, because there is
  * nobody left to wait for.
  */
 export const MIN_PROPOSAL_LIFETIME_MS = 5 * 60_000;
@@ -1039,14 +1051,17 @@ export type DueInput = {
   /** When the current proposal was made, or null if there is none yet. */
   lastRunAt: Date | null;
   /**
-   * The earliest rejection **no run has seen yet**, if any.
+   * The earliest ParticipantMeetingContext row **no run has seen yet**, if
+   * any -- a rejection or an amendment, whichever is older (B11: this used
+   * to be rejections only; see `CONTEXT_BATCH_MS`'s own comment for why one
+   * field now covers both).
    *
    * Not "since the last run": a `MatchRun` is stamped when it is written, so
-   * a rejection made while a run was in flight is older than the run that
+   * a row written while a run was in flight is older than the run that
    * never saw it. `MatchRunSeenContext` records what each run read, which
    * answers the question exactly instead of approximately.
    */
-  firstRejectionAt: Date | null;
+  firstUnseenContextAt: Date | null;
   /**
    * B9 part two — set only after a rate-limited fault (`faultRetryNotBefore`),
    * `null` otherwise. When set, no attempt is due before it, however long
@@ -1060,8 +1075,8 @@ export type DueInput = {
  *
  * Pure, so the timers above can be tested without a database, a clock or a
  * model. The caller has already narrowed to `status === "weighing"` —
- * `awaiting` means a proposal is out and nobody has objected, and `stuck`,
- * `closed` and `cancelled` are not weighed again.
+ * `awaiting` means a proposal is out and nobody has objected or amended, and
+ * `stuck`, `closed` and `cancelled` are not weighed again.
  */
 export function isDue(meeting: DueInput, now: Date): boolean {
   if (now.getTime() - meeting.updatedAt.getTime() < RUN_ATTEMPT_COOLDOWN_MS) {
@@ -1080,11 +1095,13 @@ export function isDue(meeting: DueInput, now: Date): boolean {
   if (!meeting.lastRunAt) return true;
 
   // A proposal is out and the meeting is in `weighing`, which only a
-  // rejection does. Nothing unanswered means A7 has not written it down yet.
-  if (!meeting.firstRejectionAt) return false;
+  // rejection or an amendment does. Nothing unanswered means neither has
+  // been written down yet.
+  if (!meeting.firstUnseenContextAt) return false;
 
   return (
-    now.getTime() >= meeting.firstRejectionAt.getTime() + REJECTION_BATCH_MS &&
+    now.getTime() >=
+      meeting.firstUnseenContextAt.getTime() + CONTEXT_BATCH_MS &&
     now.getTime() >= meeting.lastRunAt.getTime() + MIN_PROPOSAL_LIFETIME_MS
   );
 }
@@ -1122,10 +1139,11 @@ export async function runDueMeetings(
         select: { createdAt: true },
       },
       participantContexts: {
-        // The oldest rejection no run has read yet. Letting the database
-        // answer "unseen" beats filtering by time in here, which cannot tell
-        // a rejection made during a run from one made before it.
-        where: { NOT: { rejectionText: null }, seenByRuns: { none: {} } },
+        // The oldest row no run has read yet, rejection or amendment alike
+        // (B11). Letting the database answer "unseen" beats filtering by
+        // time in here, which cannot tell a row made during a run from one
+        // made before it.
+        where: { seenByRuns: { none: {} } },
         orderBy: { createdAt: "asc" },
         take: 1,
         select: { createdAt: true },
@@ -1135,14 +1153,15 @@ export async function runDueMeetings(
 
   for (const meeting of candidates) {
     const lastRunAt = meeting.matchRuns[0]?.createdAt ?? null;
-    const firstRejectionAt = meeting.participantContexts[0]?.createdAt ?? null;
+    const firstUnseenContextAt =
+      meeting.participantContexts[0]?.createdAt ?? null;
 
     if (
       !isDue(
         {
           updatedAt: meeting.updatedAt,
           lastRunAt,
-          firstRejectionAt,
+          firstUnseenContextAt,
           retryNotBefore: meeting.retryNotBefore,
         },
         now

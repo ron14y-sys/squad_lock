@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runStageOf } from "@/lib/db/meeting-cards";
 
-import { runCycle } from "./run-cycle";
+import { runCycle, runDueMeetings } from "./run-cycle";
 import { CalendarAuthError } from "@/lib/calendar/freebusy";
 
 /**
@@ -15,10 +15,11 @@ import { CalendarAuthError } from "@/lib/calendar/freebusy";
 
 const updateMany = vi.fn();
 const userUpdateMany = vi.fn();
+const findMany = vi.fn();
 
 vi.mock("@/lib/db/client", () => ({
   getPrisma: () => ({
-    meeting: { findUnique: async () => MEETING, updateMany },
+    meeting: { findUnique: async () => MEETING, updateMany, findMany },
     user: { updateMany: userUpdateMany },
   }),
 }));
@@ -106,6 +107,7 @@ function stagesWritten() {
 beforeEach(() => {
   updateMany.mockReset().mockResolvedValue({ count: 1 });
   userUpdateMany.mockReset().mockResolvedValue({ count: 1 });
+  findMany.mockReset();
   notifyCalendarReconnect.mockReset();
   runMatchingAgent.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -192,6 +194,58 @@ describe("runCycle's stage", () => {
     await runCycle("m1", NOW, REJECTED);
 
     expect(notifyCalendarReconnect).not.toHaveBeenCalled();
+  });
+});
+
+describe("runDueMeetings", () => {
+  // B11: the candidate query used to only ask for an unseen *rejection*
+  // (`NOT: { rejectionText: null }`). A meeting whose only unseen context
+  // row is a pure amendment -- both `rejectionText` and `softPreferences`
+  // null -- must be picked up the same way, once its batch window has
+  // passed. The mock only controls what the query *returns*, so this is
+  // really asserting the shape `runDueMeetings` asks for, indirectly:
+  // nothing here filters by kind, so an amendment-only row reaching
+  // `isDue` at all means the real query (dropped filter) would surface it.
+  it("B11: claims a meeting whose only unanswered row is an amendment", async () => {
+    const old = new Date(NOW.getTime() - 10 * 60_000); // past every timer
+    findMany.mockResolvedValueOnce([
+      {
+        id: "m1",
+        updatedAt: old,
+        retryNotBefore: null,
+        matchRuns: [{ createdAt: old }],
+        participantContexts: [{ createdAt: old }],
+      },
+    ]);
+
+    await runDueMeetings("group-1", NOW);
+
+    // The claim is `runDueMeetings`'s own commitment that this meeting is
+    // due -- reaching it at all proves `isDue` said yes for a row with no
+    // `rejectionText`, which only the generalized query makes possible.
+    // What happens inside the run from here (`runCycle`'s own calendar
+    // step, untouched by this mock) is not this test's concern.
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "m1", status: "weighing", updatedAt: old },
+      data: { status: "weighing" },
+    });
+  });
+
+  it("leaves a meeting alone when its only unanswered row is too recent", async () => {
+    findMany.mockResolvedValueOnce([
+      {
+        id: "m1",
+        updatedAt: new Date(NOW.getTime() - 10 * 60_000),
+        retryNotBefore: null,
+        matchRuns: [{ createdAt: new Date(NOW.getTime() - 10 * 60_000) }],
+        participantContexts: [{ createdAt: new Date(NOW.getTime() - 1000) }],
+      },
+    ]);
+
+    await runDueMeetings("group-1", NOW);
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(runMatchingAgent).not.toHaveBeenCalled();
   });
 });
 
