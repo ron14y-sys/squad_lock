@@ -158,6 +158,12 @@ async function regenerateContent(
       return meetingId ? () => conflictReweighEmail(meetingId) : null;
     case NotificationKind.stuck:
       return meetingId ? () => stuckEmail(meetingId) : null;
+    case NotificationKind.calendar_reconnect:
+      // B10: unreachable in practice -- this row has no meetingId and no
+      // invitationId, so retryDueNotifications's own query (OR'd on both)
+      // never selects it in the first place. Handled here only so this
+      // switch stays exhaustive over NotificationKind.
+      return null;
   }
 }
 
