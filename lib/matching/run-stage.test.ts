@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runStageOf } from "@/lib/db/meeting-cards";
 
 import { runCycle } from "./run-cycle";
+import { CalendarAuthError } from "@/lib/calendar/freebusy";
 
 /**
  * #155: a run writes each stage onto the meeting as it enters it, and leaves
@@ -13,10 +14,12 @@ import { runCycle } from "./run-cycle";
  */
 
 const updateMany = vi.fn();
+const userUpdateMany = vi.fn();
 
 vi.mock("@/lib/db/client", () => ({
   getPrisma: () => ({
     meeting: { findUnique: async () => MEETING, updateMany },
+    user: { updateMany: userUpdateMany },
   }),
 }));
 
@@ -42,9 +45,13 @@ vi.mock("./agent", () => ({
   runMatchingAgent: (...args: unknown[]) => runMatchingAgent(...args),
 }));
 
+const notifyCalendarReconnect = vi.fn();
+
 vi.mock("@/lib/email/notify", () => ({
   notifyProposalWaiting: async () => {},
   notifyStuck: async () => {},
+  notifyCalendarReconnect: (...args: unknown[]) =>
+    notifyCalendarReconnect(...args),
 }));
 
 const STAMP = new Date("2026-09-30T09:00:00.000Z");
@@ -98,6 +105,8 @@ function stagesWritten() {
 
 beforeEach(() => {
   updateMany.mockReset().mockResolvedValue({ count: 1 });
+  userUpdateMany.mockReset().mockResolvedValue({ count: 1 });
+  notifyCalendarReconnect.mockReset();
   runMatchingAgent.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -151,6 +160,38 @@ describe("runCycle's stage", () => {
       "venue_details",
       "model",
     ]);
+  });
+
+  it("B10: clears the rejected user's token and notifies them, once", async () => {
+    const REJECTED: typeof FREE = async () => {
+      const error = new CalendarAuthError("token exchange failed (400)");
+      error.userId = "u1";
+      throw error;
+    };
+
+    await runCycle("m1", NOW, REJECTED);
+
+    expect(userUpdateMany).toHaveBeenCalledWith({
+      where: { id: "u1", googleRefreshToken: { not: null } },
+      data: { googleRefreshToken: null },
+    });
+    expect(notifyCalendarReconnect).toHaveBeenCalledWith("u1");
+    // Never reaches the model -- `calendars` is the only stage attempted.
+    expect(runMatchingAgent).not.toHaveBeenCalled();
+    expect(stagesWritten()).toEqual(["calendars", null]);
+  });
+
+  it("B10: sends no second email when the token was already cleared", async () => {
+    userUpdateMany.mockResolvedValue({ count: 0 });
+    const REJECTED: typeof FREE = async () => {
+      const error = new CalendarAuthError("token exchange failed (400)");
+      error.userId = "u1";
+      throw error;
+    };
+
+    await runCycle("m1", NOW, REJECTED);
+
+    expect(notifyCalendarReconnect).not.toHaveBeenCalled();
   });
 });
 

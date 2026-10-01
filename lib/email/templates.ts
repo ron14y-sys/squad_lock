@@ -130,3 +130,33 @@ export function stuckEmail(meetingId: string): EmailContent {
     `.trim(),
   };
 }
+
+/**
+ * B10 -- a participant's Google refresh token was rejected
+ * (`CalendarAuthError`). Not tied to a meeting -- the broken connection
+ * affects every meeting this person is in, not just the one that happened
+ * to surface it -- so, unlike every template above, this one takes no id.
+ *
+ * Links to Auth.js's own `/api/auth/signin`, the same route
+ * `ScreenState`'s `signIn` prop already uses elsewhere in the app: it
+ * forces a fresh Google consent even for someone with a live session
+ * (`prompt=consent` is already set in `auth.ts`), which is what actually
+ * issues a new refresh token. `/groups` is the callback target -- there is
+ * no originating page to return this person to, the way `ScreenState` has
+ * one for an in-app click.
+ */
+export function calendarReconnectEmail(): EmailContent {
+  const link = `${appBaseUrl()}/api/auth/signin?callbackUrl=${encodeURIComponent(
+    "/groups"
+  )}`;
+
+  return {
+    subject: "החיבור ליומן Google שלך הפסיק לעבוד",
+    html: `
+      <p>שלום,</p>
+      <p>החיבור ליומן Google שלך הפסיק לעבוד, ולכן לא ניתן לבדוק מתי אתה פנוי לפגישות שלך ב-SquadLock. בדרך כלל זה קורה כשהגישה בוטלה מצידך -- זה לא משהו שיתקן את עצמו לבד.</p>
+      <p>כדי לחדש את החיבור, פשוט תתחבר מחדש:</p>
+      <p><a href="${link}">לחצו כאן כדי להתחבר שוב</a></p>
+    `.trim(),
+  };
+}

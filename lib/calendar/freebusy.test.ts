@@ -159,4 +159,17 @@ describe("fetchBusy", () => {
     expect(failure).not.toBeInstanceOf(CalendarAuthError);
     expect((failure as Error).message).toMatch(/freebusy\.query failed/);
   });
+
+  it("B10: has no userId of its own -- this file never sees one", async () => {
+    fetchMock.mockResolvedValueOnce(
+      fakeResponse(false, "invalid_grant", { asText: true })
+    );
+
+    const failure = await fetchBusy("revoked-token", WINDOW).catch(
+      (error: unknown) => error
+    );
+
+    expect(failure).toBeInstanceOf(CalendarAuthError);
+    expect((failure as CalendarAuthError).userId).toBeUndefined();
+  });
 });

@@ -158,6 +158,27 @@ describe("retryDueNotifications", () => {
     );
   });
 
+  it("B10: sends nothing for a calendar_reconnect row -- the query itself never returns one, this is just the exhaustive switch's own branch", async () => {
+    const client = fakeClient();
+    client.notificationLog.findMany.mockResolvedValueOnce([
+      failedRow({
+        kind: NotificationKind.calendar_reconnect,
+        meetingId: null,
+        invitationId: null,
+      }),
+    ]);
+    client.notificationLog.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    await retryDueNotifications(
+      "group-1",
+      client,
+      new Date("2026-09-30T10:10:00Z")
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(client.notificationLog.create).not.toHaveBeenCalled();
+  });
+
   it("does not retry a row another poll already claimed (lost the race)", async () => {
     const client = fakeClient();
     client.notificationLog.findMany.mockResolvedValueOnce([failedRow()]);

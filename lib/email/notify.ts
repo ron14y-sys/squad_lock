@@ -35,6 +35,7 @@ import { getPrisma } from "@/lib/db/client";
 import { recordNotification } from "@/lib/db/notification-log";
 import { sendEmail } from "./client";
 import {
+  calendarReconnectEmail,
   conflictReweighEmail,
   invitationEmail,
   meetingConfirmedEmail,
@@ -52,6 +53,7 @@ import type { PrismaClient } from "@/lib/generated/prisma/client";
 type NotifyClient = {
   response: Pick<PrismaClient["response"], "findMany">;
   invitation: Pick<PrismaClient["invitation"], "findUnique">;
+  user: Pick<PrismaClient["user"], "findUnique">;
   notificationLog: Pick<PrismaClient["notificationLog"], "create">;
 };
 
@@ -317,4 +319,35 @@ export async function notifyStuck(
     () => stuckEmail(meetingId),
     client
   );
+}
+
+/**
+ * B10 -- a participant's Google refresh token was rejected
+ * (`CalendarAuthError`). Called from `run-cycle.ts`'s fault branch, after
+ * it has already cleared `User.googleRefreshToken` -- this function only
+ * sends the email, same division as every other `notify*` here.
+ *
+ * Not `notifyStillIn` or any of the meeting-scoped helpers above: this is
+ * one specific user, not a meeting's recipient list, and `refs` is `{}` --
+ * see `calendarReconnectEmail`'s own header comment for why.
+ */
+export async function notifyCalendarReconnect(
+  userId: string,
+  client: NotifyClient = getPrisma()
+): Promise<void> {
+  await neverThrow(NotificationKind.calendar_reconnect, async () => {
+    const user = await client.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!user) return;
+
+    await sendAndLog(
+      NotificationKind.calendar_reconnect,
+      user.email,
+      () => calendarReconnectEmail(),
+      {},
+      client
+    );
+  });
 }
