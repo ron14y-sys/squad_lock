@@ -631,6 +631,11 @@ enum NotificationKind {
   meeting_confirmed
   conflict_reweigh
   stuck
+  /// B10 -- a participant's Google refresh token was rejected
+  /// (CalendarAuthError). Addressed to the User directly, not a meeting or
+  /// invitation -- the broken connection affects every meeting they are in,
+  /// not just the one that happened to surface it -- so both refs stay null.
+  calendar_reconnect
 }
 
 enum NotificationStatus {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  calendarReconnectEmail,
   conflictReweighEmail,
   invitationEmail,
   meetingConfirmedEmail,
@@ -85,5 +86,22 @@ describe("stuckEmail", () => {
     expect(email.html).toContain(
       "https://squadlock.example/meetings/meeting-1"
     );
+  });
+});
+
+describe("calendarReconnectEmail", () => {
+  it("links to Auth.js's own sign-in route, not a meeting", () => {
+    const email = calendarReconnectEmail();
+
+    expect(email.subject).toBeTruthy();
+    expect(email.html).toContain(
+      "https://squadlock.example/api/auth/signin?callbackUrl=%2Fgroups"
+    );
+  });
+
+  it("throws before building anything when APP_BASE_URL is unset", () => {
+    vi.stubEnv("APP_BASE_URL", "");
+
+    expect(() => calendarReconnectEmail()).toThrow(/APP_BASE_URL is not set/);
   });
 });

@@ -29,14 +29,23 @@ import type { TimeSlot } from "@/lib/types";
 
 /**
  * The refresh token was rejected — revoked, or expired. Distinct from a
- * transient network failure: `calendar.freebusy` is non-sensitive (spec
- * §6.3), but the shared project's OAuth consent screen is still in
- * **Testing** status as of B2, and Testing-issued refresh tokens expire
- * after 7 days. A caller sees this and knows the fix is "sign in again", not
- * "try again in a minute".
+ * transient network failure: `calendar.freebusy` is confirmed non-sensitive
+ * (spec §6.3, decision D13), and the app publishes **In production** —
+ * so this is not the Testing-mode 7-day expiry (that branch of B10/#34
+ * never applied here). It is ordinary housekeeping: a user revoked access,
+ * or Google invalidated the token for some other reason. A caller sees this
+ * and knows the fix is "sign in again", not "try again in a minute".
+ *
+ * `userId` is set by whoever maps tokens back to users
+ * (`lib/calendar/participant-busy.ts`'s `fetchBusyForConnections`) — this
+ * file only ever sees a raw token, never a user. B10 reads it in
+ * `run-cycle.ts`'s fault branch to know who to clear and notify.
  */
 export class CalendarAuthError extends Error {
-  constructor(detail: string) {
+  constructor(
+    detail: string,
+    public userId?: string
+  ) {
     super(`calendar: ${detail}`);
     this.name = "CalendarAuthError";
   }

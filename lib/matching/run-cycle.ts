@@ -46,6 +46,7 @@ import {
 } from "@/lib/types/participant-meeting-context-from-row";
 import { preferenceProfileFromRow } from "@/lib/types/preference-profile-from-row";
 import { fetchBusyForUsers } from "@/lib/calendar/participant-busy";
+import { CalendarAuthError } from "@/lib/calendar/freebusy";
 import { getPrisma } from "@/lib/db/client";
 import {
   fetchPlaceDetailsCached,
@@ -64,7 +65,11 @@ import { originOf } from "./distance";
 import { pairId } from "./schemas";
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
 import { buildShortlist } from "./funnel";
-import { notifyProposalWaiting, notifyStuck } from "@/lib/email/notify";
+import {
+  notifyCalendarReconnect,
+  notifyProposalWaiting,
+  notifyStuck,
+} from "@/lib/email/notify";
 import type { MatchAgentInput } from "./agent";
 
 /**
@@ -721,6 +726,20 @@ export async function runCycle(
       return null;
     }
 
+    // B10: a rejected Google refresh token is a fault like any other --
+    // the meeting stays in `weighing` -- but unlike a transient one, it
+    // will never clear itself. Only `fetchBusy`'s own caller
+    // (`fetchBusyForConnections`) knows which participant it was, which is
+    // why `error.userId` only exists once it has climbed this far.
+    if (error instanceof CalendarAuthError && error.userId) {
+      await clearStageAndSetRetry(meetingId, null);
+      await handleCalendarAuthFailure(error.userId);
+      console.warn(
+        `[a8] calendar auth failed meeting=${meetingId} user=${error.userId}`
+      );
+      return null;
+    }
+
     // B9 part two + #155: one write, clearing the stage and setting (or
     // clearing) the fault's retry cooldown together -- no reason to split
     // what used to be `clearStage` alone into two round trips now that this
@@ -735,6 +754,34 @@ export async function runCycle(
     // should not be told their evening is impossible because of one.
     console.error(`[a8] cycle failed meeting=${meetingId}`, error);
     return null;
+  }
+}
+
+/**
+ * B10: the one-time side effect of a rejected refresh token -- clear it so
+ * nobody keeps hitting Google with a token that will never work again, and
+ * tell the person whose consent actually needs renewing. Never throws, same
+ * convention as `clearStage`/`clearStageAndSetRetry` just above.
+ *
+ * The `updateMany`'s `googleRefreshToken: { not: null }` guard is an
+ * optimistic lock, same trick `runDueMeetings` and B9's
+ * `retryDueNotifications` both already use elsewhere: two meetings for the
+ * same person can hit this within the same poll, and only the one that
+ * actually clears the token (`count > 0`) sends the email -- the other
+ * finds it already `null` and does nothing, rather than sending a second
+ * "reconnect" email for the same failure.
+ */
+async function handleCalendarAuthFailure(userId: string) {
+  try {
+    const claimed = await getPrisma().user.updateMany({
+      where: { id: userId, googleRefreshToken: { not: null } },
+      data: { googleRefreshToken: null },
+    });
+    if (claimed.count > 0) {
+      await notifyCalendarReconnect(userId);
+    }
+  } catch (error) {
+    console.warn(`[a8] calendar reconnect not handled user=${userId}`, error);
   }
 }
 

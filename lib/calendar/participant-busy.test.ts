@@ -136,4 +136,21 @@ describe("fetchBusyForConnections", () => {
       CalendarAuthError
     );
   });
+
+  it("B10: attributes the rejected token to the user it belonged to", async () => {
+    fetchMock.mockImplementationOnce(async () =>
+      fakeResponse(false, "invalid_grant")
+    );
+
+    const connections: CalendarConnection[] = [
+      { userId: "u-dana", googleRefreshToken: "revoked-token" },
+    ];
+
+    const failure = await fetchBusyForConnections(connections, WINDOW).catch(
+      (error: unknown) => error
+    );
+
+    expect(failure).toBeInstanceOf(CalendarAuthError);
+    expect((failure as CalendarAuthError).userId).toBe("u-dana");
+  });
 });

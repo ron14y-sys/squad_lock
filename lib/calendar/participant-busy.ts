@@ -22,7 +22,7 @@
 
 import { getPrisma } from "@/lib/db/client";
 import type { TimeSlot } from "@/lib/types";
-import { fetchBusy } from "./freebusy";
+import { CalendarAuthError, fetchBusy } from "./freebusy";
 
 /** Just enough of a `User` row for this file to do its job. */
 export type CalendarConnection = {
@@ -76,8 +76,18 @@ export async function fetchBusyForConnections(
 
   const results = await Promise.all(
     tokensByUser.map(async ([userId, token]) => {
-      const busy = await fetchBusy(token, window);
-      return [userId, busy] as const;
+      try {
+        const busy = await fetchBusy(token, window);
+        return [userId, busy] as const;
+      } catch (error) {
+        // B10: `freebusy.ts` never knows whose token it was handed -- this
+        // is the one place that does, so this is where a rejected token
+        // gets attributed to a user before it keeps climbing.
+        if (error instanceof CalendarAuthError) {
+          error.userId = userId;
+        }
+        throw error;
+      }
     })
   );
 

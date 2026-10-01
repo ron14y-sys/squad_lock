@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  notifyCalendarReconnect,
   notifyConflictReweigh,
   notifyInvitation,
   notifyMeetingConfirmed,
@@ -24,6 +25,7 @@ function fakeClient() {
   return {
     response: { findMany: vi.fn() },
     invitation: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn() },
     notificationLog: { create: vi.fn() },
   };
 }
@@ -307,6 +309,61 @@ describe("never throws, whatever fails before the send", () => {
 
     await expect(
       notifyProposalWaiting("meeting-1", client)
+    ).resolves.toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifyCalendarReconnect", () => {
+  it("emails the user directly, with no meeting or invitation ref", async () => {
+    const client = fakeClient();
+    client.user.findUnique.mockResolvedValueOnce({
+      email: "dana@example.test",
+    });
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, { id: "email-x" }));
+
+    await notifyCalendarReconnect("user-1", client);
+
+    expect(client.user.findUnique).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      select: { email: true },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.to).toBe("dana@example.test");
+
+    expect(client.notificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: NotificationKind.calendar_reconnect,
+          recipientEmail: "dana@example.test",
+          status: NotificationStatus.sent,
+          meetingId: null,
+          invitationId: null,
+        }),
+      })
+    );
+  });
+
+  it("sends nothing when the user row is gone", async () => {
+    const client = fakeClient();
+    client.user.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      notifyCalendarReconnect("user-1", client)
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(client.notificationLog.create).not.toHaveBeenCalled();
+  });
+
+  it("does not throw when looking the user up fails", async () => {
+    const client = fakeClient();
+    client.user.findUnique.mockRejectedValueOnce(new Error("pool exhausted"));
+
+    await expect(
+      notifyCalendarReconnect("user-1", client)
     ).resolves.toBeUndefined();
     expect(fetchMock).not.toHaveBeenCalled();
   });
