@@ -194,6 +194,138 @@ html[data-theme="light"] .sl-logo {
   transform: rotate(-2.5deg);
   box-shadow: 3px 3px 0 #14161c;
 }
+
+/* The 3D header logo (`Logo3D.tsx`) — a real tilt card, not a flat rotated
+   box. `--tilt-x`/`--tilt-y`/`--glow-x`/`--glow-y` are set from JS on
+   pointer move; everything else here is pure CSS. */
+.sl-logo-3d-link {
+  display: inline-block;
+  perspective: 700px;
+  animation: sl-logo-float 5s ease-in-out infinite;
+}
+.sl-logo-3d {
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
+  --glow-x: 50%;
+  --glow-y: 30%;
+  position: relative;
+  display: inline-block;
+  padding: 7px 18px;
+  border-radius: 12px;
+  font-family: var(--sl-disp);
+  font-weight: var(--sl-dw);
+  font-size: 19px;
+  overflow: hidden;
+  cursor: pointer;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  transition:
+    transform 0.12s ease-out,
+    box-shadow 0.2s ease-out;
+  will-change: transform;
+}
+.sl-logo-3d-text {
+  position: relative;
+  z-index: 1;
+  transform: translateZ(18px);
+  display: inline-block;
+}
+.sl-logo-3d-shine {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at var(--glow-x) var(--glow-y),
+    rgba(255, 255, 255, 0.65),
+    transparent 55%
+  );
+  pointer-events: none;
+}
+html[data-theme="light"] .sl-logo-3d {
+  background: linear-gradient(135deg, var(--sl-acc) 0%, #ffd9c7 100%);
+  border: 2px solid #14161c;
+  color: #14161c;
+  box-shadow:
+    0 2px 0 #14161c,
+    0 14px 24px -10px rgba(20, 22, 28, 0.5),
+    0 3px 8px rgba(20, 22, 28, 0.25);
+}
+html[data-theme="light"] .sl-logo-3d-shine {
+  mix-blend-mode: overlay;
+}
+html[data-theme="light"] .sl-logo-3d:hover {
+  box-shadow:
+    0 2px 0 #14161c,
+    0 22px 36px -12px rgba(20, 22, 28, 0.55),
+    0 4px 10px rgba(20, 22, 28, 0.3);
+}
+html[data-theme="dark"] .sl-logo-3d {
+  background: linear-gradient(135deg, #2a2f3a 0%, #15171d 100%);
+  border: 1px solid #ffffff26;
+  color: #fff;
+  box-shadow:
+    0 16px 34px -12px #ff7a55aa,
+    0 3px 12px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+html[data-theme="dark"] .sl-logo-3d-shine {
+  mix-blend-mode: screen;
+  opacity: 0.55;
+}
+html[data-theme="dark"] .sl-logo-3d:hover {
+  box-shadow:
+    0 20px 44px -10px #ff7a55cc,
+    0 4px 16px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+@keyframes sl-logo-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sl-logo-3d-link {
+    animation: none;
+  }
+  .sl-logo-3d {
+    transition: none;
+  }
+}
+
+/* Header nav links (קבוצות / התראות / פרופיל / התנתק) — a small lift and an
+   underline that grows from the center on hover, rather than plain text
+   that does nothing until clicked. */
+.sl-navlink {
+  position: relative;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-block;
+  transition:
+    transform 0.15s ease-out,
+    color 0.15s ease-out;
+}
+.sl-navlink::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  width: 0;
+  height: 2px;
+  background: var(--sl-acc);
+  border-radius: 2px;
+  transform: translateX(-50%);
+  transition: width 0.2s ease-out;
+}
+.sl-navlink:hover {
+  transform: translateY(-1px);
+}
+.sl-navlink:hover::after {
+  width: 100%;
+}
 .sl-title {
   font-family: var(--sl-disp);
   font-weight: var(--sl-dw);
@@ -235,6 +367,15 @@ html[data-theme="dark"] .sl-sec {
   background: var(--sl-btn);
   padding: 2px;
   font-size: 12px;
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 6px 16px -8px rgba(20, 22, 28, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+html[data-theme="dark"] .sl-toggle {
+  box-shadow:
+    0 6px 20px -8px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .sl-toggle button {
   border: 0;
@@ -244,10 +385,17 @@ html[data-theme="dark"] .sl-sec {
   border-radius: 999px;
   font-weight: 700;
   cursor: pointer;
+  transition:
+    transform 0.15s ease-out,
+    box-shadow 0.15s ease-out;
 }
 .sl-toggle button[aria-pressed="true"] {
   background: var(--sl-acc);
   color: var(--sl-onacc);
+  box-shadow:
+    0 4px 10px -3px rgba(20, 22, 28, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
 }
 
 @media (prefers-reduced-motion: reduce) {
