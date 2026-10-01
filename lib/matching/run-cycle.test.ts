@@ -7,7 +7,7 @@ import {
   MIN_PROPOSAL_LIFETIME_MS,
   partOfDayWindows,
   RATE_LIMIT_RETRY_COOLDOWN_MS,
-  REJECTION_BATCH_MS,
+  CONTEXT_BATCH_MS,
   RUN_ATTEMPT_COOLDOWN_MS,
   SEARCH_HORIZON_DAYS,
   searchWindow,
@@ -281,7 +281,7 @@ describe("isDue", () => {
   const due: DueInput = {
     updatedAt: ago(long),
     lastRunAt: ago(long),
-    firstRejectionAt: ago(REJECTION_BATCH_MS + 1000),
+    firstUnseenContextAt: ago(CONTEXT_BATCH_MS + 1000),
     retryNotBefore: null,
   };
 
@@ -300,16 +300,28 @@ describe("isDue", () => {
 
   it("waits out the batch window so several rejections are answered together", () => {
     expect(
-      isDue({ ...due, firstRejectionAt: ago(REJECTION_BATCH_MS - 1) }, NOW)
+      isDue({ ...due, firstUnseenContextAt: ago(CONTEXT_BATCH_MS - 1) }, NOW)
     ).toBe(false);
+  });
+
+  // B11: `firstUnseenContextAt` does not know or care whether the row it
+  // is handed was a rejection or an amendment -- `runDueMeetings` is what
+  // decides which rows qualify, and this is the same timer either way.
+  it("B11: the same batch window answers an amendment, not only a rejection", () => {
+    expect(
+      isDue({ ...due, firstUnseenContextAt: ago(CONTEXT_BATCH_MS - 1) }, NOW)
+    ).toBe(false);
+    expect(
+      isDue({ ...due, firstUnseenContextAt: ago(CONTEXT_BATCH_MS + 1) }, NOW)
+    ).toBe(true);
   });
 
   // The window is anchored to the FIRST unanswered rejection, so a later one
   // cannot push the answer further away.
   it("does not restart the window when a second rejection arrives", () => {
-    const first = ago(REJECTION_BATCH_MS + 60_000);
+    const first = ago(CONTEXT_BATCH_MS + 60_000);
 
-    expect(isDue({ ...due, firstRejectionAt: first }, NOW)).toBe(true);
+    expect(isDue({ ...due, firstUnseenContextAt: first }, NOW)).toBe(true);
   });
 
   // A rejection written while a run was in flight is OLDER than the run that
@@ -326,7 +338,7 @@ describe("isDue", () => {
         {
           updatedAt: ago(RUN_ATTEMPT_COOLDOWN_MS + 1000),
           lastRunAt: runFinished,
-          firstRejectionAt: rejectedDuringIt,
+          firstUnseenContextAt: rejectedDuringIt,
           retryNotBefore: null,
         },
         NOW
@@ -342,7 +354,7 @@ describe("isDue", () => {
         {
           updatedAt: ago(long),
           lastRunAt: fresh,
-          firstRejectionAt: ago(1),
+          firstUnseenContextAt: ago(1),
           retryNotBefore: null,
         },
         NOW
@@ -351,7 +363,7 @@ describe("isDue", () => {
   });
 
   it("is not due when a proposal is out and nobody has objected", () => {
-    expect(isDue({ ...due, firstRejectionAt: null }, NOW)).toBe(false);
+    expect(isDue({ ...due, firstUnseenContextAt: null }, NOW)).toBe(false);
   });
 
   // Normally step 7 runs the first cycle at initiation. Reaching here with no
@@ -362,7 +374,7 @@ describe("isDue", () => {
         {
           updatedAt: ago(long),
           lastRunAt: null,
-          firstRejectionAt: null,
+          firstUnseenContextAt: null,
           retryNotBefore: null,
         },
         NOW

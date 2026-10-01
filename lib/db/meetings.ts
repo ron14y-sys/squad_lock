@@ -343,6 +343,8 @@ export type RespondToMeetingResult = {
  *   touching Response at all, because it corrects the *input*, not the
  *   output (see that type's own comment). The first one for a given
  *   (meeting, user) is free; the second and every one after costs a cycle.
+ *   B11: now also sets `backToWeighing`, same as `doesnt_suit` — an
+ *   amendment is answered by a run too, just a batched one (spec §3.2).
  *
  * The cap is reached from two directions, and `stuck` means the same thing
  * in both (spec §3.1 — "the best option is shown with an explanation and the
@@ -350,11 +352,13 @@ export type RespondToMeetingResult = {
  * already been made has nowhere to go, and an amendment past the free one
  * still spends a cycle directly.
  *
- * ⚠️ That second path is why `cycleCount` currently carries two meanings —
- * proposals made, and amendment penalties. A8 changed only the rejection
- * path, because §3.2's amendment batching window is B11's. Whoever writes
- * B11 decides what "the first amendment is free" means once every
- * re-weighing costs a proposal (tasks/a8-plan.md, §6).
+ * B11: `cycleCount`'s two meanings (proposals made, amendment penalties)
+ * turned out not to conflict. A non-free amendment's immediate `+ 1` here
+ * is only ever a provisional read, for the cap check below and for
+ * `stuck` — the run this amendment eventually earns overwrites it with
+ * the authoritative `cycleNumber - 1` (`run-cycle.ts`'s success path) once
+ * it actually happens, exactly the way a rejection's answer always has.
+ * Nothing here needed to change for that to be true.
  */
 export async function respondToMeeting(
   meetingId: string,
@@ -460,6 +464,13 @@ export async function respondToMeeting(
         // The first amendment is free (spec §3.1); the second and beyond
         // each cost a cycle, same as this function's other branches.
         cycleSpent = priorAmendments > 0;
+        // B11: an amendment is answered by a run too — spec §3.2's "triggers
+        // a re-weighing after the batching window" — just a batched one
+        // rather than an immediate one. Reusing `backToWeighing` below
+        // means the same cap-vs-`stuck` decision `doesnt_suit` already
+        // makes (reading `cycleCount` fresh, after this case's own write
+        // above if it spent one) applies here with no new branch.
+        backToWeighing = true;
         break;
       }
     }
@@ -485,9 +496,10 @@ export async function respondToMeeting(
           // whether a run is due. Until now a rejection left the meeting on
           // `awaiting`, so the feed said "waiting on others" while the system
           // was in fact about to weigh again — and nothing looked for it.
+          // B11: an amendment reaches this same branch now too.
           //
-          // No `+ 1` here: this rejection is answered by a run, and the run
-          // counts itself. The cap is read, not written.
+          // No `+ 1` here: this rejection or amendment is answered by a run,
+          // and the run counts itself. The cap is read, not written.
           //
           // `cycleCount` is rematches, so the comparison is exact: after the
           // opening proposal it is 0 and three rejections still fit.
