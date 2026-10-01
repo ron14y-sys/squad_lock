@@ -114,6 +114,22 @@ html[data-theme="light"] body {
   pointer-events: none;
   display: var(--sl-glow);
 }
+.sl-scene3d {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.2s ease-out;
+}
+.sl-scene3d[data-ready="true"] {
+  opacity: 0.6;
+}
+html[data-theme="light"] .sl-scene3d[data-ready="true"] {
+  opacity: 0.45;
+}
 .sl-glows i {
   position: absolute;
   border-radius: 50%;
@@ -180,6 +196,16 @@ html[data-theme="light"] body {
   width: 100%;
   max-width: 576px;
   margin-inline: auto;
+}
+/* A wider reading column on a genuinely large screen — still a column, on
+   purpose (a list of short cards stretched to 1400px reads worse, not
+   better), but no longer pinned to exactly the phone-era 576px either. The
+   3D scene behind it is what makes the rest of the width feel intentional
+   rather than empty. */
+@media (min-width: 1024px) {
+  .sl-page {
+    max-width: 680px;
+  }
 }
 .sl-logo {
   font-family: var(--sl-disp);
