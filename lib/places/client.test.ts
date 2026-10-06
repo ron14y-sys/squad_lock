@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ExternalRateLimitError } from "@/lib/external/rate-limit";
 import type { LatLng } from "@/lib/types";
 import {
   budgetFromPriceLevel,
@@ -22,6 +23,20 @@ function fakeResponse(ok: boolean, body: unknown) {
     status: ok ? 200 : 400,
     json: async () => body,
     text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
+  };
+}
+
+/** A failed response with a chosen status (and optional Retry-After). */
+function failedResponse(status: number, body: string, retryAfter?: string) {
+  return {
+    ok: false,
+    status,
+    json: async () => body,
+    text: async () => body,
+    headers: {
+      get: (name: string) =>
+        name === "retry-after" ? (retryAfter ?? null) : null,
+    },
   };
 }
 
@@ -227,6 +242,43 @@ describe("searchNeighbourhood", () => {
     await expect(searchNeighbourhood(CENTER, 1500)).rejects.toThrow(
       /searchNearby failed \(400\): quota exceeded/
     );
+  });
+});
+
+describe("B9 part four: rate limits", () => {
+  it("searchNearby throws ExternalRateLimitError on a 429, with Retry-After", async () => {
+    fetchMock.mockResolvedValueOnce(
+      failedResponse(429, "RESOURCE_EXHAUSTED", "120")
+    );
+
+    const error = await searchNeighbourhood(CENTER, 1500).catch(
+      (e: unknown) => e
+    );
+
+    expect(error).toBeInstanceOf(ExternalRateLimitError);
+    expect((error as ExternalRateLimitError).service).toBe("places");
+    expect((error as ExternalRateLimitError).retryAfterMs).toBe(120_000);
+    expect((error as Error).message).toMatch(/searchNearby failed \(429\)/);
+  });
+
+  it("place details throws ExternalRateLimitError on a 429, null delay without a header", async () => {
+    fetchMock.mockResolvedValueOnce(failedResponse(429, "RESOURCE_EXHAUSTED"));
+
+    const error = await fetchPlaceDetails("place-1").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ExternalRateLimitError);
+    expect((error as ExternalRateLimitError).retryAfterMs).toBeNull();
+  });
+
+  it("does not treat a 500 as a rate limit", async () => {
+    fetchMock.mockResolvedValueOnce(failedResponse(500, "oops"));
+
+    const error = await searchNeighbourhood(CENTER, 1500).catch(
+      (e: unknown) => e
+    );
+
+    expect(error).not.toBeInstanceOf(ExternalRateLimitError);
+    expect(error).toBeInstanceOf(Error);
   });
 });
 

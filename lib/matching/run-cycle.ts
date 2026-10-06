@@ -60,6 +60,7 @@ import { persistMatchRun } from "@/lib/db/match-run";
 import { MeetingStatus, type RunStage } from "@/lib/generated/prisma/enums";
 import { commonFreeWindows } from "./availability";
 import { runMatchingAgent } from "./agent";
+import { ExternalRateLimitError } from "@/lib/external/rate-limit";
 import { LlmCallError, retryDelayMs } from "@/lib/llm/client";
 import { originOf } from "./distance";
 import { pairId } from "./schemas";
@@ -796,14 +797,25 @@ async function handleCalendarAuthFailure(userId: string) {
  * stated reason for existing. Failing that, only `LlmCallError.rateLimited`
  * gets a special-cased wait: a quota wall (Gemini's free tier allows 20
  * requests a **day**, spec §6.4) does not open again in 90 seconds, so
- * retrying it on the flat cooldown is pure waste. Every other fault —
- * Calendar, Places, an overloaded call with no explicit delay, a missing
- * credential — returns `null` and keeps today's flat `RUN_ATTEMPT_COOLDOWN_MS`
- * as the only guard. Expanding this to Calendar/Places would need a
- * rate-limit signal from those clients that does not exist yet — out of
- * scope here, not forgotten.
+ * retrying it on the flat cooldown is pure waste. A Calendar or Places
+ * rate limit (`ExternalRateLimitError`, B9 part four) gets the same
+ * treatment with a shorter default (`EXTERNAL_RATE_LIMIT_COOLDOWN_MS`),
+ * since those quotas are per-minute rather than per-day. Every other fault —
+ * an overloaded call with no explicit delay, a missing credential, any
+ * other Calendar or Places error — returns `null` and keeps today's flat
+ * `RUN_ATTEMPT_COOLDOWN_MS` as the only guard.
  */
 export function faultRetryNotBefore(error: unknown, now: Date): Date | null {
+  // B9 part four: Calendar and Places now say so explicitly when they are
+  // rate-limited. The service's own `Retry-After` wins, same rule as Gemini's
+  // `retry in Xs`; failing that, a short fixed wait -- per-minute quotas are
+  // the usual case for both, so far shorter than Gemini's daily wall.
+  if (error instanceof ExternalRateLimitError) {
+    return new Date(
+      now.getTime() + (error.retryAfterMs ?? EXTERNAL_RATE_LIMIT_COOLDOWN_MS)
+    );
+  }
+
   if (!(error instanceof LlmCallError)) return null;
 
   const suggested = retryDelayMs(error.message);
@@ -1044,6 +1056,14 @@ export const RUN_ATTEMPT_COOLDOWN_MS = 90_000;
  * not left idle until tomorrow.
  */
 export const RATE_LIMIT_RETRY_COOLDOWN_MS = 60 * 60_000;
+
+/**
+ * B9 part four -- how long to leave a meeting alone after Calendar or Places
+ * answered 429 with no `Retry-After` of its own. Ten minutes: those quotas
+ * are per-minute, so this is generous, and a failed request costs nothing
+ * against them, so being wrong in either direction is cheap.
+ */
+export const EXTERNAL_RATE_LIMIT_COOLDOWN_MS = 10 * 60_000;
 
 export type DueInput = {
   /** Last time anything wrote to the meeting — including a claim. */

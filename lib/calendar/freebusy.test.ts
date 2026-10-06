@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TimeSlot } from "@/lib/types";
+import { ExternalRateLimitError } from "@/lib/external/rate-limit";
 import { CalendarAuthError, fetchBusy } from "./freebusy";
 
 /**
@@ -158,6 +159,75 @@ describe("fetchBusy", () => {
     expect(failure).toBeInstanceOf(Error);
     expect(failure).not.toBeInstanceOf(CalendarAuthError);
     expect((failure as Error).message).toMatch(/freebusy\.query failed/);
+  });
+
+  describe("B9 part four: rate limits", () => {
+    /** A freebusy.query failure with a chosen status, body and headers. */
+    function failure(status: number, body: string, retryAfter?: string) {
+      return {
+        ok: false,
+        status,
+        json: async () => body,
+        text: async () => body,
+        headers: {
+          get: (name: string) =>
+            name === "retry-after" ? (retryAfter ?? null) : null,
+        },
+      };
+    }
+
+    async function freebusyFailsWith(response: ReturnType<typeof failure>) {
+      fetchMock
+        .mockResolvedValueOnce(fakeResponse(true, { access_token: "tok-123" }))
+        .mockResolvedValueOnce(response);
+      return fetchBusy("refresh-abc", WINDOW).catch((error: unknown) => error);
+    }
+
+    it("throws ExternalRateLimitError on a 429, with Retry-After in ms", async () => {
+      const error = await freebusyFailsWith(failure(429, "slow down", "45"));
+
+      expect(error).toBeInstanceOf(ExternalRateLimitError);
+      expect((error as ExternalRateLimitError).service).toBe("calendar");
+      expect((error as ExternalRateLimitError).retryAfterMs).toBe(45_000);
+      expect((error as Error).message).toMatch(
+        /freebusy\.query failed \(429\)/
+      );
+    });
+
+    it("leaves retryAfterMs null when a 429 sends no Retry-After", async () => {
+      const error = await freebusyFailsWith(failure(429, "slow down"));
+
+      expect((error as ExternalRateLimitError).retryAfterMs).toBeNull();
+    });
+
+    it.each(["rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"])(
+      "treats a 403 naming %s as a rate limit",
+      async (reason) => {
+        const error = await freebusyFailsWith(
+          failure(403, JSON.stringify({ error: { errors: [{ reason }] } }))
+        );
+
+        expect(error).toBeInstanceOf(ExternalRateLimitError);
+      }
+    );
+
+    it("does not treat an ordinary 403 (a real permission problem) as a rate limit", async () => {
+      const error = await freebusyFailsWith(
+        failure(
+          403,
+          JSON.stringify({ error: { errors: [{ reason: "forbidden" }] } })
+        )
+      );
+
+      expect(error).not.toBeInstanceOf(ExternalRateLimitError);
+      expect(error).toBeInstanceOf(Error);
+    });
+
+    it("does not treat a 500 as a rate limit", async () => {
+      const error = await freebusyFailsWith(failure(500, "backend error"));
+
+      expect(error).not.toBeInstanceOf(ExternalRateLimitError);
+    });
   });
 
   it("B10: has no userId of its own -- this file never sees one", async () => {
