@@ -41,19 +41,42 @@ const QUESTIONS: Question[] = [
   }),
 ];
 
+/**
+ * One line per question, in question order: the chosen side's label, or
+ * "לא משנה לי" for a field with no answer. Shared by the closing screen and
+ * the profile page, so both say the same thing about the same row.
+ */
+export function softPreferenceSummary(
+  preferences: Partial<SoftPreferences>
+): string[] {
+  return QUESTIONS.map((q) => {
+    const value = preferences[q.key];
+    if (value === q.left.value) return q.left.label;
+    if (value === q.right.value) return q.right.label;
+    return "לא משנה לי";
+  });
+}
+
 const CARD_FONT = "var(--font-unbounded)";
 const BODY_FONT = "var(--font-work-sans)";
 
 export function PreferenceGame({
   onComplete,
   doneFooter,
+  initial = {},
 }: {
   onComplete?: (preferences: SoftPreferences) => void;
   /** Rendered under the closing screen — e.g. a save-status line. */
   doneFooter?: ReactNode;
+  /**
+   * The answers already saved. The game starts from them, so replaying it
+   * changes only what is answered differently — the save replaces the
+   * whole set, and starting from `{}` silently dropped every earlier answer.
+   */
+  initial?: Partial<SoftPreferences>;
 }) {
   const [index, setIndex] = useState(0);
-  const [answers, setAnswers] = useState<Partial<SoftPreferences>>({});
+  const [answers, setAnswers] = useState<Partial<SoftPreferences>>(initial);
 
   const done = index >= QUESTIONS.length;
 
@@ -71,7 +94,8 @@ export function PreferenceGame({
 
   // Forcing an answer manufactures an opinion nobody holds (#86) — declining
   // stores nothing for this field rather than a default, so `answers` is
-  // simply left as it was.
+  // simply left as it was. That includes an answer saved earlier: skipping
+  // keeps it, and the button says so.
   function skip() {
     advance(answers);
   }
@@ -94,12 +118,19 @@ export function PreferenceGame({
         >
           נשתמש בזה כדי למצוא מקומות שכל הקבוצה שלך באמת תרצה ללכת אליהם.
         </p>
+        <p
+          style={{ fontFamily: BODY_FONT, color: "#14161C" }}
+          className="max-w-xs text-base font-semibold"
+        >
+          {softPreferenceSummary(answers).join(" · ")}
+        </p>
         {doneFooter}
       </div>
     );
   }
 
   const q = QUESTIONS[index];
+  const saved = initial[q.key];
 
   return (
     <div
@@ -145,6 +176,7 @@ export function PreferenceGame({
           <button
             type="button"
             onClick={() => choose(q, q.left.value)}
+            aria-pressed={saved === q.left.value}
             className="w-[150px] cursor-pointer rounded-[18px] border-[3px] p-6 text-right transition-transform duration-150 ease-out active:scale-95 motion-reduce:transition-none"
             style={{
               transform: "rotateY(14deg) rotateZ(-2deg)",
@@ -160,11 +192,21 @@ export function PreferenceGame({
             >
               {q.left.label}
             </span>
+            {saved === q.left.value && (
+              <span
+                aria-hidden="true"
+                style={{ fontFamily: BODY_FONT, color: "#FFEDE3" }}
+                className="mt-2 block text-[12px] font-semibold opacity-80"
+              >
+                הבחירה שלך עד עכשיו
+              </span>
+            )}
           </button>
 
           <button
             type="button"
             onClick={() => choose(q, q.right.value)}
+            aria-pressed={saved === q.right.value}
             className="mt-5 w-[150px] cursor-pointer rounded-[18px] border-[3px] p-6 text-right transition-transform duration-150 ease-out active:scale-95 motion-reduce:transition-none"
             style={{
               transform: "rotateY(-14deg) rotateZ(2deg)",
@@ -180,6 +222,15 @@ export function PreferenceGame({
             >
               {q.right.label}
             </span>
+            {saved === q.right.value && (
+              <span
+                aria-hidden="true"
+                style={{ fontFamily: BODY_FONT, color: "#14161C" }}
+                className="mt-2 block text-[12px] font-semibold opacity-80"
+              >
+                הבחירה שלך עד עכשיו
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -197,7 +248,7 @@ export function PreferenceGame({
           style={{ fontFamily: BODY_FONT, color: "rgba(20,22,28,0.55)" }}
           className="cursor-pointer text-[13px] underline underline-offset-2"
         >
-          זה לא משנה לי — דלג
+          {saved === undefined ? "זה לא משנה לי — דלג" : "דלג — השאר כמו שהיה"}
         </button>
       </div>
     </div>
