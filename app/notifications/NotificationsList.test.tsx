@@ -55,7 +55,7 @@ test("links calendar_reconnect to the re-auth route, not a meeting", async () =>
 
   const link = await screen.findByRole("link");
   expect(link.getAttribute("href")).toBe(
-    "/api/auth/signin?callbackUrl=%2Fgroups"
+    "/api/calendar/connect?callbackUrl=%2Fgroups"
   );
 });
 

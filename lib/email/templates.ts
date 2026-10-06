@@ -137,16 +137,14 @@ export function stuckEmail(meetingId: string): EmailContent {
  * affects every meeting this person is in, not just the one that happened
  * to surface it -- so, unlike every template above, this one takes no id.
  *
- * Links to Auth.js's own `/api/auth/signin`, the same route
- * `ScreenState`'s `signIn` prop already uses elsewhere in the app: it
- * forces a fresh Google consent even for someone with a live session
- * (`prompt=consent` is already set in `auth.ts`), which is what actually
- * issues a new refresh token. `/groups` is the callback target -- there is
- * no originating page to return this person to, the way `ScreenState` has
- * one for an in-app click.
+ * Links to `/api/calendar/connect`, which starts Google's consent directly
+ * -- not `/api/auth/signin`, which sends someone already signed in to
+ * /groups without asking Google anything (see that route's header).
+ * `/groups` is the callback target -- there is no originating page to
+ * return this person to.
  */
 export function calendarReconnectEmail(): EmailContent {
-  const link = `${appBaseUrl()}/api/auth/signin?callbackUrl=${encodeURIComponent(
+  const link = `${appBaseUrl()}/api/calendar/connect?callbackUrl=${encodeURIComponent(
     "/groups"
   )}`;
 

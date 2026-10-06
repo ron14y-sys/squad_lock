@@ -45,7 +45,10 @@ import {
   participantMeetingContextFromRow,
 } from "@/lib/types/participant-meeting-context-from-row";
 import { preferenceProfileFromRow } from "@/lib/types/preference-profile-from-row";
-import { fetchBusyForUsers } from "@/lib/calendar/participant-busy";
+import {
+  fetchBusyForUsers,
+  MissingCalendarConnectionError,
+} from "@/lib/calendar/participant-busy";
 import { CalendarAuthError } from "@/lib/calendar/freebusy";
 import { getPrisma } from "@/lib/db/client";
 import {
@@ -739,6 +742,15 @@ export async function runCycle(
       console.warn(
         `[a8] calendar auth failed meeting=${meetingId} user=${error.userId}`
       );
+      return null;
+    }
+
+    // Somebody still in has no calendar connected. Expected, and waiting on
+    // that person rather than on us: the meeting page and the card say who,
+    // so this is not a failure to log on every poll.
+    if (error instanceof MissingCalendarConnectionError) {
+      await clearStageAndSetRetry(meetingId, null);
+      console.info(`[a8] waiting on a calendar meeting=${meetingId}`);
       return null;
     }
 

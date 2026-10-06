@@ -42,10 +42,16 @@ export const MEETING_CARD_STATUS_LABELS: Record<MeetingCardStatus, string> = {
 export function meetingStatusLabel(
   status: MeetingCardStatus,
   waitingOn: number | null,
-  firstSearch = false
+  firstSearch = false,
+  calendarBlocked = false
 ): string {
   if (status === "waiting_on_others" && waitingOn !== null) {
     return `ממתין לעוד ${waitingOn}`;
+  }
+  // Nothing is being searched while someone's calendar is missing — saying
+  // so beats a "searching" label that never changes.
+  if (status === "reweighing" && calendarBlocked) {
+    return "תקוע — חסר חיבור ליומן";
   }
   if (status === "reweighing" && firstSearch) return "מחפשים הצעה";
   return MEETING_CARD_STATUS_LABELS[status];

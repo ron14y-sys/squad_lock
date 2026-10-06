@@ -38,7 +38,7 @@ const WHEN_FMT = new Intl.DateTimeFormat("he-IL", {
 function hrefFor(card: NotificationCard): string | null {
   if (card.meetingId) return `/meetings/${card.meetingId}`;
   if (card.kind === "calendar_reconnect") {
-    return `/api/auth/signin?callbackUrl=${encodeURIComponent("/groups")}`;
+    return `/api/calendar/connect?callbackUrl=${encodeURIComponent("/groups")}`;
   }
   return null;
 }

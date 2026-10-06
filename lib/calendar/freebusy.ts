@@ -66,6 +66,9 @@ export class CalendarAuthError extends Error {
 const CALENDAR_RATE_LIMIT_REASON =
   /rateLimitExceeded|userRateLimitExceeded|dailyLimitExceeded|quotaExceeded/i;
 
+/** A 403 because the token was granted without `calendar.freebusy`. */
+const CALENDAR_SCOPE_MISSING = /ACCESS_TOKEN_SCOPE_INSUFFICIENT/;
+
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const FREEBUSY_ENDPOINT = "https://www.googleapis.com/calendar/v3/freeBusy";
 
@@ -142,6 +145,13 @@ export async function fetchBusy(
         message,
         retryAfterMsOf(response)
       );
+    }
+    // Google's consent screen lets a person sign in with the calendar box
+    // unticked: the token exchanges fine, then every query is refused.
+    // Retrying never fixes it — the fix is consenting again, same as a
+    // revoked token — so it is the same error.
+    if (response.status === 403 && CALENDAR_SCOPE_MISSING.test(body)) {
+      throw new CalendarAuthError(message.replace(/^calendar: /, ""));
     }
     throw new Error(message);
   }

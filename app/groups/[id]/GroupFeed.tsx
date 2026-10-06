@@ -41,6 +41,7 @@ type MeetingCard = {
   status: MeetingCardStatus;
   waitingOn: number | null;
   firstSearch: boolean;
+  calendarBlocked: boolean;
   currentDatetime: string | null;
   pinnedWhen: PinnedWhen | null;
   pinnedVenue: string | null;
@@ -61,6 +62,9 @@ const OPEN_MEETING_CAP = 3;
 function summaryLine(card: MeetingCard): string {
   // A stuck meeting must say so in the feed rather than quietly sit there (spec §3.1).
   if (card.status === "stuck") return "לא מצאנו הצעה — צריך להחליט ידנית";
+  if (card.calendarBlocked) {
+    return "מישהו בקבוצה עוד לא חיבר יומן, ולכן ההצעה תקועה";
+  }
   if (card.occasion) return card.occasion;
   const time =
     card.currentDatetime && ` בשעה ${meetingTimeLabel(card.currentDatetime)}`;
@@ -99,8 +103,15 @@ function MeetingCardRow({ card, index }: { card: MeetingCard; index: number }) {
       <div className="sl-date">{meetingDateLabel(card)}</div>
 
       <div className="sl-body">
-        <span className={`sl-stk ${stickerClass(card.status)}`}>
-          {meetingStatusLabel(card.status, card.waitingOn, card.firstSearch)}
+        <span
+          className={`sl-stk ${stickerClass(card.status, card.calendarBlocked)}`}
+        >
+          {meetingStatusLabel(
+            card.status,
+            card.waitingOn,
+            card.firstSearch,
+            card.calendarBlocked
+          )}
         </span>
         <p className="sl-line truncate">{summaryLine(card)}</p>
       </div>
@@ -139,7 +150,11 @@ export function GroupFeed({ groupId }: { groupId: string }) {
         feedRef.current = body;
         setFeed(body);
         setLoadState("ready");
-        return body.meetings.some((m) => m.status === "reweighing");
+        // A meeting blocked on a calendar is not about to change; the
+        // ordinary ~30s poll is enough to notice it connected.
+        return body.meetings.some(
+          (m) => m.status === "reweighing" && !m.calendarBlocked
+        );
       } catch {
         if (!cancelled)
           setLoadState((prev) => (prev === "loading" ? "error" : prev));
