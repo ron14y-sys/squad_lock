@@ -40,6 +40,7 @@ type MeetingCard = {
   id: string;
   status: MeetingCardStatus;
   waitingOn: number | null;
+  firstSearch: boolean;
   currentDatetime: string | null;
   pinnedWhen: PinnedWhen | null;
   pinnedVenue: string | null;
@@ -99,7 +100,7 @@ function MeetingCardRow({ card, index }: { card: MeetingCard; index: number }) {
 
       <div className="sl-body">
         <span className={`sl-stk ${stickerClass(card.status)}`}>
-          {meetingStatusLabel(card.status, card.waitingOn)}
+          {meetingStatusLabel(card.status, card.waitingOn, card.firstSearch)}
         </span>
         <p className="sl-line truncate">{summaryLine(card)}</p>
       </div>

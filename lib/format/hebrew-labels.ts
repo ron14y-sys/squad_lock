@@ -36,15 +36,18 @@ export const MEETING_CARD_STATUS_LABELS: Record<MeetingCardStatus, string> = {
 /**
  * The label a card wears (spec §5.6). "Waiting on others" carries the number
  * still to answer when it is known — "waiting on 2 others" says more than
- * "waiting on others".
+ * "waiting on others". A meeting's opening search is `reweighing` too, but
+ * nothing has been weighed yet, so it is not called "re-weighed".
  */
 export function meetingStatusLabel(
   status: MeetingCardStatus,
-  waitingOn: number | null
+  waitingOn: number | null,
+  firstSearch = false
 ): string {
   if (status === "waiting_on_others" && waitingOn !== null) {
     return `ממתין לעוד ${waitingOn}`;
   }
+  if (status === "reweighing" && firstSearch) return "מחפשים הצעה";
   return MEETING_CARD_STATUS_LABELS[status];
 }
 

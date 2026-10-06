@@ -624,3 +624,21 @@ test("a failed poll leaves the page on screen", async () => {
   expect(screen.getByText("מחפשים הצעה חדשה")).toBeInTheDocument();
   vi.useRealTimers();
 });
+
+test("a meeting's opening search is not called a re-weighing, nor a new proposal", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(detail({ status: "reweighing", proposal: null }))
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  // The status sticker and the block heading both say it.
+  expect(await screen.findAllByText("מחפשים הצעה")).toHaveLength(2);
+  expect(screen.queryByText("משוקלל מחדש")).not.toBeInTheDocument();
+  expect(screen.queryByText("מחפשים הצעה חדשה")).not.toBeInTheDocument();
+});

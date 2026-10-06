@@ -6,7 +6,7 @@ import Link from "next/link";
 
 import { APP_TIME_ZONE } from "@/lib/types/primitives";
 import {
-  MEETING_CARD_STATUS_LABELS,
+  meetingStatusLabel,
   RESPONSE_STATUS_LABELS,
   RUN_STAGE_LABELS,
   unverifiedNote,
@@ -190,13 +190,21 @@ function ProposalBlock({
  * the poll above lands the next one. `runStage` is null during the short
  * batching window before the run itself starts (spec's own convention, #155).
  */
-function ReweighingBlock({ runStage }: { runStage: RunStage | null }) {
+function ReweighingBlock({
+  runStage,
+  firstSearch,
+}: {
+  runStage: RunStage | null;
+  /** No proposal has ever been made — the opening search, not a new one. */
+  firstSearch: boolean;
+}) {
+  const heading = firstSearch ? "מחפשים הצעה" : "מחפשים הצעה חדשה";
   return (
     <section className="sl-panel" role="status" aria-busy="true">
-      <h2 className="sl-sec">מחפשים הצעה חדשה</h2>
+      <h2 className="sl-sec">{heading}</h2>
       <div className="sl-skel" aria-hidden="true" />
       <p className="sl-sub">
-        {runStage ? RUN_STAGE_LABELS[runStage] : "מחפשים הצעה חדשה…"}
+        {runStage ? RUN_STAGE_LABELS[runStage] : `${heading}…`}
       </p>
     </section>
   );
@@ -465,7 +473,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 
       <div className="flex items-center gap-2">
         <span className={`sl-stk ${stickerClass(detail.status)}`}>
-          {MEETING_CARD_STATUS_LABELS[detail.status]}
+          {meetingStatusLabel(detail.status, null, detail.proposal === null)}
         </span>
         {detail.occasion && <span className="sl-sub">· {detail.occasion}</span>}
       </div>
@@ -504,7 +512,10 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
         />
       )}
       {reweighing && !detail.isStuck ? (
-        <ReweighingBlock runStage={detail.runStage} />
+        <ReweighingBlock
+          runStage={detail.runStage}
+          firstSearch={detail.proposal === null}
+        />
       ) : (
         <>
           <ProposalBlock proposal={detail.proposal} stuck={detail.isStuck} />
