@@ -32,10 +32,16 @@
  * this row already names is who was owed *this* email, so that is exactly
  * who gets the retry, nobody wider and nobody narrower.
  *
- * Known gap, same shape as `notifyProposalWaiting`'s own documented one:
- * content is not re-checked against the meeting's *current* state, so a
- * `proposal_waiting` retry can land after the recipient already answered.
- * Not fixed here -- flagged in `tasks/todo.md`.
+ * ## Content is re-checked against live state
+ *
+ * A retry can run minutes after the original failed, and the world moves in
+ * that time: the recipient may already have answered, the meeting may have
+ * been re-weighed, cancelled or unstuck. `isStillWorthSending` asks the
+ * database first and a retry that would now be wrong or redundant is
+ * skipped silently -- the same way an already-accepted invitation is. The
+ * failed row stays as history and is never retried again (it was claimed).
+ * Re-checking costs one meeting read (plus one response read for
+ * `proposal_waiting`) per due retry, and retries are rare.
  *
  * ## The trigger -- the same poll, no new surface
  *
@@ -57,8 +63,10 @@ import {
 } from "./templates";
 import {
   InvitationStatus,
+  MeetingStatus,
   NotificationKind,
   NotificationStatus,
+  ResponseStatus,
 } from "@/lib/generated/prisma/enums";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 
@@ -108,7 +116,55 @@ export type RetryClient = {
     "findMany" | "updateMany" | "create"
   >;
   invitation: Pick<PrismaClient["invitation"], "findUnique">;
+  meeting: Pick<PrismaClient["meeting"], "findUnique">;
+  response: Pick<PrismaClient["response"], "findFirst">;
 };
+
+/**
+ * Is this email still true, and still owed, right now? Asked of the live
+ * database at retry time -- see this file's header on why. `false` means
+ * skip silently.
+ *
+ * Per kind, matching what each email actually says:
+ * - `proposal_waiting`: the meeting is still `awaiting` AND this recipient's
+ *   own Response is still `pending`. Either one changing makes it wrong
+ *   ("a proposal is waiting on you" after you answered, or after it was
+ *   replaced and went back to `weighing`).
+ * - `stuck`: the meeting is still `stuck`.
+ * - `meeting_confirmed`, `conflict_reweigh`: a statement about something
+ *   that already happened, so it stays true later -- skipped only if the
+ *   meeting has since been `cancelled`.
+ *
+ * The recipient is matched by the row's own `recipientEmail`, because
+ * `NotificationLog` stores the address, not a `userId`.
+ */
+async function isStillWorthSending(
+  kind: NotificationKind,
+  meetingId: string,
+  recipientEmail: string,
+  client: Pick<RetryClient, "meeting" | "response">
+): Promise<boolean> {
+  const meeting = await client.meeting.findUnique({
+    where: { id: meetingId },
+    select: { status: true },
+  });
+  if (!meeting) return false;
+
+  switch (kind) {
+    case NotificationKind.proposal_waiting: {
+      if (meeting.status !== MeetingStatus.awaiting) return false;
+      const response = await client.response.findFirst({
+        where: { meetingId, user: { email: recipientEmail } },
+        select: { status: true },
+      });
+      return response?.status === ResponseStatus.pending;
+    }
+    case NotificationKind.stuck:
+      return meeting.status === MeetingStatus.stuck;
+    default:
+      return meeting.status !== MeetingStatus.cancelled;
+  }
+}
 
 /**
  * Rebuilds the content function `sendAndLog` needs, keyed only by `kind`
@@ -127,7 +183,8 @@ async function regenerateContent(
   kind: NotificationKind,
   meetingId: string | null,
   invitationId: string | null,
-  client: Pick<RetryClient, "invitation">
+  recipientEmail: string,
+  client: Pick<RetryClient, "invitation" | "meeting" | "response">
 ): Promise<(() => EmailContent) | null> {
   switch (kind) {
     case NotificationKind.invitation: {
@@ -151,13 +208,25 @@ async function regenerateContent(
         );
     }
     case NotificationKind.proposal_waiting:
-      return meetingId ? () => proposalWaitingEmail(meetingId) : null;
+      return meetingId &&
+        (await isStillWorthSending(kind, meetingId, recipientEmail, client))
+        ? () => proposalWaitingEmail(meetingId)
+        : null;
     case NotificationKind.meeting_confirmed:
-      return meetingId ? () => meetingConfirmedEmail(meetingId) : null;
+      return meetingId &&
+        (await isStillWorthSending(kind, meetingId, recipientEmail, client))
+        ? () => meetingConfirmedEmail(meetingId)
+        : null;
     case NotificationKind.conflict_reweigh:
-      return meetingId ? () => conflictReweighEmail(meetingId) : null;
+      return meetingId &&
+        (await isStillWorthSending(kind, meetingId, recipientEmail, client))
+        ? () => conflictReweighEmail(meetingId)
+        : null;
     case NotificationKind.stuck:
-      return meetingId ? () => stuckEmail(meetingId) : null;
+      return meetingId &&
+        (await isStillWorthSending(kind, meetingId, recipientEmail, client))
+        ? () => stuckEmail(meetingId)
+        : null;
     case NotificationKind.calendar_reconnect:
       // B10: unreachable in practice -- this row has no meetingId and no
       // invitationId, so retryDueNotifications's own query (OR'd on both)
@@ -211,6 +280,7 @@ export async function retryDueNotifications(
         row.kind,
         row.meetingId,
         row.invitationId,
+        row.recipientEmail,
         client
       );
       if (!content) return;
