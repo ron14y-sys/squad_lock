@@ -115,3 +115,23 @@ test("shows a sign-in prompt instead of the form when the user is unauthenticate
   ).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "כשר" })).not.toBeInTheDocument();
 });
+
+test("shows what the preference game saved, with a way to change it", async () => {
+  fetchMock.mockResolvedValueOnce(
+    jsonResponse({
+      ...EMPTY_PROFILE,
+      softPreferences: { noiseLevel: "quiet", budget: "modest" },
+    })
+  );
+  render(<HardConstraintsForm />);
+
+  expect(
+    await screen.findByText(
+      "בית קפה שקט · לא משנה לי · תקציב סטודנטים · לא משנה לי"
+    )
+  ).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "לשנות" })).toHaveAttribute(
+    "href",
+    "/onboarding/preferences"
+  );
+});

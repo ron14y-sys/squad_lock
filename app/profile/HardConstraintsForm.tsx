@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { HardConstraints, LocalWeekday, LocalWindow } from "@/lib/types";
+import Link from "next/link";
+import type {
+  HardConstraints,
+  LocalWeekday,
+  LocalWindow,
+  SoftPreferences,
+} from "@/lib/types";
+import { softPreferenceSummary } from "@/app/onboarding/preferences/PreferenceGame";
 import { WEEKDAY_LABELS } from "@/lib/format/hebrew-labels";
 import { ScreenState } from "@/app/_components/ScreenState";
 
@@ -26,6 +33,9 @@ export function HardConstraintsForm() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [constraints, setConstraints] = useState<HardConstraints>(EMPTY);
+  const [softPreferences, setSoftPreferences] = useState<
+    Partial<SoftPreferences>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +52,7 @@ export function HardConstraintsForm() {
       .then((profile) => {
         if (cancelled || !profile) return;
         setConstraints({ ...EMPTY, ...profile.hardConstraints });
+        setSoftPreferences(profile.softPreferences ?? {});
         setLoadState("ready");
       })
       .catch(() => {
@@ -90,6 +101,19 @@ export function HardConstraintsForm() {
 
   return (
     <div className="sl-page">
+      {/* Read-only: the game is the one place these are set, and nowhere
+          else showed what it saved. */}
+      <section className="flex flex-col gap-1">
+        <h2 className="sl-sec">ההעדפות שלך מהמשחק</h2>
+        <p>{softPreferenceSummary(softPreferences).join(" · ")}</p>
+        <Link
+          href="/onboarding/preferences"
+          className="sl-sub self-start font-bold underline"
+        >
+          לשנות
+        </Link>
+      </section>
+
       <TagSection
         title="דרישות תזונה"
         presets={DIETARY_PRESETS}

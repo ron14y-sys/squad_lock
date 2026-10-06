@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PreferenceGame } from "./PreferenceGame";
 
@@ -20,6 +20,25 @@ const BODY_FONT = "var(--font-work-sans)";
 export function PreferenceGameContainer() {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [lastAnswers, setLastAnswers] = useState<SoftPreferences | null>(null);
+  // `null` until the saved answers are in. A failed load starts the game
+  // empty rather than blocking it — a new user has nothing saved anyway, and
+  // a signed-out one learns that at save time.
+  const [initial, setInitial] = useState<Partial<SoftPreferences> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/preferences")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((profile) => {
+        if (!cancelled) setInitial(profile?.softPreferences ?? {});
+      })
+      .catch(() => {
+        if (!cancelled) setInitial({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function save(preferences: SoftPreferences) {
     setLastAnswers(preferences);
@@ -45,8 +64,11 @@ export function PreferenceGameContainer() {
     if (lastAnswers) save(lastAnswers);
   }
 
+  if (initial === null) return null;
+
   return (
     <PreferenceGame
+      initial={initial}
       onComplete={save}
       doneFooter={
         <div
