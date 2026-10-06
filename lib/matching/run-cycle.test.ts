@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   blockedByRejections,
+  EXTERNAL_RATE_LIMIT_COOLDOWN_MS,
   faultRetryNotBefore,
   isDue,
   MIN_PROPOSAL_LIFETIME_MS,
@@ -16,6 +17,7 @@ import {
   type RecordedRejection,
   venueSoftFactsFrom,
 } from "./run-cycle";
+import { ExternalRateLimitError } from "@/lib/external/rate-limit";
 import { LlmCallError } from "@/lib/llm/client";
 import { pairId } from "./schemas";
 
@@ -404,6 +406,20 @@ describe("isDue", () => {
 
 describe("faultRetryNotBefore", () => {
   const NOW = at("2026-09-27T20:00:00.000Z");
+
+  it("B9 part four: uses the service's own Retry-After for a Calendar or Places rate limit", () => {
+    const error = new ExternalRateLimitError("places", "429", 45_000);
+    expect(faultRetryNotBefore(error, NOW)).toEqual(
+      new Date(NOW.getTime() + 45_000)
+    );
+  });
+
+  it("B9 part four: falls back to EXTERNAL_RATE_LIMIT_COOLDOWN_MS when the 429 sent no delay", () => {
+    const error = new ExternalRateLimitError("calendar", "429", null);
+    expect(faultRetryNotBefore(error, NOW)).toEqual(
+      new Date(NOW.getTime() + EXTERNAL_RATE_LIMIT_COOLDOWN_MS)
+    );
+  });
 
   it("is null for an error that is not an LlmCallError", () => {
     expect(

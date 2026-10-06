@@ -18,6 +18,9 @@
  * backoff, surfacing to the user. Folding that in here would duplicate a
  * decision B9 has to make consistently across every external call, not just
  * this one.
+ * The one thing this file does classify is a rate limit: that throws the shared
+ * `ExternalRateLimitError` (B9 part four), so `runCycle` can back off instead
+ * of retrying on the flat cooldown.
  *
  * **Takes a refresh token, not a `userId`.** This file never touches the
  * database — whoever assembles a meeting's `Participant[]` is the one place
@@ -25,6 +28,10 @@
  * network call testable with nothing but a mocked `fetch`.
  */
 
+import {
+  ExternalRateLimitError,
+  retryAfterMsOf,
+} from "@/lib/external/rate-limit";
 import type { TimeSlot } from "@/lib/types";
 
 /**
@@ -50,6 +57,14 @@ export class CalendarAuthError extends Error {
     this.name = "CalendarAuthError";
   }
 }
+
+/**
+ * The `reason` strings Google's Calendar API puts in a 403 for a quota or
+ * rate wall, as opposed to `forbidden` and friends (a real permission
+ * problem, which retrying never fixes -- but also nothing to back off from).
+ */
+const CALENDAR_RATE_LIMIT_REASON =
+  /rateLimitExceeded|userRateLimitExceeded|dailyLimitExceeded|quotaExceeded/i;
 
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const FREEBUSY_ENDPOINT = "https://www.googleapis.com/calendar/v3/freeBusy";
@@ -117,9 +132,18 @@ export async function fetchBusy(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(
-      `calendar: freebusy.query failed (${response.status}): ${body}`
-    );
+    const message = `calendar: freebusy.query failed (${response.status}): ${body}`;
+    // B9 part four: Google answers a rate limit with 429, or with a 403
+    // whose body names the reason -- the 403 is also what a genuine
+    // permission problem looks like, so only the named reasons count.
+    if (response.status === 429 || CALENDAR_RATE_LIMIT_REASON.test(body)) {
+      throw new ExternalRateLimitError(
+        "calendar",
+        message,
+        retryAfterMsOf(response)
+      );
+    }
+    throw new Error(message);
   }
 
   const data = (await response.json()) as FreeBusyResponse;

@@ -34,6 +34,10 @@
  * "only for the shortlist... never for the full retrieved pool."
  */
 
+import {
+  ExternalRateLimitError,
+  retryAfterMsOf,
+} from "@/lib/external/rate-limit";
 import type {
   Candidate,
   LatLng,
@@ -282,9 +286,16 @@ export async function searchNeighbourhood(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(
-      `places: searchNearby failed (${response.status}): ${body}`
-    );
+    const message = `places: searchNearby failed (${response.status}): ${body}`;
+    if (response.status === 429) {
+      // B9 part four -- RESOURCE_EXHAUSTED: a quota wall, not a bug.
+      throw new ExternalRateLimitError(
+        "places",
+        message,
+        retryAfterMsOf(response)
+      );
+    }
+    throw new Error(message);
   }
 
   const data = (await response.json()) as SearchNearbyResponse;
@@ -318,9 +329,16 @@ export async function fetchPlaceDetails(placeId: string): Promise<{
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(
-      `places: get place details failed (${response.status}): ${body}`
-    );
+    const message = `places: get place details failed (${response.status}): ${body}`;
+    if (response.status === 429) {
+      // B9 part four -- RESOURCE_EXHAUSTED: a quota wall, not a bug.
+      throw new ExternalRateLimitError(
+        "places",
+        message,
+        retryAfterMsOf(response)
+      );
+    }
+    throw new Error(message);
   }
 
   const data = (await response.json()) as PlaceDetailsResponse;
