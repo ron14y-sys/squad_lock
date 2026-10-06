@@ -289,3 +289,28 @@ test("a stuck meeting stays in the feed and says what to do", async () => {
     screen.getByText("לא מצאנו הצעה — צריך להחליט ידנית")
   ).toBeInTheDocument();
 });
+
+test("a meeting's opening search reads as a search, not a re-weighing", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          meetings: [
+            card({
+              status: "reweighing",
+              firstSearch: true,
+              currentDatetime: null,
+            }),
+          ],
+          openCount: 1,
+        })
+      )
+    )
+  );
+
+  render(<GroupFeed groupId="group-1" />);
+
+  expect(await screen.findByText("מחפשים הצעה")).toBeInTheDocument();
+  expect(screen.queryByText("משוקלל מחדש")).not.toBeInTheDocument();
+});

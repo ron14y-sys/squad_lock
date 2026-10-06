@@ -80,6 +80,12 @@ export type MeetingCardDTO = {
   isPast: boolean;
   /** Where the run weighing it is, while one is (#155). */
   runStage: RunStage | null;
+  /**
+   * `reweighing` with no run behind it yet: the opening search, not a
+   * re-weighing. Same status — same fast poll — but it must not be called
+   * "re-weighed" when nothing has been weighed.
+   */
+  firstSearch: boolean;
   participants: { userId: string; name: string; status: ResponseStatus }[];
 };
 
@@ -121,6 +127,7 @@ function sortMeetingCards<T extends MeetingCardDTO>(cards: T[]): T[] {
 
 type MeetingRowWithResponses = MeetingModel & {
   responses: (ResponseModel & { user: { name: string } })[];
+  _count: { matchRuns: number };
 };
 
 /** One meeting row → the card the feed and the all-groups timeline both draw. */
@@ -167,6 +174,7 @@ function toMeetingCardDTO(
       meeting.currentDatetime !== null &&
       meeting.currentDatetime.getTime() < now,
     runStage: runStageOf(row),
+    firstSearch: status === "reweighing" && row._count.matchRuns === 0,
     participants: row.responses.map((r) => ({
       userId: r.userId,
       name: r.user.name,
@@ -192,7 +200,10 @@ export async function listMeetingCardsForGroup(
 
   const rows = await prisma.meeting.findMany({
     where: { groupId },
-    include: { responses: { include: { user: { select: { name: true } } } } },
+    include: {
+      responses: { include: { user: { select: { name: true } } } },
+      _count: { select: { matchRuns: true } },
+    },
   });
 
   const conflictingIds = await conflictingMeetingIds(viewerId);
@@ -235,6 +246,7 @@ export async function listOpenMeetingCardsForUser(
         include: {
           group: { select: { id: true, name: true } },
           responses: { include: { user: { select: { name: true } } } },
+          _count: { select: { matchRuns: true } },
         },
       },
     },
