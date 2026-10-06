@@ -250,6 +250,36 @@ export function allStillInHaveApproved(
 }
 
 /**
+ * A new proposal asks everyone still in again (#176). A `Response` row
+ * carries no link to the proposal it answered, so an approval left standing
+ * would count towards a place and time the person was never shown — and
+ * `allStillInHaveApproved` could close the meeting on it.
+ *
+ * `doesnt_suit` goes back to `pending` too: the new proposal is the answer
+ * to that objection, and the sentence itself is kept on its own
+ * `participant_meeting_contexts` row, which the timeline reads. Only
+ * `cant_make_it` stays — it is leaving the meeting, not answering a proposal.
+ *
+ * Takes the caller's `tx`: A8's `weigh()` runs it in the same write that
+ * puts the new proposal out, so there is no moment with a new proposal and
+ * old approvals.
+ */
+export async function resetResponsesForNewProposal(
+  tx: Prisma.TransactionClient,
+  meetingId: string
+): Promise<void> {
+  await tx.response.updateMany({
+    where: { meetingId, status: { not: ResponseStatus.cant_make_it } },
+    data: {
+      status: ResponseStatus.pending,
+      reasonText: null,
+      respondedAt: null,
+      extractionOutcome: null,
+    },
+  });
+}
+
+/**
  * Which of B8's two status-change email triggers, if any, this response
  * just caused -- pure, same reason as `allStillInHaveApproved` above: it
  * only reads the two statuses `respondToMeeting`'s transaction already
