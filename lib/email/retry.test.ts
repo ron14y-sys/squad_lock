@@ -8,15 +8,21 @@ import {
 } from "./retry";
 import {
   InvitationStatus,
+  MeetingStatus,
   NotificationKind,
   NotificationStatus,
+  ResponseStatus,
 } from "@/lib/generated/prisma/enums";
 
 /**
  * Same discipline as `lib/email/notify.test.ts`: no real database, no real
  * network. `fetch` is mocked the same way; the DB side is a hand-built fake
  * covering exactly the delegate methods `retry.ts` calls --
- * `notificationLog.findMany`/`updateMany`/`create`, `invitation.findUnique`.
+ * `notificationLog.findMany`/`updateMany`/`create`, `invitation.findUnique`,
+ * `meeting.findUnique` and `response.findFirst` (the live-state re-check).
+ *
+ * The meeting fake defaults to `stuck`, so the default `failedRow` (a
+ * `stuck` email) is still worth sending; tests about other states override.
  */
 
 function fakeClient() {
@@ -27,6 +33,10 @@ function fakeClient() {
       create: vi.fn(),
     },
     invitation: { findUnique: vi.fn() },
+    meeting: {
+      findUnique: vi.fn().mockResolvedValue({ status: MeetingStatus.stuck }),
+    },
+    response: { findFirst: vi.fn() },
   };
 }
 
@@ -315,6 +325,144 @@ describe("retryDueNotifications", () => {
 
       expect(fetchMock).not.toHaveBeenCalled();
       expect(client.notificationLog.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("live-state re-check (B9)", () => {
+    const now = new Date("2026-09-30T10:10:00Z");
+
+    async function retry(
+      client: ReturnType<typeof fakeClient>,
+      row: Record<string, unknown>
+    ) {
+      client.notificationLog.findMany.mockResolvedValueOnce([failedRow(row)]);
+      client.notificationLog.updateMany.mockResolvedValueOnce({ count: 1 });
+      fetchMock.mockResolvedValue(fakeResponse(true, { id: "email-retry" }));
+      await retryDueNotifications("group-1", client, now);
+    }
+
+    it("resends proposal_waiting while the meeting is awaiting and the recipient is still pending", async () => {
+      const client = fakeClient();
+      client.meeting.findUnique.mockResolvedValue({
+        status: MeetingStatus.awaiting,
+      });
+      client.response.findFirst.mockResolvedValue({
+        status: ResponseStatus.pending,
+      });
+
+      await retry(client, { kind: NotificationKind.proposal_waiting });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // Matched by the row's own address, scoped to the meeting.
+      expect(client.response.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            meetingId: "meeting-1",
+            user: { email: "dana@example.test" },
+          },
+        })
+      );
+    });
+
+    it("skips proposal_waiting once the recipient has already answered", async () => {
+      const client = fakeClient();
+      client.meeting.findUnique.mockResolvedValue({
+        status: MeetingStatus.awaiting,
+      });
+      client.response.findFirst.mockResolvedValue({
+        status: ResponseStatus.approved,
+      });
+
+      await retry(client, { kind: NotificationKind.proposal_waiting });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(client.notificationLog.create).not.toHaveBeenCalled();
+    });
+
+    it("skips proposal_waiting once the meeting has gone back to weighing", async () => {
+      const client = fakeClient();
+      client.meeting.findUnique.mockResolvedValue({
+        status: MeetingStatus.weighing,
+      });
+      client.response.findFirst.mockResolvedValue({
+        status: ResponseStatus.pending,
+      });
+
+      await retry(client, { kind: NotificationKind.proposal_waiting });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("skips proposal_waiting when the recipient has no response row any more", async () => {
+      const client = fakeClient();
+      client.meeting.findUnique.mockResolvedValue({
+        status: MeetingStatus.awaiting,
+      });
+      client.response.findFirst.mockResolvedValue(null);
+
+      await retry(client, { kind: NotificationKind.proposal_waiting });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("skips stuck once the meeting is no longer stuck", async () => {
+      const client = fakeClient();
+      client.meeting.findUnique.mockResolvedValue({
+        status: MeetingStatus.weighing,
+      });
+
+      await retry(client, { kind: NotificationKind.stuck });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      NotificationKind.meeting_confirmed,
+      NotificationKind.conflict_reweigh,
+    ])("still resends %s after the meeting has moved on", async (kind) => {
+      const client = fakeClient();
+      client.meeting.findUnique.mockResolvedValue({
+        status: MeetingStatus.closed,
+      });
+
+      await retry(client, { kind });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      NotificationKind.meeting_confirmed,
+      NotificationKind.conflict_reweigh,
+    ])("skips %s once the meeting was cancelled", async (kind) => {
+      const client = fakeClient();
+      client.meeting.findUnique.mockResolvedValue({
+        status: MeetingStatus.cancelled,
+      });
+
+      await retry(client, { kind });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("skips silently when the meeting row is gone", async () => {
+      const client = fakeClient();
+      client.meeting.findUnique.mockResolvedValue(null);
+
+      await retry(client, { kind: NotificationKind.stuck });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(client.notificationLog.create).not.toHaveBeenCalled();
+    });
+
+    it("does not throw when the live-state lookup itself fails", async () => {
+      const client = fakeClient();
+      client.meeting.findUnique.mockRejectedValue(new Error("db down"));
+
+      await expect(
+        retry(client, { kind: NotificationKind.stuck })
+      ).resolves.toBeUndefined();
+
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 
