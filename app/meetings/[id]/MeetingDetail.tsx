@@ -85,6 +85,8 @@ type MeetingDetail = {
   isInitiator: boolean;
   conflicts: Conflict[];
   missingHome: MissingHome[];
+  calendarMissing: MissingHome[];
+  retryInMinutes: number | null;
   initiatorName: string;
   pinnedVenue: string | null;
   occasion: string | null;
@@ -306,6 +308,62 @@ function MissingHomeNotice({
   );
 }
 
+/**
+ * B9 part five: why a meeting that is still being weighed is not moving. Two
+ * causes the group can actually do something about or at least understand:
+ * somebody's calendar connection is gone (`calendarMissing`), or an outside
+ * service told us to slow down (`retryInMinutes`). Everything else that
+ * goes wrong in a run is ours to fix, and says nothing here.
+ */
+function WeighingBlockedNotice({
+  meetingId,
+  calendarMissing,
+  retryInMinutes,
+  viewerId,
+}: {
+  meetingId: string;
+  calendarMissing: MissingHome[];
+  retryInMinutes: number | null;
+  viewerId: string;
+}) {
+  // Same route B10's email uses, and the same `callbackUrl` shape as
+  // `ScreenState`: it forces a fresh Google consent, which is what issues a
+  // new refresh token, then lands the person back here.
+  const reconnectHref = `/api/auth/signin?callbackUrl=${encodeURIComponent(
+    `/meetings/${meetingId}`
+  )}`;
+  const mine = calendarMissing.some((p) => p.userId === viewerId);
+  const others = calendarMissing.filter((p) => p.userId !== viewerId);
+
+  return (
+    <div role="status" className="sl-warn flex flex-col gap-2">
+      <p className="font-bold">ההתאמה מחכה</p>
+      {mine && (
+        <p>
+          היומן שלך לא מחובר, ובלעדיו אי אפשר לבדוק מתי אתה פנוי.{" "}
+          <Link href={reconnectHref} className="font-bold underline">
+            חבר מחדש
+          </Link>
+        </p>
+      )}
+      {others.length > 0 && (
+        <p>
+          {others.map((p) => p.name).join(", ")}{" "}
+          {others.length === 1 ? "צריך/ה" : "צריכים"} לחבר מחדש את היומן. בלי זה
+          אי אפשר לבדוק מתי כולם פנויים.
+        </p>
+      )}
+      {retryInMinutes !== null && (
+        <p>
+          אחד השירותים שאנחנו משתמשים בהם מגביל אותנו כרגע. ננסה שוב{" "}
+          {retryInMinutes === 1 ? "בעוד כדקה" : `בעוד כ-${retryInMinutes} דקות`}
+          .
+        </p>
+      )}
+    </div>
+  );
+}
+
 function loadDetail(
   meetingId: string,
   cancelledRef: { current: boolean },
@@ -418,6 +476,16 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
           viewerId={detail.viewerId}
         />
       )}
+      {!detail.isStuck &&
+        (detail.calendarMissing.length > 0 ||
+          detail.retryInMinutes !== null) && (
+          <WeighingBlockedNotice
+            meetingId={detail.id}
+            calendarMissing={detail.calendarMissing}
+            retryInMinutes={detail.retryInMinutes}
+            viewerId={detail.viewerId}
+          />
+        )}
       {detail.isStuck && (
         <StuckPanel
           meetingId={detail.id}

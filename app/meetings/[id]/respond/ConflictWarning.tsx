@@ -9,6 +9,7 @@ export type Conflict = {
   groupName: string;
   venueName: string | null;
   start: string | null;
+  confirmed: boolean;
 };
 
 const WHEN_FMT = new Intl.DateTimeFormat("he-IL", {
@@ -86,9 +87,16 @@ function ConflictItem({
   return (
     <div role="alert" className="sl-warn flex flex-col gap-2">
       <p className="font-bold">
-        יש לך פגישה נוספת באותו ערב: {describe(conflict)}
+        {conflict.confirmed
+          ? "יש לך פגישה מאושרת באותו ערב: "
+          : "יש לך פגישה נוספת באותו ערב: "}
+        {describe(conflict)}
       </p>
-      <p>אם תאשר את הפגישה הזו, הפגישה ההיא תחזור לשקלול בלעדייך.</p>
+      <p>
+        {conflict.confirmed
+          ? "אישור כאן לא יבטל אותה — היא כבר נקבעה עם הקבוצה שלה."
+          : "אם תאשר את הפגישה הזו, הפגישה ההיא תחזור לשקלול בלעדייך."}
+      </p>
 
       <div className="sl-row">
         <button
@@ -125,19 +133,23 @@ function ConflictItem({
             >
               שנה את הפגישה הזו ({thisMeetingName})
             </button>
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() =>
-                send({
-                  kind: "send_back",
-                  targetMeetingId: conflict.meetingId,
-                })
-              }
-              className="sl-btn go"
-            >
-              שנה את הפגישה ב{conflict.groupName}
-            </button>
+            {/* A confirmed evening is not reopened from somebody else's
+                clash — the server refuses it too (`sendMeetingBackToWeighing`). */}
+            {!conflict.confirmed && (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() =>
+                  send({
+                    kind: "send_back",
+                    targetMeetingId: conflict.meetingId,
+                  })
+                }
+                className="sl-btn go"
+              >
+                שנה את הפגישה ב{conflict.groupName}
+              </button>
+            )}
           </div>
         </div>
       )}

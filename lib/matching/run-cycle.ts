@@ -57,6 +57,7 @@ import {
   SEARCH_RADIUS_METERS,
 } from "@/lib/places/search-area";
 import { persistMatchRun } from "@/lib/db/match-run";
+import { resetResponsesForNewProposal } from "@/lib/db/meetings";
 import { MeetingStatus, type RunStage } from "@/lib/generated/prisma/enums";
 import { commonFreeWindows } from "./availability";
 import { runMatchingAgent } from "./agent";
@@ -938,6 +939,10 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
     });
 
     const landedOnAwaiting = unanswered === 0;
+
+    // Every answer was to the proposal this run just replaced (#176) —
+    // including one given while the run was in flight.
+    await resetResponsesForNewProposal(tx, meetingId);
 
     await tx.meeting.update({
       where: { id: meetingId },

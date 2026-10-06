@@ -77,6 +77,8 @@ export type ConflictDTO = {
   groupName: string;
   venueName: string | null;
   start: string | null;
+  /** Already agreed by its group — approving here leaves it as it is. */
+  confirmed: boolean;
 };
 
 /** Someone the matching agent cannot place: no home point and no amendment for tonight. */
@@ -111,6 +113,23 @@ export type MeetingDetailDTO = {
    * something — and empty otherwise.
    */
   missingHome: MissingHomeDTO[];
+  /**
+   * B9 part five: who is still in this meeting but has no Google Calendar
+   * connection on file (`User.googleRefreshToken` is null — never connected,
+   * or cleared by B10 after Google rejected the token). `fetchBusyForUsers`
+   * refuses to run without it, so the meeting sits in `weighing` with no
+   * proposal and no reason. Only worked out while it is `weighing`, and empty
+   * otherwise. Derived at read time rather than stored, so it clears itself
+   * the moment the person reconnects.
+   */
+  calendarMissing: MissingHomeDTO[];
+  /**
+   * B9 part five: whole minutes until the next automatic attempt, when a
+   * rate-limited call (`Meeting.retryNotBefore`, B9 parts two and four) is
+   * the reason nothing is happening. Null when there is no such wait, and
+   * for any meeting that is not `weighing`.
+   */
+  retryInMinutes: number | null;
   initiatorName: string;
   pinnedVenue: string | null;
   occasion: string | null;
@@ -197,9 +216,40 @@ export function withoutOrigin(
   );
 }
 
+/**
+ * Who, among `people`, has no calendar connection. Asks only whether the
+ * column is null -- the token itself is never read into memory.
+ */
+async function findMissingCalendar(
+  people: MissingHomeDTO[]
+): Promise<MissingHomeDTO[]> {
+  if (people.length === 0) return [];
+  const missing = await getPrisma().user.findMany({
+    where: {
+      id: { in: people.map((p) => p.userId) },
+      googleRefreshToken: null,
+    },
+    select: { id: true },
+  });
+  const missingIds = new Set(missing.map((u) => u.id));
+  return people.filter((p) => missingIds.has(p.userId));
+}
+
+/**
+ * Whole minutes (rounded up, at least 1) until `notBefore`, or null when
+ * there is no wait left. Pure, so the rounding is tested without a clock.
+ */
+export function minutesUntil(notBefore: Date | null, now: Date): number | null {
+  if (notBefore === null) return null;
+  const ms = notBefore.getTime() - now.getTime();
+  if (ms <= 0) return null;
+  return Math.max(1, Math.ceil(ms / 60_000));
+}
+
 export async function getMeetingDetail(
   meetingId: string,
-  viewerId: string
+  viewerId: string,
+  now: Date = new Date()
 ): Promise<MeetingDetailDTO | null> {
   const prisma = getPrisma();
 
@@ -242,7 +292,10 @@ export async function getMeetingDetail(
       c.softPreferences === null
   );
 
-  const conflictPairs = await findConflictingMeetings(viewerId);
+  // A confirmed meeting is a clash for the *other* meeting's page, where
+  // there is still an approve button to warn above — not for its own.
+  const conflictPairs =
+    meeting.status === "closed" ? [] : await findConflictingMeetings(viewerId);
   const otherMeetingIds = conflictPairs.flatMap((pair) => {
     if (pair.meetingA.id === meeting.id) return [pair.meetingB.id];
     if (pair.meetingB.id === meeting.id) return [pair.meetingA.id];
@@ -270,6 +323,7 @@ export async function getMeetingDetail(
     venueName:
       other.matchRuns[0]?.options[0]?.venueName ?? other.pinnedVenue ?? null,
     start: other.currentDatetime?.toISOString() ?? null,
+    confirmed: other.status === "closed",
   }));
 
   const responses = row.responses.map((r) => ({
@@ -319,6 +373,21 @@ export async function getMeetingDetail(
           row.responses.map((r) => ({ userId: r.userId, name: r.user.name }))
         )
       : [];
+
+  // B9 part five. Both only mean something while a run is actually being
+  // retried, which is `weighing` -- a stuck, closed or awaiting meeting is
+  // not waiting on either.
+  const weighing = row.status === "weighing";
+  const calendarMissing = weighing
+    ? await findMissingCalendar(
+        row.responses
+          .filter((r) => r.status !== "cant_make_it")
+          .map((r) => ({ userId: r.userId, name: r.user.name }))
+      )
+    : [];
+  const retryInMinutes = weighing
+    ? minutesUntil(row.retryNotBefore, now)
+    : null;
 
   const timeline: TimelineEvent[] = [
     {
@@ -421,6 +490,8 @@ export async function getMeetingDetail(
     isInitiator: row.initiatorId === viewerId,
     conflicts,
     missingHome,
+    calendarMissing,
+    retryInMinutes,
     initiatorName: row.initiator.name,
     pinnedVenue: meeting.pinnedVenue,
     occasion: meeting.occasion,

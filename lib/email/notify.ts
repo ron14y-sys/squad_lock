@@ -166,13 +166,10 @@ export async function neverThrow(
  * Deliberately not "everyone still attending" -- someone who has already
  * approved or dropped out has nothing waiting on them for *this* proposal.
  *
- * ⚠️ Known gap, not fixed here: if a later re-weighing reuses this same
- * meeting without resetting an already-`approved` Response back to
- * `pending`, that participant is never re-notified about the replacement
- * proposal. Nothing in the codebase resets Response rows across cycles
- * today (grepped), so this is a pre-existing question about
- * `respondToMeeting`'s `doesnt_suit` branch, not something B8 introduces
- * or is scoped to fix -- flagged in `tasks/todo.md` for whoever picks it up.
+ * A re-weighing reaches everyone still in, not only those who never
+ * answered: `weigh()` resets every non-`cant_make_it` row to `pending` in
+ * the same write that puts the new proposal out (#176,
+ * `resetResponsesForNewProposal`).
  */
 export async function notifyProposalWaiting(
   meetingId: string,
