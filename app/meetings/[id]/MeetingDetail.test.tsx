@@ -23,6 +23,8 @@ function detail(overrides: Record<string, unknown> = {}) {
     isInitiator: false,
     conflicts: [],
     missingHome: [],
+    calendarMissing: [],
+    retryInMinutes: null,
     initiatorName: "אלדד",
     pinnedVenue: null,
     occasion: null,
@@ -400,6 +402,121 @@ test("tells the viewer where to fix it when they are the one missing", async () 
   expect(
     await screen.findByRole("link", { name: "הגדר עכשיו" })
   ).toHaveAttribute("href", "/profile/location");
+});
+
+test("B9 part five: names who needs to reconnect their calendar", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            proposal: null,
+            calendarMissing: [{ userId: "u1", name: "רון" }],
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText(/רון צריך\/ה לחבר מחדש את היומן/)
+  ).toBeInTheDocument();
+  // The viewer (u2) is not the one missing, so no prompt to reconnect their own.
+  expect(
+    screen.queryByRole("link", { name: "חבר מחדש" })
+  ).not.toBeInTheDocument();
+});
+
+test("B9 part five: gives the viewer a way to reconnect when it is their own calendar", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            proposal: null,
+            calendarMissing: [{ userId: "u2", name: "דני" }],
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(await screen.findByRole("link", { name: "חבר מחדש" })).toHaveAttribute(
+    "href",
+    "/api/auth/signin?callbackUrl=%2Fmeetings%2Fmeeting-1"
+  );
+});
+
+test("B9 part five: says when the next automatic attempt is, once a service has rate-limited us", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(detail({ proposal: null, retryInMinutes: 10 }))
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText(/ננסה שוב בעוד כ-10 דקות/)
+  ).toBeInTheDocument();
+});
+
+test("B9 part five: says 'about a minute' rather than 'about 1 minutes'", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(detail({ proposal: null, retryInMinutes: 1 }))
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(await screen.findByText(/ננסה שוב בעוד כדקה/)).toBeInTheDocument();
+});
+
+test("B9 part five: shows no waiting notice when nothing is blocking", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(jsonResponse(detail({ proposal: null }))))
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  await screen.findByText(/איפה זה עומד/);
+  expect(screen.queryByText("ההתאמה מחכה")).not.toBeInTheDocument();
+});
+
+test("B9 part five: stays out of the way of the stuck panel", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            isStuck: true,
+            proposal: null,
+            retryInMinutes: 10,
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  await screen.findByText(/איפה זה עומד/);
+  expect(screen.queryByText("ההתאמה מחכה")).not.toBeInTheDocument();
 });
 
 test("shows no notice when nobody is missing a home area", async () => {

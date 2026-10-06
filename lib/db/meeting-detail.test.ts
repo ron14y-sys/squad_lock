@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeContext, withoutOrigin } from "./meeting-detail";
+import { describeContext, minutesUntil, withoutOrigin } from "./meeting-detail";
 
 const people = [
   { userId: "u1", name: "רון" },
@@ -106,5 +106,28 @@ describe("describeContext", () => {
         mobilityWindows: [],
       })
     ).toBe("מגיע/ה מתל אביב");
+  });
+});
+
+describe("minutesUntil (B9 part five)", () => {
+  const now = new Date("2026-10-06T12:00:00.000Z");
+  const at = (ms: number) => new Date(now.getTime() + ms);
+
+  it("is null when there is no wait scheduled", () => {
+    expect(minutesUntil(null, now)).toBeNull();
+  });
+
+  it("is null once the moment has passed, or is exactly now", () => {
+    expect(minutesUntil(at(-1), now)).toBeNull();
+    expect(minutesUntil(at(0), now)).toBeNull();
+  });
+
+  it("rounds a partial minute up, never down to zero", () => {
+    expect(minutesUntil(at(1), now)).toBe(1);
+    expect(minutesUntil(at(61_000), now)).toBe(2);
+  });
+
+  it("is exact on a whole number of minutes", () => {
+    expect(minutesUntil(at(10 * 60_000), now)).toBe(10);
   });
 });
