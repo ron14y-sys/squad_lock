@@ -491,8 +491,18 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
             calendarBlocked
           )}
         </span>
-        {detail.occasion && <span className="sl-sub">· {detail.occasion}</span>}
       </div>
+
+      {/* What the meeting is for is what a person looks for first — the
+          page's heading, not a grey aside next to the status. */}
+      {detail.occasion && (
+        <h1
+          className="sl-sec text-balance"
+          style={{ fontSize: 28, lineHeight: 1.15 }}
+        >
+          {detail.occasion}
+        </h1>
+      )}
 
       {detail.missingHome.length > 0 && (
         <MissingHomeNotice
