@@ -77,6 +77,8 @@ export type ConflictDTO = {
   groupName: string;
   venueName: string | null;
   start: string | null;
+  /** Already agreed by its group — approving here leaves it as it is. */
+  confirmed: boolean;
 };
 
 /** Someone the matching agent cannot place: no home point and no amendment for tonight. */
@@ -290,7 +292,10 @@ export async function getMeetingDetail(
       c.softPreferences === null
   );
 
-  const conflictPairs = await findConflictingMeetings(viewerId);
+  // A confirmed meeting is a clash for the *other* meeting's page, where
+  // there is still an approve button to warn above — not for its own.
+  const conflictPairs =
+    meeting.status === "closed" ? [] : await findConflictingMeetings(viewerId);
   const otherMeetingIds = conflictPairs.flatMap((pair) => {
     if (pair.meetingA.id === meeting.id) return [pair.meetingB.id];
     if (pair.meetingB.id === meeting.id) return [pair.meetingA.id];
@@ -318,6 +323,7 @@ export async function getMeetingDetail(
     venueName:
       other.matchRuns[0]?.options[0]?.venueName ?? other.pinnedVenue ?? null,
     start: other.currentDatetime?.toISOString() ?? null,
+    confirmed: other.status === "closed",
   }));
 
   const responses = row.responses.map((r) => ({

@@ -16,14 +16,15 @@ const CONFLICT = {
   groupName: "סועדים בשקט",
   venueName: "טרטוריה לוינסקי",
   start: "2026-09-15T17:30:00.000Z",
+  confirmed: false,
 };
 
-function renderWarning(onResolved = vi.fn()) {
+function renderWarning(onResolved = vi.fn(), conflict = CONFLICT) {
   render(
     <ConflictWarning
       meetingId="meeting-1"
       thisMeetingName="בית קפה נורדאו"
-      conflicts={[CONFLICT]}
+      conflicts={[conflict]}
       onResolved={onResolved}
     />
   );
@@ -130,4 +131,25 @@ test("shows a message and does not report success when the server refuses", asyn
     await screen.findByText("אי אפשר להחזיר את הפגישה הזו לשקלול כרגע.")
   ).toBeInTheDocument();
   expect(onResolved).not.toHaveBeenCalled();
+});
+
+test("a confirmed meeting is never promised back to weighing, nor offered for change", async () => {
+  const user = userEvent.setup();
+  renderWarning(vi.fn(), { ...CONFLICT, confirmed: true });
+
+  expect(screen.getByText(/יש לך פגישה מאושרת באותו ערב/)).toBeInTheDocument();
+  expect(
+    screen.getByText("אישור כאן לא יבטל אותה — היא כבר נקבעה עם הקבוצה שלה.")
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/תחזור לשקלול בלעדייך/)).not.toBeInTheDocument();
+
+  await user.click(
+    screen.getByRole("button", { name: "אחת מהן צריכה להשתנות" })
+  );
+  expect(
+    screen.getByRole("button", { name: /שנה את הפגישה הזו/ })
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "שנה את הפגישה בסועדים בשקט" })
+  ).not.toBeInTheDocument();
 });
