@@ -31,6 +31,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { getPrisma } from "@/lib/db/client";
+import { FREEBUSY_SCOPE, refreshTokenToStore } from "@/lib/calendar/consent";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -41,8 +42,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         params: {
           access_type: "offline",
           prompt: "consent",
-          scope:
-            "openid email profile https://www.googleapis.com/auth/calendar.freebusy",
+          scope: `openid email profile ${FREEBUSY_SCOPE}`,
         },
       },
     }),
@@ -65,21 +65,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       const prisma = getPrisma();
+      // Null when the calendar box was left unticked — see consent.ts.
+      const refreshToken = refreshTokenToStore(account);
 
       await prisma.user.upsert({
         where: { googleId: profile.sub },
         update: {
           email: user.email,
           name: user.name ?? "",
-          ...(account.refresh_token
-            ? { googleRefreshToken: account.refresh_token }
+          ...(refreshToken !== undefined
+            ? { googleRefreshToken: refreshToken }
             : {}),
         },
         create: {
           googleId: profile.sub,
           email: user.email,
           name: user.name ?? "",
-          googleRefreshToken: account.refresh_token ?? null,
+          googleRefreshToken: refreshToken ?? null,
         },
       });
 

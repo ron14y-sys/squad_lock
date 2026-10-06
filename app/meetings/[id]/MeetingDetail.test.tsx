@@ -422,11 +422,11 @@ test("B9 part five: names who needs to reconnect their calendar", async () => {
   render(<MeetingDetail meetingId="meeting-1" />);
 
   expect(
-    await screen.findByText(/רון צריך\/ה לחבר מחדש את היומן/)
+    await screen.findByText(/רון עוד לא חיבר\/ה יומן, ולכן ההצעה תקועה/)
   ).toBeInTheDocument();
-  // The viewer (u2) is not the one missing, so no prompt to reconnect their own.
+  // The viewer (u2) is not the one missing, so no prompt to connect their own.
   expect(
-    screen.queryByRole("link", { name: "חבר מחדש" })
+    screen.queryByRole("link", { name: "חבר יומן" })
   ).not.toBeInTheDocument();
 });
 
@@ -447,9 +447,11 @@ test("B9 part five: gives the viewer a way to reconnect when it is their own cal
 
   render(<MeetingDetail meetingId="meeting-1" />);
 
-  expect(await screen.findByRole("link", { name: "חבר מחדש" })).toHaveAttribute(
+  expect(await screen.findByText(/לא חיברת יומן/)).toBeInTheDocument();
+  // Not /api/auth/signin: that sends a signed-in person to /groups.
+  expect(screen.getByRole("link", { name: "חבר יומן" })).toHaveAttribute(
     "href",
-    "/api/auth/signin?callbackUrl=%2Fmeetings%2Fmeeting-1"
+    "/api/calendar/connect?callbackUrl=%2Fmeetings%2Fmeeting-1"
   );
 });
 
@@ -641,4 +643,29 @@ test("a meeting's opening search is not called a re-weighing, nor a new proposal
   expect(await screen.findAllByText("מחפשים הצעה")).toHaveLength(2);
   expect(screen.queryByText("משוקלל מחדש")).not.toBeInTheDocument();
   expect(screen.queryByText("מחפשים הצעה חדשה")).not.toBeInTheDocument();
+});
+
+test("a meeting waiting on a missing calendar reads as stuck, not as searching", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            status: "reweighing",
+            proposal: null,
+            calendarMissing: [{ userId: "u1", name: "רון" }],
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(await screen.findByText("תקוע — חסר חיבור ליומן")).toBeInTheDocument();
+  expect(screen.getByText("ההצעה תקועה")).toBeInTheDocument();
+  // No spinner promising a proposal that cannot come.
+  expect(screen.queryByText("מחפשים הצעה")).not.toBeInTheDocument();
+  expect(screen.queryByRole("status", { busy: true })).not.toBeInTheDocument();
 });

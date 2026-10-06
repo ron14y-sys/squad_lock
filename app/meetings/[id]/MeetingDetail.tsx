@@ -334,10 +334,10 @@ function WeighingBlockedNotice({
   retryInMinutes: number | null;
   viewerId: string;
 }) {
-  // Same route B10's email uses, and the same `callbackUrl` shape as
-  // `ScreenState`: it forces a fresh Google consent, which is what issues a
-  // new refresh token, then lands the person back here.
-  const reconnectHref = `/api/auth/signin?callbackUrl=${encodeURIComponent(
+  // Same route B10's email uses: it starts Google's consent directly (not
+  // `/api/auth/signin`, which bounces a signed-in person to /groups), then
+  // lands the person back here.
+  const connectHref = `/api/calendar/connect?callbackUrl=${encodeURIComponent(
     `/meetings/${meetingId}`
   )}`;
   const mine = calendarMissing.some((p) => p.userId === viewerId);
@@ -345,20 +345,22 @@ function WeighingBlockedNotice({
 
   return (
     <div role="status" className="sl-warn flex flex-col gap-2">
-      <p className="font-bold">ההתאמה מחכה</p>
+      <p className="font-bold">
+        {calendarMissing.length > 0 ? "ההצעה תקועה" : "ההתאמה מחכה"}
+      </p>
       {mine && (
         <p>
-          היומן שלך לא מחובר, ובלעדיו אי אפשר לבדוק מתי אתה פנוי.{" "}
-          <Link href={reconnectHref} className="font-bold underline">
-            חבר מחדש
+          לא חיברת יומן, ובלעדיו אי אפשר לבדוק מתי אתה פנוי.{" "}
+          <Link href={connectHref} className="font-bold underline">
+            חבר יומן
           </Link>
         </p>
       )}
       {others.length > 0 && (
         <p>
           {others.map((p) => p.name).join(", ")}{" "}
-          {others.length === 1 ? "צריך/ה" : "צריכים"} לחבר מחדש את היומן. בלי זה
-          אי אפשר לבדוק מתי כולם פנויים.
+          {others.length === 1 ? "עוד לא חיבר/ה" : "עוד לא חיברו"} יומן, ולכן
+          ההצעה תקועה עד {others.length === 1 ? "שיתחבר/תתחבר" : "שיתחברו"}.
         </p>
       )}
       {retryInMinutes !== null && (
@@ -416,7 +418,9 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
   // While a re-weighing is under way, ask again every three seconds — the
   // same cadence as the feed, and what makes the route above run it. A failed
   // poll keeps the page on screen; the next one tries again.
-  const reweighing = detail?.status === "reweighing";
+  // Blocked on a missing calendar, nothing is about to change: no fast poll.
+  const reweighing =
+    detail?.status === "reweighing" && detail.calendarMissing.length === 0;
   useEffect(() => {
     if (!reweighing) return;
     const cancelledRef = { current: false };
@@ -465,6 +469,11 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
     );
   }
 
+  // A run refuses to guess anyone free, so with a calendar missing the
+  // meeting is stuck, not searching — the notice says who and how to fix it.
+  const calendarBlocked =
+    detail.status === "reweighing" && detail.calendarMissing.length > 0;
+
   return (
     <div className="sl-page">
       <Link href={`/groups/${detail.groupId}`} className="sl-sub self-start">
@@ -472,8 +481,15 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
       </Link>
 
       <div className="flex items-center gap-2">
-        <span className={`sl-stk ${stickerClass(detail.status)}`}>
-          {meetingStatusLabel(detail.status, null, detail.proposal === null)}
+        <span
+          className={`sl-stk ${stickerClass(detail.status, calendarBlocked)}`}
+        >
+          {meetingStatusLabel(
+            detail.status,
+            null,
+            detail.proposal === null,
+            calendarBlocked
+          )}
         </span>
         {detail.occasion && <span className="sl-sub">· {detail.occasion}</span>}
       </div>
@@ -511,7 +527,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
           onCancelled={refresh}
         />
       )}
-      {reweighing && !detail.isStuck ? (
+      {calendarBlocked ? null : reweighing && !detail.isStuck ? (
         <ReweighingBlock
           runStage={detail.runStage}
           firstSearch={detail.proposal === null}

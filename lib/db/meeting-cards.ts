@@ -86,6 +86,12 @@ export type MeetingCardDTO = {
    * "re-weighed" when nothing has been weighed.
    */
   firstSearch: boolean;
+  /**
+   * `reweighing`, but nothing can move until somebody still in connects
+   * their calendar — a run refuses to guess anyone free. The card reads
+   * stuck rather than searching, and the feed stops polling fast for it.
+   */
+  calendarBlocked: boolean;
   participants: { userId: string; name: string; status: ResponseStatus }[];
 };
 
@@ -126,7 +132,9 @@ function sortMeetingCards<T extends MeetingCardDTO>(cards: T[]): T[] {
 }
 
 type MeetingRowWithResponses = MeetingModel & {
-  responses: (ResponseModel & { user: { name: string } })[];
+  responses: (ResponseModel & {
+    user: { name: string; googleRefreshToken: string | null };
+  })[];
   _count: { matchRuns: number };
 };
 
@@ -175,6 +183,11 @@ function toMeetingCardDTO(
       meeting.currentDatetime.getTime() < now,
     runStage: runStageOf(row),
     firstSearch: status === "reweighing" && row._count.matchRuns === 0,
+    calendarBlocked:
+      status === "reweighing" &&
+      row.responses.some(
+        (r) => r.status !== "cant_make_it" && r.user.googleRefreshToken === null
+      ),
     participants: row.responses.map((r) => ({
       userId: r.userId,
       name: r.user.name,
@@ -201,7 +214,12 @@ export async function listMeetingCardsForGroup(
   const rows = await prisma.meeting.findMany({
     where: { groupId },
     include: {
-      responses: { include: { user: { select: { name: true } } } },
+      responses: {
+        include: {
+          // The token never leaves this file: only whether it is there.
+          user: { select: { name: true, googleRefreshToken: true } },
+        },
+      },
       _count: { select: { matchRuns: true } },
     },
   });
@@ -245,7 +263,12 @@ export async function listOpenMeetingCardsForUser(
       meeting: {
         include: {
           group: { select: { id: true, name: true } },
-          responses: { include: { user: { select: { name: true } } } },
+          responses: {
+            include: {
+              // The token never leaves this file: only whether it is there.
+              user: { select: { name: true, googleRefreshToken: true } },
+            },
+          },
           _count: { select: { matchRuns: true } },
         },
       },

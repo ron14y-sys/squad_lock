@@ -95,7 +95,7 @@ describe("calendarReconnectEmail", () => {
 
     expect(email.subject).toBeTruthy();
     expect(email.html).toContain(
-      "https://squadlock.example/api/auth/signin?callbackUrl=%2Fgroups"
+      "https://squadlock.example/api/calendar/connect?callbackUrl=%2Fgroups"
     );
   });
 

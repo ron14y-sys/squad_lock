@@ -223,6 +223,27 @@ describe("fetchBusy", () => {
       expect(error).toBeInstanceOf(Error);
     });
 
+    it("treats a token granted without the calendar scope as a consent problem", async () => {
+      // The body Google sent in production (2026-10-06) when the calendar
+      // box was left unticked at sign-in.
+      const error = await freebusyFailsWith(
+        failure(
+          403,
+          JSON.stringify({
+            error: {
+              code: 403,
+              errors: [{ reason: "insufficientPermissions" }],
+              status: "PERMISSION_DENIED",
+              details: [{ reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT" }],
+            },
+          })
+        )
+      );
+
+      expect(error).toBeInstanceOf(CalendarAuthError);
+      expect(error).not.toBeInstanceOf(ExternalRateLimitError);
+    });
+
     it("does not treat a 500 as a rate limit", async () => {
       const error = await freebusyFailsWith(failure(500, "backend error"));
 
