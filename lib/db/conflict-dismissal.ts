@@ -13,6 +13,7 @@ import { APP_TIME_ZONE } from "@/lib/types/primitives";
 import { meetingFromRow } from "@/lib/types/meeting-from-row";
 
 import { OPEN_MEETING_STATUSES } from "./meetings";
+import { MeetingStatus } from "@/lib/generated/prisma/client";
 import { getPrisma } from "./client";
 
 import type { MeetingModel } from "@/lib/generated/prisma/models";
@@ -87,9 +88,15 @@ export type ConflictingMeetingPair = {
 };
 
 /**
- * Every pair of this user's own open meetings, across every group, that
- * conflict by `meetingsConflict` — with any pair the user has already
- * dismissed left out.
+ * Every pair of this user's own meetings, across every group, that conflict
+ * by `meetingsConflict` — with any pair the user has already dismissed left
+ * out.
+ *
+ * A confirmed (`closed`) meeting takes part, because an evening already
+ * agreed is exactly what a new proposal should be checked against — but a
+ * pair needs at least one open meeting, since two confirmed ones leave
+ * nothing to decide. Approving never cancels a confirmed meeting
+ * (`cancelConflictingMeetings` only touches open ones); the warning says so.
  *
  * A meeting with no `currentDatetime` yet (nothing proposed, so nothing to
  * conflict on) is excluded at the query itself, not filtered afterwards.
@@ -103,7 +110,7 @@ export async function findConflictingMeetings(
     where: {
       userId,
       meeting: {
-        status: { in: OPEN_MEETING_STATUSES },
+        status: { in: [...OPEN_MEETING_STATUSES, MeetingStatus.closed] },
         currentDatetime: { not: null },
       },
     },
@@ -127,6 +134,12 @@ export async function findConflictingMeetings(
     for (let j = i + 1; j < meetingRows.length; j++) {
       const rowA = meetingRows[i];
       const rowB = meetingRows[j];
+      if (
+        rowA.status === MeetingStatus.closed &&
+        rowB.status === MeetingStatus.closed
+      ) {
+        continue;
+      }
 
       if (
         !meetingsConflict(
