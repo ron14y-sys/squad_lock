@@ -669,3 +669,30 @@ test("a meeting waiting on a missing calendar reads as stuck, not as searching",
   expect(screen.queryByText("מחפשים הצעה")).not.toBeInTheDocument();
   expect(screen.queryByRole("status", { busy: true })).not.toBeInTheDocument();
 });
+
+test("the meeting's topic is the page heading", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(jsonResponse(detail({ occasion: "יום הולדת לנועה" })))
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByRole("heading", { level: 1, name: "יום הולדת לנועה" })
+  ).toBeInTheDocument();
+});
+
+test("no topic, no empty heading", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(jsonResponse(detail())))
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  await screen.findByText("בית קפה נורדאו");
+  expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+});
