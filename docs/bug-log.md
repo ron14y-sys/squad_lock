@@ -23,6 +23,65 @@ says so.
 
 ---
 
+## A new meeting never got a proposal: calendar permission missing — 2026-10-06
+
+- **Seen:** "I asked to create a meeting and it didn't create one." It had
+  been created; it just never got a proposal, and its card said it was
+  searching. The Vercel log, every poll:
+  `[a8] cycle failed … freebusy.query failed (403) … ACCESS_TOKEN_SCOPE_INSUFFICIENT`.
+- **Cause:** three things in a row.
+  - Google's consent screen shows the calendar permission as its own
+    checkbox. A participant signed in with it unticked: the refresh token was
+    stored and exchanges fine, and Google refuses every free/busy query with
+    it.
+  - `fetchBusy` (`lib/calendar/freebusy.ts`) classified a 403 only as a rate
+    limit or as nothing, so this one became a generic fault: the meeting stayed
+    in `weighing`, was retried on every poll, and nobody was told. B10's
+    handling — clear the token, email the person, show "ההתאמה מחכה" — ran
+    only for a _revoked_ token, the one way it had been seen to fail.
+  - Had it run, its "חבר מחדש" link (and the B10 email's, and the
+    notification's) went to `/api/auth/signin`. With `pages.signIn` set to
+    `/`, that lands on the home page, which sends anyone signed in to
+    `/groups` — so reconnecting was impossible without signing out first.
+    Suspected from reading on the same day, confirmed by this report.
+- **Fix:** [#206](https://github.com/ron14y-sys/squad_lock/pull/206). The
+  calendar stays required (decided); what changed is that a missing one is
+  _seen_:
+  - that 403 is a `CalendarAuthError`, so B10's path runs;
+  - a sign-in whose scope list lacks `calendar.freebusy` stores no token;
+  - `/api/calendar/connect` starts Google's consent directly and returns to the
+    page — used by the meeting page, the email and the notification;
+  - the card and the meeting page read "תקוע — חסר חיבור ליומן" with no
+    spinner; the person missing it sees "לא חיברת יומן" with a link, the
+    others see who it is; no fast polling, and one info log line instead of an
+    error per poll.
+- **Proof:** `freebusy.test.ts` — the 403 body Google actually sent becomes a
+  `CalendarAuthError` (fails on the old code). `consent.test.ts` — the sign-in
+  rule. `GroupFeed.test.tsx` / `MeetingDetail.test.tsx` — blocked reads as
+  stuck, not searching (fail on the old code). The connect route was checked on
+  a local dev server (307 straight to Google with `prompt=consent`); the full
+  round trip with a real account is manual test 14.4.
+- **Still open:** the server-side `calendarBlocked` flag on cards is read, not
+  tested.
+
+## A new meeting said "re-weighed" before anything was weighed — 2026-10-06
+
+- **Seen:** right after opening a meeting, the first status shown was
+  "משוקלל מחדש", and the meeting page said "מחפשים הצעה חדשה" — for a
+  meeting that had never had a proposal.
+- **Cause:** a new meeting starts in `weighing`, and `deriveMeetingCardStatus`
+  (`lib/db/meeting-cards.ts`) maps every `weighing` meeting to `reweighing`.
+  The vocabulary (spec §5.6) was written around the rejection loop and had no
+  word for the opening search.
+- **Fix:** [#205](https://github.com/ron14y-sys/squad_lock/pull/205). The status
+  stays `reweighing` — the fast poll keys on it — and only the words change: a
+  card with no `MatchRun` yet carries `firstSearch` and reads "מחפשים הצעה";
+  the meeting page reads the same when it has no proposal.
+- **Proof:** label, feed and meeting-page tests for the first search, each
+  failing on the old code. The server-side `firstSearch` flag is read, not
+  tested.
+- **Still open:** nothing.
+
 ## The preference game forgot earlier answers — 2026-10-06
 
 - **Seen:** answers given in the preference game "were not saved". Replaying
@@ -118,8 +177,4 @@ existed. Cause and fix are in each issue and PR.
 - **Signing out opens NextAuth's default page, in English** — `התנתק` links to
   `/api/auth/signout`, and `auth.ts` sets a custom page only for sign-in.
   ([#171](https://github.com/ron14y-sys/squad_lock/issues/171))
-- **"חבר מחדש" for a disconnected calendar may not reconnect** — suspected from
-  reading, not seen: the link goes to `/api/auth/signin`, sign-in's page is
-  `/`, and `/` sends a signed-in user to `/groups`. Test 14.4 on the manual
-  test sheet checks it.
 - **Stale click approves an unseen proposal** — see the #176 entry above.
