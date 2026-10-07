@@ -31,7 +31,7 @@ says so.
   different `(venue, slot)` pairs, and here they were one café at three times.
   `getMeetingDetail` (`lib/db/meeting-detail.ts`) listed the venue name of
   ranks 2 and 3 without asking whether it was the same place.
-- **Fix:** PR not yet opened. `alsoConsideredOf` lists the other venues only,
+- **Fix:** [#214](https://github.com/ron14y-sys/squad_lock/pull/214). `alsoConsideredOf` lists the other venues only,
   each once, in rank order (the same place means the same place id, or the
   same name when there is none). When there are none, the line is not shown.
 - **Proof:** `meeting-detail.test.ts`, including the case exactly as seen
@@ -48,7 +48,7 @@ says so.
   states (satisfies / violates / not known), but nothing ever filled in
   `venueFacts`. `run-cycle.ts` said so in a comment ("B7 fetches no dietary
   tags"). So every dietary tag was "not known", for every venue, always.
-- **Fix:** PR not yet opened.
+- **Fix:** [#214](https://github.com/ron14y-sys/squad_lock/pull/214).
   - Place Details now also asks for `servesVegetarianFood`, which is in the
     same Enterprise + Atmosphere tier as `editorialSummary`. Checked in
     Google's field table: no extra cost.
@@ -86,7 +86,7 @@ says so.
   treating an unread calendar as free could produce a proposal that clashes
   with a calendar nobody read (spec §5.7: a false positive is worse than a
   false negative).
-- **Fix:** PR not yet opened. The calendar is optional, and the proposal says
+- **Fix:** [#214](https://github.com/ron14y-sys/squad_lock/pull/214). The calendar is optional, and the proposal says
   what was not checked:
   - `fetchBusyForConnections` reads every calendar it can and returns
     `{ busy, unread, rejected }`. No token, or a token Google refuses, puts the
