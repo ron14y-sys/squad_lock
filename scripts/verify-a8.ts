@@ -129,12 +129,18 @@ const VENUES: Candidate[] = [
 ];
 
 /** Nobody is busy. Injected, because a calendar cannot be faked via a cache. */
-const FREE: BusyLookup = async (userIds) =>
-  new Map(userIds.map((userId) => [userId, [] as TimeSlot[]]));
+const FREE: BusyLookup = async (userIds) => ({
+  busy: new Map(userIds.map((userId) => [userId, [] as TimeSlot[]])),
+  unread: [],
+  rejected: [],
+});
 
 /** Everybody is busy for the whole window — B6's "empty intersection". */
-const ALWAYS_BUSY: BusyLookup = async (userIds, window) =>
-  new Map(userIds.map((userId) => [userId, [window]]));
+const ALWAYS_BUSY: BusyLookup = async (userIds, window) => ({
+  busy: new Map(userIds.map((userId) => [userId, [window]])),
+  unread: [],
+  rejected: [],
+});
 
 async function makeUser(name: string, home: LatLng | null) {
   const user = await prisma.user.create({

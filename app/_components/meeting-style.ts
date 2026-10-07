@@ -8,12 +8,7 @@ type CardStatus =
   | "stuck"
   | "closed";
 
-export function stickerClass(
-  status: CardStatus,
-  calendarBlocked = false
-): string {
-  // Blocked on a missing calendar reads as stuck, not as searching.
-  if (calendarBlocked) return "stuck";
+export function stickerClass(status: CardStatus): string {
   switch (status) {
     case "waiting_on_you":
       return "you";

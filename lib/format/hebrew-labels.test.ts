@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { meetingStatusLabel, membersLabel } from "./hebrew-labels";
+import {
+  meetingStatusLabel,
+  membersLabel,
+  uncheckedCalendarNote,
+  unverifiedNote,
+} from "./hebrew-labels";
 
 describe("membersLabel", () => {
   it("uses the singular for one member, not '1 חברים'", () => {
@@ -22,5 +27,35 @@ describe("meetingStatusLabel", () => {
   it("still calls a search after a proposal a re-weighing", () => {
     expect(meetingStatusLabel("reweighing", null, false)).toBe("משוקלל מחדש");
     expect(meetingStatusLabel("reweighing", null)).toBe("משוקלל מחדש");
+  });
+});
+
+describe("uncheckedCalendarNote", () => {
+  it("says nothing when every calendar was checked", () => {
+    expect(uncheckedCalendarNote([])).toBeNull();
+  });
+
+  it("names one person, speaking of the calendar so no gender is needed", () => {
+    expect(uncheckedCalendarNote(["רון"])).toBe(
+      "הזמן הזה לא נבדק מול היומן של רון, כי הוא עוד לא מחובר."
+    );
+  });
+
+  it("lists several in the plural", () => {
+    expect(uncheckedCalendarNote(["רון", "דנה", "יואב"])).toBe(
+      "הזמן הזה לא נבדק מול היומנים של רון, דנה ויואב, כי הם עוד לא מחוברים."
+    );
+  });
+});
+
+describe("unverifiedNote", () => {
+  it("leaves a calendar out of the venue sentence", () => {
+    expect(unverifiedNote([{ kind: "calendar", userId: "u1" }])).toBeNull();
+    expect(
+      unverifiedNote([
+        { kind: "opening_hours" },
+        { kind: "calendar", userId: "u1" },
+      ])
+    ).toBe("לא הצלחנו לאמת את שעות הפתיחה — כדאי לטלפן ולוודא לפני שיוצאים.");
   });
 });

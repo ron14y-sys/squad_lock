@@ -9,6 +9,7 @@ import {
   meetingStatusLabel,
   RESPONSE_STATUS_LABELS,
   RUN_STAGE_LABELS,
+  uncheckedCalendarNote,
   unverifiedNote,
 } from "@/lib/format/hebrew-labels";
 import type { RunStage } from "@/lib/generated/prisma/enums";
@@ -37,6 +38,8 @@ type Proposal = {
   end: string;
   justification: string | null;
   unverified: UnverifiedFact[];
+  /** Whose calendar this proposal was not checked against. */
+  uncheckedCalendars: MissingHome[];
   alsoConsidered: string[];
 };
 
@@ -85,7 +88,6 @@ type MeetingDetail = {
   isInitiator: boolean;
   conflicts: Conflict[];
   missingHome: MissingHome[];
-  calendarMissing: MissingHome[];
   retryInMinutes: number | null;
   initiatorName: string;
   pinnedVenue: string | null;
@@ -123,9 +125,13 @@ function formatRange(startIso: string, endIso: string): string {
 function ProposalBlock({
   proposal,
   stuck,
+  meetingId,
+  viewerId,
 }: {
   proposal: Proposal | null;
   stuck: boolean;
+  meetingId: string;
+  viewerId: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const heading = stuck ? "ההצעה הטובה ביותר שמצאנו" : "ההצעה";
@@ -144,6 +150,14 @@ function ProposalBlock({
   }
 
   const note = unverifiedNote(proposal.unverified);
+  const uncheckedMine = proposal.uncheckedCalendars.some(
+    (p) => p.userId === viewerId
+  );
+  const uncheckedOthers = uncheckedCalendarNote(
+    proposal.uncheckedCalendars
+      .filter((p) => p.userId !== viewerId)
+      .map((p) => p.name)
+  );
 
   return (
     <section className="sl-panel">
@@ -175,6 +189,22 @@ function ProposalBlock({
       )}
 
       {note && <p className="sl-sub">{note}</p>}
+      {/* A calendar is optional: whoever has none is treated as free apart
+          from the hours they set, and the proposal says so. */}
+      {uncheckedMine && (
+        <p className="sl-sub">
+          לא חיברת יומן, אז הזמן הזה נבדק רק מול השעות שהגדרת באפליקציה.{" "}
+          <Link
+            href={`/api/calendar/connect?callbackUrl=${encodeURIComponent(
+              `/meetings/${meetingId}`
+            )}`}
+            className="font-bold underline"
+          >
+            חבר יומן
+          </Link>
+        </p>
+      )}
+      {uncheckedOthers && <p className="sl-sub">{uncheckedOthers}</p>}
 
       {proposal.alsoConsidered.length > 0 && (
         <p className="sl-sub">גם שקלנו: {proposal.alsoConsidered.join(", ")}</p>
@@ -317,59 +347,18 @@ function MissingHomeNotice({
 }
 
 /**
- * B9 part five: why a meeting that is still being weighed is not moving. Two
- * causes the group can actually do something about or at least understand:
- * somebody's calendar connection is gone (`calendarMissing`), or an outside
- * service told us to slow down (`retryInMinutes`). Everything else that
- * goes wrong in a run is ours to fix, and says nothing here.
+ * B9 part five: why a meeting that is still being weighed is not moving —
+ * an outside service told us to slow down (`retryInMinutes`). Everything
+ * else that goes wrong in a run is ours to fix, and says nothing here.
  */
-function WeighingBlockedNotice({
-  meetingId,
-  calendarMissing,
-  retryInMinutes,
-  viewerId,
-}: {
-  meetingId: string;
-  calendarMissing: MissingHome[];
-  retryInMinutes: number | null;
-  viewerId: string;
-}) {
-  // Same route B10's email uses: it starts Google's consent directly (not
-  // `/api/auth/signin`, which bounces a signed-in person to /groups), then
-  // lands the person back here.
-  const connectHref = `/api/calendar/connect?callbackUrl=${encodeURIComponent(
-    `/meetings/${meetingId}`
-  )}`;
-  const mine = calendarMissing.some((p) => p.userId === viewerId);
-  const others = calendarMissing.filter((p) => p.userId !== viewerId);
-
+function WeighingBlockedNotice({ retryInMinutes }: { retryInMinutes: number }) {
   return (
     <div role="status" className="sl-warn flex flex-col gap-2">
-      <p className="font-bold">
-        {calendarMissing.length > 0 ? "ההצעה תקועה" : "ההתאמה מחכה"}
+      <p className="font-bold">ההתאמה מחכה</p>
+      <p>
+        אחד השירותים שאנחנו משתמשים בהם מגביל אותנו כרגע. ננסה שוב{" "}
+        {retryInMinutes === 1 ? "בעוד כדקה" : `בעוד כ-${retryInMinutes} דקות`}.
       </p>
-      {mine && (
-        <p>
-          לא חיברת יומן, ובלעדיו אי אפשר לבדוק מתי אתה פנוי.{" "}
-          <Link href={connectHref} className="font-bold underline">
-            חבר יומן
-          </Link>
-        </p>
-      )}
-      {others.length > 0 && (
-        <p>
-          {others.map((p) => p.name).join(", ")}{" "}
-          {others.length === 1 ? "עוד לא חיבר/ה" : "עוד לא חיברו"} יומן, ולכן
-          ההצעה תקועה עד {others.length === 1 ? "שיתחבר/תתחבר" : "שיתחברו"}.
-        </p>
-      )}
-      {retryInMinutes !== null && (
-        <p>
-          אחד השירותים שאנחנו משתמשים בהם מגביל אותנו כרגע. ננסה שוב{" "}
-          {retryInMinutes === 1 ? "בעוד כדקה" : `בעוד כ-${retryInMinutes} דקות`}
-          .
-        </p>
-      )}
     </div>
   );
 }
@@ -418,9 +407,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
   // While a re-weighing is under way, ask again every three seconds — the
   // same cadence as the feed, and what makes the route above run it. A failed
   // poll keeps the page on screen; the next one tries again.
-  // Blocked on a missing calendar, nothing is about to change: no fast poll.
-  const reweighing =
-    detail?.status === "reweighing" && detail.calendarMissing.length === 0;
+  const reweighing = detail?.status === "reweighing";
   useEffect(() => {
     if (!reweighing) return;
     const cancelledRef = { current: false };
@@ -469,11 +456,6 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
     );
   }
 
-  // A run refuses to guess anyone free, so with a calendar missing the
-  // meeting is stuck, not searching — the notice says who and how to fix it.
-  const calendarBlocked =
-    detail.status === "reweighing" && detail.calendarMissing.length > 0;
-
   return (
     <div className="sl-page">
       <Link href={`/groups/${detail.groupId}`} className="sl-sub self-start">
@@ -481,15 +463,8 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
       </Link>
 
       <div className="flex items-center gap-2">
-        <span
-          className={`sl-stk ${stickerClass(detail.status, calendarBlocked)}`}
-        >
-          {meetingStatusLabel(
-            detail.status,
-            null,
-            detail.proposal === null,
-            calendarBlocked
-          )}
+        <span className={`sl-stk ${stickerClass(detail.status)}`}>
+          {meetingStatusLabel(detail.status, null, detail.proposal === null)}
         </span>
       </div>
 
@@ -510,16 +485,9 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
           viewerId={detail.viewerId}
         />
       )}
-      {!detail.isStuck &&
-        (detail.calendarMissing.length > 0 ||
-          detail.retryInMinutes !== null) && (
-          <WeighingBlockedNotice
-            meetingId={detail.id}
-            calendarMissing={detail.calendarMissing}
-            retryInMinutes={detail.retryInMinutes}
-            viewerId={detail.viewerId}
-          />
-        )}
+      {!detail.isStuck && detail.retryInMinutes !== null && (
+        <WeighingBlockedNotice retryInMinutes={detail.retryInMinutes} />
+      )}
       {detail.isStuck && (
         <StuckPanel
           meetingId={detail.id}
@@ -537,14 +505,19 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
           onCancelled={refresh}
         />
       )}
-      {calendarBlocked ? null : reweighing && !detail.isStuck ? (
+      {reweighing && !detail.isStuck ? (
         <ReweighingBlock
           runStage={detail.runStage}
           firstSearch={detail.proposal === null}
         />
       ) : (
         <>
-          <ProposalBlock proposal={detail.proposal} stuck={detail.isStuck} />
+          <ProposalBlock
+            proposal={detail.proposal}
+            stuck={detail.isStuck}
+            meetingId={detail.id}
+            viewerId={detail.viewerId}
+          />
           <ResponseControls
             meetingId={detail.id}
             myStatus={

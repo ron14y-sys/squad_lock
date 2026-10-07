@@ -23,7 +23,6 @@ function detail(overrides: Record<string, unknown> = {}) {
     isInitiator: false,
     conflicts: [],
     missingHome: [],
-    calendarMissing: [],
     retryInMinutes: null,
     initiatorName: "אלדד",
     pinnedVenue: null,
@@ -37,6 +36,7 @@ function detail(overrides: Record<string, unknown> = {}) {
       end: "2026-09-15T20:00:00.000Z",
       justification: "מקום שקט, קרוב לעבודה שלך.",
       unverified: [],
+      uncheckedCalendars: [],
       alsoConsidered: [],
     },
     participants: [
@@ -119,6 +119,7 @@ test("two viewers of the same meeting see their own justification, not each othe
               end: "2026-09-15T20:00:00.000Z",
               justification: "עשר דקות הליכה בשבילך.",
               unverified: [],
+              uncheckedCalendars: [],
               alsoConsidered: [],
             },
           })
@@ -404,15 +405,17 @@ test("tells the viewer where to fix it when they are the one missing", async () 
   ).toHaveAttribute("href", "/profile/location");
 });
 
-test("B9 part five: names who needs to reconnect their calendar", async () => {
+test("a proposal names whose calendar it was not checked against", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(() =>
       Promise.resolve(
         jsonResponse(
           detail({
-            proposal: null,
-            calendarMissing: [{ userId: "u1", name: "רון" }],
+            proposal: {
+              ...detail().proposal,
+              uncheckedCalendars: [{ userId: "u1", name: "רון" }],
+            },
           })
         )
       )
@@ -422,7 +425,9 @@ test("B9 part five: names who needs to reconnect their calendar", async () => {
   render(<MeetingDetail meetingId="meeting-1" />);
 
   expect(
-    await screen.findByText(/רון עוד לא חיבר\/ה יומן, ולכן ההצעה תקועה/)
+    await screen.findByText(
+      "הזמן הזה לא נבדק מול היומן של רון, כי הוא עוד לא מחובר."
+    )
   ).toBeInTheDocument();
   // The viewer (u2) is not the one missing, so no prompt to connect their own.
   expect(
@@ -430,15 +435,17 @@ test("B9 part five: names who needs to reconnect their calendar", async () => {
   ).not.toBeInTheDocument();
 });
 
-test("B9 part five: gives the viewer a way to reconnect when it is their own calendar", async () => {
+test("a proposal tells the viewer their own calendar was not checked, with a way to connect", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(() =>
       Promise.resolve(
         jsonResponse(
           detail({
-            proposal: null,
-            calendarMissing: [{ userId: "u2", name: "דני" }],
+            proposal: {
+              ...detail().proposal,
+              uncheckedCalendars: [{ userId: "u2", name: "דני" }],
+            },
           })
         )
       )
@@ -447,12 +454,16 @@ test("B9 part five: gives the viewer a way to reconnect when it is their own cal
 
   render(<MeetingDetail meetingId="meeting-1" />);
 
-  expect(await screen.findByText(/לא חיברת יומן/)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/לא חיברת יומן, אז הזמן הזה נבדק רק מול השעות/)
+  ).toBeInTheDocument();
   // Not /api/auth/signin: that sends a signed-in person to /groups.
   expect(screen.getByRole("link", { name: "חבר יומן" })).toHaveAttribute(
     "href",
     "/api/calendar/connect?callbackUrl=%2Fmeetings%2Fmeeting-1"
   );
+  // The viewer's own line only — not "the calendar of דני" as well.
+  expect(screen.queryByText(/היומן של דני/)).not.toBeInTheDocument();
 });
 
 test("B9 part five: says when the next automatic attempt is, once a service has rate-limited us", async () => {
@@ -643,31 +654,6 @@ test("a meeting's opening search is not called a re-weighing, nor a new proposal
   expect(await screen.findAllByText("מחפשים הצעה")).toHaveLength(2);
   expect(screen.queryByText("משוקלל מחדש")).not.toBeInTheDocument();
   expect(screen.queryByText("מחפשים הצעה חדשה")).not.toBeInTheDocument();
-});
-
-test("a meeting waiting on a missing calendar reads as stuck, not as searching", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(() =>
-      Promise.resolve(
-        jsonResponse(
-          detail({
-            status: "reweighing",
-            proposal: null,
-            calendarMissing: [{ userId: "u1", name: "רון" }],
-          })
-        )
-      )
-    )
-  );
-
-  render(<MeetingDetail meetingId="meeting-1" />);
-
-  expect(await screen.findByText("תקוע — חסר חיבור ליומן")).toBeInTheDocument();
-  expect(screen.getByText("ההצעה תקועה")).toBeInTheDocument();
-  // No spinner promising a proposal that cannot come.
-  expect(screen.queryByText("מחפשים הצעה")).not.toBeInTheDocument();
-  expect(screen.queryByRole("status", { busy: true })).not.toBeInTheDocument();
 });
 
 test("the meeting's topic is the page heading", async () => {

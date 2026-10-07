@@ -23,6 +23,59 @@ says so.
 
 ---
 
+## One person without a calendar held up the whole group — 2026-10-07
+
+- **Seen:** after #206, a meeting where one participant had not connected a
+  calendar read "תקוע — חסר חיבור ליומן" and stayed that way until that person
+  connected one. Correct by the rule at the time, but for a group of friends it
+  looks like a broken app. Not everyone can or wants to connect a Google
+  calendar: an Apple or Outlook user, someone who keeps their calendar private,
+  someone who left the box unticked on Google's consent screen.
+- **Cause:** a decision, not a slip. B6 made the calendar required:
+  `fetchBusyForConnections` (`lib/calendar/participant-busy.ts`) threw if
+  anyone still coming had no token, before reading anyone's calendar, because
+  treating an unread calendar as free could produce a proposal that clashes
+  with a calendar nobody read (spec §5.7: a false positive is worse than a
+  false negative).
+- **Fix:** PR not yet opened. The calendar is optional, and the proposal says
+  what was not checked:
+  - `fetchBusyForConnections` reads every calendar it can and returns
+    `{ busy, unread, rejected }`. No token, or a token Google refuses, puts the
+    person in `unread`, and they are treated as free apart from the hours they
+    set in the app (`hardConstraints.unavailable`, which A2 already enforced on
+    its own). A rate limit, a 5xx or a network failure still fails the read and
+    the run is retried.
+  - A refused token still gets B10's handling: the token is cleared and its
+    owner is emailed. But the run goes on.
+  - `weigh` stores `{ kind: "calendar", userId }` on every option of the
+    proposal, next to A2's "opening hours unverified". It is kept as a fact
+    because it describes that proposal, and it still holds after the person
+    connects. It is added after the model and never sent to it. It is stored
+    in the existing JSON column, so no migration: previews do not migrate.
+  - Under the proposal, the person who has no calendar connected sees "לא חיברת
+    יומן, אז הזמן הזה נבדק רק מול השעות שהגדרת באפליקציה" with the "חבר יומן"
+    link from #206. Everyone else sees "הזמן הזה לא נבדק מול היומן של X, כי
+    הוא עוד לא מחובר".
+  - Removed from #206: the "stuck — calendar missing" label and sticker, the
+    blocked notice, and switching off the fast poll. Kept from #206: the 403
+    becomes `CalendarAuthError`, a sign-in without the calendar permission
+    stores no token, and `/api/calendar/connect` works.
+  - Unchanged: someone with no calendar who answers "not for me" uses up one of
+    the group's attempts like anyone else. Decided to leave it, since "המצב
+    שלי הערב שונה" already gives every participant one free correction.
+- **Proof:** these fail on the old code:
+  - `participant-busy.test.ts`: a missing token does not stop the others'
+    calendars being read; a refused token comes back unread and rejected; a
+    500 still fails the read.
+  - `run-stage.test.ts`: a refused token is cleared and emailed, and the run
+    reaches the model; the stored draft carries the calendar fact on every
+    option; the model is not given it.
+  - `meeting-detail.test.ts`, `hebrew-labels.test.ts`,
+    `MeetingDetail.test.tsx`: the names and both notes.
+  - `participant-busy-db.test.ts`: checked against the local database.
+- **Still open:** the full path with a real account that has no calendar is
+  manual test 14.4. Supersedes the "stuck" part of the entry below.
+
 ## A new meeting never got a proposal: calendar permission missing — 2026-10-06
 
 - **Seen:** "I asked to create a meeting and it didn't create one." It had
@@ -61,8 +114,8 @@ says so.
   stuck, not searching (fail on the old code). The connect route was checked on
   a local dev server (307 straight to Google with `prompt=consent`); the full
   round trip with a real account is manual test 14.4.
-- **Still open:** the server-side `calendarBlocked` flag on cards is read, not
-  tested.
+- **Still open:** superseded on 2026-10-07: the calendar became optional (entry
+  above), and the "stuck" state was removed.
 
 ## A new meeting said "re-weighed" before anything was weighed — 2026-10-06
 

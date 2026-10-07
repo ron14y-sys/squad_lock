@@ -4,7 +4,6 @@ import type { TimeSlot } from "@/lib/types";
 import { CalendarAuthError } from "./freebusy";
 import {
   fetchBusyForConnections,
-  MissingCalendarConnectionError,
   type CalendarConnection,
 } from "./participant-busy";
 
@@ -78,8 +77,9 @@ describe("fetchBusyForConnections", () => {
       { userId: "u-yoav", googleRefreshToken: "refresh-yoav" },
     ];
 
-    const busy = await fetchBusyForConnections(connections, WINDOW);
+    const { busy, unread } = await fetchBusyForConnections(connections, WINDOW);
 
+    expect(unread).toEqual([]);
     expect(busy.get("u-dana")).toEqual([
       {
         start: new Date("2026-09-07T09:00:00.000Z"),
@@ -95,62 +95,66 @@ describe("fetchBusyForConnections", () => {
   });
 
   it("is empty, with no network calls at all, for no connections", async () => {
-    expect(await fetchBusyForConnections([], WINDOW)).toEqual(new Map());
+    expect(await fetchBusyForConnections([], WINDOW)).toEqual({
+      busy: new Map(),
+      unread: [],
+      rejected: [],
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("fails before any network call when a connection has no token", async () => {
+  it("reads everyone else when one person has no calendar connected", async () => {
     const connections: CalendarConnection[] = [
       { userId: "u-dana", googleRefreshToken: "refresh-dana" },
       { userId: "u-yoav", googleRefreshToken: null },
     ];
 
-    await expect(fetchBusyForConnections(connections, WINDOW)).rejects.toThrow(
-      MissingCalendarConnectionError
-    );
-    // Dana has a perfectly good token, but Yoav's missing one means nobody's
-    // calendar gets called — not "everyone but Yoav".
-    expect(fetchMock).not.toHaveBeenCalled();
+    const read = await fetchBusyForConnections(connections, WINDOW);
+
+    // Yoav is reported, not fatal: Dana's calendar is still read, and Yoav
+    // is simply absent from `busy` — free, as far as the calendar goes.
+    expect(read.unread).toEqual(["u-yoav"]);
+    expect(read.rejected).toEqual([]);
+    expect(read.busy.has("u-yoav")).toBe(false);
+    expect(read.busy.get("u-dana")).toHaveLength(1);
+    // Two calls (token + freebusy) for Dana, none for Yoav.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("names the user with no connection in the error", async () => {
-    const connections: CalendarConnection[] = [
-      { userId: "u-yoav", googleRefreshToken: null },
-    ];
-
-    await expect(fetchBusyForConnections(connections, WINDOW)).rejects.toThrow(
-      /u-yoav/
-    );
-  });
-
-  it("propagates a rejected refresh token as CalendarAuthError", async () => {
+  it("B10: reports a refused token as unread and rejected, and reads the rest", async () => {
     fetchMock.mockImplementationOnce(async () =>
       fakeResponse(false, "invalid_grant")
     );
 
     const connections: CalendarConnection[] = [
       { userId: "u-dana", googleRefreshToken: "revoked-token" },
+      { userId: "u-yoav", googleRefreshToken: "refresh-yoav" },
     ];
 
-    await expect(fetchBusyForConnections(connections, WINDOW)).rejects.toThrow(
-      CalendarAuthError
-    );
+    const read = await fetchBusyForConnections(connections, WINDOW);
+
+    expect(read.unread).toEqual(["u-dana"]);
+    expect(read.rejected).toEqual(["u-dana"]);
+    expect(read.busy.get("u-yoav")).toHaveLength(1);
   });
 
-  it("B10: attributes the rejected token to the user it belonged to", async () => {
-    fetchMock.mockImplementationOnce(async () =>
-      fakeResponse(false, "invalid_grant")
+  it("still fails whole on anything that is not a refused token", async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      url === "https://oauth2.googleapis.com/token"
+        ? fakeResponse(true, { access_token: "tok" })
+        : { ...fakeResponse(false, "backend error"), status: 500 }
     );
 
     const connections: CalendarConnection[] = [
-      { userId: "u-dana", googleRefreshToken: "revoked-token" },
+      { userId: "u-dana", googleRefreshToken: "refresh-dana" },
     ];
 
     const failure = await fetchBusyForConnections(connections, WINDOW).catch(
       (error: unknown) => error
     );
 
-    expect(failure).toBeInstanceOf(CalendarAuthError);
-    expect((failure as CalendarAuthError).userId).toBe("u-dana");
+    // An outage says nothing about whether Dana is free — no guessing.
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).not.toBeInstanceOf(CalendarAuthError);
   });
 });

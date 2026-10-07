@@ -35,7 +35,6 @@ type OpenMeeting = {
     | "closed";
   waitingOn: number | null;
   firstSearch: boolean;
-  calendarBlocked: boolean;
   currentDatetime: string | null;
   pinnedWhen: {
     kind: "date" | "date_and_time" | "part_of_day" | "date_and_part_of_day";
@@ -189,14 +188,11 @@ export function GroupsList() {
                 >
                   <div className="sl-date">{meetingDateLabel(meeting)}</div>
                   <div className="sl-body">
-                    <span
-                      className={`sl-stk ${stickerClass(meeting.status, meeting.calendarBlocked)}`}
-                    >
+                    <span className={`sl-stk ${stickerClass(meeting.status)}`}>
                       {meetingStatusLabel(
                         meeting.status,
                         meeting.waitingOn,
-                        meeting.firstSearch,
-                        meeting.calendarBlocked
+                        meeting.firstSearch
                       )}
                     </span>
                     <p className="sl-line truncate">{summaryLine(meeting)}</p>
