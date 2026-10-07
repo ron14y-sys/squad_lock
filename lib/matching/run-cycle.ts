@@ -67,6 +67,7 @@ import { ExternalRateLimitError } from "@/lib/external/rate-limit";
 import { LlmCallError, retryDelayMs } from "@/lib/llm/client";
 import { originOf } from "./distance";
 import { pairId } from "./schemas";
+import type { VenueDietaryFacts } from "./constraints";
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
 import { buildShortlist } from "./funnel";
 import {
@@ -587,6 +588,12 @@ export async function assembleRun(
       budget: details.budget,
     }))
   );
+  const venueFacts = venueDietaryFactsFrom(
+    detailed.map(({ candidate, details }) => ({
+      placeId: candidate.placeId,
+      servesVegetarianFood: details.servesVegetarianFood,
+    }))
+  );
 
   // Second pass — the same funnel over the same two dozen, now knowing when
   // each one is actually open. This is where an evening gets shortened to fit
@@ -595,6 +602,7 @@ export async function assembleRun(
     candidates: priced,
     participants,
     slots,
+    venueFacts,
   });
   // An identical proposal is never repeated, so the exact pairs go last —
   // they can only be recognised once the funnel has cut the evenings.
@@ -630,16 +638,51 @@ export async function assembleRun(
       viable,
       ranked,
       rejections,
-      // `venueFacts` stays absent rather than empty: B7 fetches no dietary
-      // tags, and an empty object would tell A2 and A4 that nothing is true
-      // of these venues rather than that nothing is known (the rule
-      // `findRejectedOption` follows). `venueSoftFacts` is the same: only
-      // what Google actually said, and absent when it said nothing (#139).
+      // Both stay absent rather than empty when Google said nothing: an
+      // empty object would tell A2 and A4 that nothing is true of these
+      // venues rather than that nothing is known (the rule
+      // `findRejectedOption` follows, #139).
+      ...(venueFacts ? { venueFacts } : {}),
       ...(venueSoftFacts ? { venueSoftFacts } : {}),
     },
     contextIds: meeting.participantContexts.map((row) => row.id),
     uncheckedCalendars: calendars.unread,
   };
+}
+
+/**
+ * The profile tags `servesVegetarianFood` answers. Free text on the profile
+ * side, so the Hebrew presets (`HardConstraintsForm`'s) and their English
+ * equivalents, compared after `normaliseTag`.
+ */
+const VEGETARIAN_TAGS = ["צמחוני", "צמחונית", "vegetarian"];
+const VEGAN_TAGS = ["טבעוני", "טבעונית", "vegan"];
+
+/**
+ * What is known about each venue's dietary side, keyed by place id — today
+ * only Google's `servesVegetarianFood`, the one such field it has (nothing
+ * for kosher or halal, so those stay unverified, which is the truth).
+ *
+ * - `true` satisfies a vegetarian tag. Not a vegan one: a place with a
+ *   vegetarian dish may have nothing vegan.
+ * - `false` violates both: no vegetarian food means no vegan food either.
+ * - absent says nothing, and the venue is left out.
+ *
+ * `undefined` when nothing at all is known, for the same reason as
+ * `venueSoftFactsFrom` below.
+ */
+export function venueDietaryFactsFrom(
+  venues: { placeId: string; servesVegetarianFood?: boolean }[]
+): Record<string, VenueDietaryFacts> | undefined {
+  const facts: Record<string, VenueDietaryFacts> = {};
+  for (const venue of venues) {
+    if (venue.servesVegetarianFood === true) {
+      facts[venue.placeId] = { satisfies: VEGETARIAN_TAGS };
+    } else if (venue.servesVegetarianFood === false) {
+      facts[venue.placeId] = { violates: [...VEGETARIAN_TAGS, ...VEGAN_TAGS] };
+    }
+  }
+  return Object.keys(facts).length > 0 ? facts : undefined;
 }
 
 /**

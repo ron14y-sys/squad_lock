@@ -296,7 +296,7 @@ describe("fetchPlaceDetails", () => {
     expect(init.method).toBe("GET");
     expect(init.headers["X-Goog-Api-Key"]).toBe("test-key");
     expect(init.headers["X-Goog-FieldMask"]).toBe(
-      "rating,regularOpeningHours,priceLevel,editorialSummary"
+      "rating,regularOpeningHours,priceLevel,editorialSummary,servesVegetarianFood"
     );
   });
 
@@ -364,6 +364,27 @@ describe("fetchPlaceDetails", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(details.summary).toBe("פסטה טרייה ויין");
+  });
+
+  it.each([true, false])(
+    "returns servesVegetarianFood = %s as Google said it",
+    async (serves) => {
+      fetchMock.mockResolvedValueOnce(
+        fakeResponse(true, { servesVegetarianFood: serves })
+      );
+
+      const details = await fetchPlaceDetails("place-1");
+
+      expect(details.servesVegetarianFood).toBe(serves);
+    }
+  );
+
+  it("leaves servesVegetarianFood undefined when Google does not say", async () => {
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, {}));
+
+    expect(
+      (await fetchPlaceDetails("place-1")).servesVegetarianFood
+    ).toBeUndefined();
   });
 
   it("is an undefined budget when priceLevel is absent", async () => {

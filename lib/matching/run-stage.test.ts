@@ -45,6 +45,7 @@ vi.mock("@/lib/db/places-cache", () => ({
   ],
   fetchPlaceDetailsCached: async () => ({
     openingHours: [{ weekdays: [], from: "18:00", to: "23:00" }],
+    servesVegetarianFood: true,
   }),
 }));
 
@@ -253,6 +254,15 @@ describe("a calendar that was not read", () => {
 
     const [draft] = persistMatchRun.mock.calls[0];
     expect(draft.options).toEqual(DRAFT.options);
+  });
+
+  it("passes Google's vegetarian answer on to the filter and the model", async () => {
+    runMatchingAgent.mockRejectedValue(new Error("model timed out"));
+
+    await runCycle("m1", NOW, FREE);
+
+    const [input] = runMatchingAgent.mock.calls[0];
+    expect(input.venueFacts?.p1?.satisfies).toContain("צמחוני");
   });
 
   it("is not shown to the model", async () => {

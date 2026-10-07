@@ -206,6 +206,8 @@ export type PlaceDetails = {
   /** From `priceLevel`; absent means not known (#139). */
   budget?: SoftPreferences["budget"];
   summary?: string;
+  /** Google's `servesVegetarianFood`; absent means not known. */
+  servesVegetarianFood?: boolean;
 };
 
 /** A cached value is only trusted if it is one of the two answers. */
@@ -228,6 +230,7 @@ export async function getCachedDetails(
     openingHours: row.openingHours as unknown as LocalWindow[],
     budget: parseBudget(row.budget ?? null),
     summary: row.summary ?? undefined,
+    servesVegetarianFood: row.servesVegetarianFood ?? undefined,
   };
 }
 
@@ -245,12 +248,14 @@ export async function saveCachedDetails(
       openingHours: asJson(details.openingHours),
       budget: details.budget ?? null,
       summary: details.summary ?? null,
+      servesVegetarianFood: details.servesVegetarianFood ?? null,
     },
     update: {
       rating: details.rating ?? null,
       openingHours: asJson(details.openingHours),
       budget: details.budget ?? null,
       summary: details.summary ?? null,
+      servesVegetarianFood: details.servesVegetarianFood ?? null,
       fetchedAt: new Date(),
     },
   });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  alsoConsideredOf,
   describeContext,
   minutesUntil,
   uncheckedCalendarsOf,
@@ -165,5 +166,55 @@ describe("uncheckedCalendarsOf", () => {
     expect(
       uncheckedCalendarsOf([{ kind: "calendar", userId: "gone" }], people)
     ).toEqual([]);
+  });
+});
+
+describe("alsoConsideredOf", () => {
+  const option = (
+    rank: number,
+    venueName: string,
+    venuePlaceId: string | null
+  ) => ({
+    rank,
+    venueName,
+    venuePlaceId,
+  });
+
+  it("lists nothing when ranks 2 and 3 are the proposed venue at other hours", () => {
+    // What was seen: "גם שקלנו: קפה גן סיפור חולון, קפה גן סיפור חולון".
+    expect(
+      alsoConsideredOf([
+        option(1, "קפה גן סיפור חולון", "p1"),
+        option(2, "קפה גן סיפור חולון", "p1"),
+        option(3, "קפה גן סיפור חולון", "p1"),
+      ])
+    ).toEqual([]);
+  });
+
+  it("lists each other venue once, in rank order", () => {
+    expect(
+      alsoConsideredOf([
+        option(3, "בית קפה ב", "p3"),
+        option(1, "קפה גן סיפור חולון", "p1"),
+        option(2, "בית קפה ב", "p3"),
+      ])
+    ).toEqual(["בית קפה ב"]);
+    expect(
+      alsoConsideredOf([
+        option(1, "א", "p1"),
+        option(2, "ב", "p2"),
+        option(3, "ג", "p3"),
+      ])
+    ).toEqual(["ב", "ג"]);
+  });
+
+  it("tells venues with no place id apart by name", () => {
+    expect(
+      alsoConsideredOf([
+        option(1, "המקום שנקבע", null),
+        option(2, "המקום שנקבע", null),
+        option(3, "מקום אחר", null),
+      ])
+    ).toEqual(["מקום אחר"]);
   });
 });
