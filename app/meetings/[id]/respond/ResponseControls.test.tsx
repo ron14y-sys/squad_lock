@@ -223,6 +223,62 @@ test("clicking a selected tolerance chip again deselects it", async () => {
   expect(screen.getByRole("button", { name: "עדכן" })).toBeDisabled();
 });
 
+test("an amendment sends a not-before and not-after window for tonight (#223)", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({})));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <ResponseControls
+      meetingId="meeting-1"
+      myStatus="pending"
+      remainingCycles={3}
+      amendmentIsFree={true}
+      disabled={false}
+      onResponded={vi.fn()}
+    />
+  );
+
+  await user.click(screen.getByRole("button", { name: "המצב שלי הערב שונה" }));
+  await user.type(screen.getByLabelText("לא לפני"), "18:00");
+  await user.type(screen.getByLabelText("לא אחרי"), "21:00");
+  await user.click(screen.getByRole("button", { name: "עדכן" }));
+
+  const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(init.body as string)).toEqual({
+    kind: "amendment",
+    earliestStart: "18:00",
+    latestStart: "21:00",
+  });
+});
+
+test("only one of not-before or not-after can be set on its own", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({})));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <ResponseControls
+      meetingId="meeting-1"
+      myStatus="pending"
+      remainingCycles={3}
+      amendmentIsFree={true}
+      disabled={false}
+      onResponded={vi.fn()}
+    />
+  );
+
+  await user.click(screen.getByRole("button", { name: "המצב שלי הערב שונה" }));
+  await user.type(screen.getByLabelText("לא אחרי"), "20:00");
+  await user.click(screen.getByRole("button", { name: "עדכן" }));
+
+  const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(init.body as string)).toEqual({
+    kind: "amendment",
+    latestStart: "20:00",
+  });
+});
+
 test("the amendment panel's copy follows whether this would be the viewer's free one (B11)", async () => {
   const user = userEvent.setup();
 
