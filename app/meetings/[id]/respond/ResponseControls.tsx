@@ -49,6 +49,10 @@ const KNOWN_ERRORS: Record<string, string> = {
  * a checked-in list costs nothing and never leaks more than a
  * neighbourhood (spec §5.4), where a live autocomplete would spend the
  * project's limited Places quota on every amendment.
+ *
+ * #223: "לא לפני / לא אחרי" is this meeting's own start window, sent as
+ * `earliestStart`/`latestStart` — not the weekly recurring rule the profile
+ * already has, which this amendment deliberately does not touch.
  */
 export function ResponseControls({
   meetingId,
@@ -77,6 +81,8 @@ export function ResponseControls({
   const [reasonText, setReasonText] = useState("");
   const [originId, setOriginId] = useState("");
   const [toleranceKm, setToleranceKm] = useState<Kilometres | "">("");
+  const [earliestStart, setEarliestStart] = useState("");
+  const [latestStart, setLatestStart] = useState("");
   const [unavailableMode, setUnavailableMode] = useState<Mode | "">("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -102,6 +108,8 @@ export function ResponseControls({
       setReasonText("");
       setOriginId("");
       setToleranceKm("");
+      setEarliestStart("");
+      setLatestStart("");
       setUnavailableMode("");
       setNote("");
       onResponded();
@@ -135,13 +143,20 @@ export function ResponseControls({
         originLabel: neighbourhood.label,
       }),
       ...(toleranceKm && { toleranceKm }),
+      ...(earliestStart && { earliestStart }),
+      ...(latestStart && { latestStart }),
       ...(mobilityWindows && { mobilityWindows }),
       ...(note.trim() && { note: note.trim() }),
     });
   }
 
   const amendmentEmpty =
-    !originId && !toleranceKm && !unavailableMode && !note.trim();
+    !originId &&
+    !toleranceKm &&
+    !earliestStart &&
+    !latestStart &&
+    !unavailableMode &&
+    !note.trim();
 
   return (
     <section className="sl-page !p-0">
@@ -255,6 +270,27 @@ export function ResponseControls({
                   </button>
                 );
               })}
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="sl-sub">מתי אני יכול/ה הערב (אופציונלי)</span>
+            <div className="flex items-center gap-2">
+              <span className="sl-sub">לא לפני</span>
+              <input
+                type="time"
+                value={earliestStart}
+                onChange={(e) => setEarliestStart(e.target.value)}
+                aria-label="לא לפני"
+                className="sl-field w-auto"
+              />
+              <span className="sl-sub">לא אחרי</span>
+              <input
+                type="time"
+                value={latestStart}
+                onChange={(e) => setLatestStart(e.target.value)}
+                aria-label="לא אחרי"
+                className="sl-field w-auto"
+              />
             </div>
           </div>
           <label className="flex flex-col gap-1">
