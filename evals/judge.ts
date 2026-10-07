@@ -14,9 +14,11 @@
 import { type Scenario } from "./adapter";
 import type {
   ConstraintUpdate,
+  DistanceRequest,
   ObjectionKind,
+  StartRequest,
 } from "@/lib/extraction/constraint-updater";
-import type { SoftPreferences } from "@/lib/types";
+import type { TonightCorrection } from "@/lib/types";
 import { APP_TIME_ZONE } from "@/lib/types";
 
 /* -------------------------------------------------------------------------
@@ -194,6 +196,30 @@ export function judge(scenario: Scenario, draft: JudgeableRun): Verdict {
  * ---------------------------------------------------------------------- */
 
 /**
+ * One field's answer against the expected one. A list is a set — "bar, café"
+ * and "café, bar" are the same request (#217) — so it is compared sorted.
+ */
+function sameAnswer(want: unknown, got: unknown): boolean {
+  const key = (v: unknown) =>
+    JSON.stringify(Array.isArray(v) ? [...v].sort() : v);
+  return want !== undefined && key(want) === key(got);
+}
+
+/**
+ * What a rejection is agreed to produce (#220). `distance` and `start` are
+ * compared whole when given, and must be absent when not — a distance the
+ * person never mentioned is as invented as a preference. `untranslated: true`
+ * asks only that something was set aside, since its wording is the model's.
+ */
+export type ExpectedConstraint = {
+  objection: ObjectionKind;
+  softPreferences: TonightCorrection;
+  distance?: DistanceRequest;
+  start?: StartRequest;
+  untranslated?: true;
+};
+
+/**
  * The extracted correction against the one we agreed on.
  *
  * **Set equality, never containment.** "The right field came out" and
@@ -206,18 +232,8 @@ export function judge(scenario: Scenario, draft: JudgeableRun): Verdict {
  * right" are two different claims, and only the second is what spec §12.5
  * counts.
  */
-/**
- * One field's answer against the expected one. A list is a set — "bar, café"
- * and "café, bar" are the same request (#217) — so it is compared sorted.
- */
-function sameAnswer(want: unknown, got: unknown): boolean {
-  const key = (v: unknown) =>
-    JSON.stringify(Array.isArray(v) ? [...v].sort() : v);
-  return want !== undefined && key(want) === key(got);
-}
-
 export function judgeConstraint(
-  expected: { objection: ObjectionKind; softPreferences: SoftPreferences },
+  expected: ExpectedConstraint,
   got: ConstraintUpdate
 ): Verdict {
   if (got.objection !== expected.objection) {
@@ -227,9 +243,21 @@ export function judgeConstraint(
     };
   }
 
+  const wanted = expected.softPreferences as Record<string, unknown>;
+  const whole = (field: string, want: unknown, value: unknown) =>
+    want === undefined
+      ? value === null || value === undefined
+        ? []
+        : [`invented ${field}=${JSON.stringify(value)}`]
+      : sameAnswer(want, value)
+        ? []
+        : [
+            `${field}=${JSON.stringify(value)}, expected ${JSON.stringify(want)}`,
+          ];
+
   const differences = [
     ...Object.entries(got.softPreferences).flatMap(([field, value]) => {
-      const want = expected.softPreferences[field as keyof SoftPreferences];
+      const want = wanted[field];
       if (sameAnswer(want, value)) return [];
       return [
         want === undefined
@@ -237,9 +265,14 @@ export function judgeConstraint(
           : `${field}=${value}, expected ${want}`,
       ];
     }),
-    ...Object.keys(expected.softPreferences)
+    ...Object.keys(wanted)
       .filter((field) => !(field in got.softPreferences))
       .map((field) => `missed ${field}`),
+    ...whole("distance", expected.distance, got.distance),
+    ...whole("start", expected.start, got.start),
+    ...(expected.untranslated && !got.untranslated
+      ? ["missed untranslated"]
+      : []),
   ];
 
   return differences.length

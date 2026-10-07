@@ -98,6 +98,18 @@ export type SoftPreferences = {
   cuisines?: Cuisine[];
 };
 
+/**
+ * A soft preference as said about **one meeting** — A7's reading of a
+ * rejection (#220). Everything `SoftPreferences` has, as a strong request,
+ * plus what this person does not want tonight: "no Asian food", "not a bar
+ * again". The avoid half exists only here. A standing dislike would be a
+ * profile question nobody is asked.
+ */
+export type TonightCorrection = SoftPreferences & {
+  avoidVenueKinds?: VenueKind[];
+  avoidCuisines?: Cuisine[];
+};
+
 export type PreferenceProfile = {
   id: string;
   userId: string;

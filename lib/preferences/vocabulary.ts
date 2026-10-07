@@ -8,7 +8,7 @@
 // first vocabulary's guesses and were dropped (2026-10-07); stored answers to
 // them are ignored on read (`softPreferencesFromJson`).
 
-import type { SoftPreferences } from "@/lib/types";
+import type { SoftPreferences, TonightCorrection } from "@/lib/types";
 
 export const BUDGETS = ["modest", "splurge"] as const;
 export type Budget = (typeof BUDGETS)[number];
@@ -89,6 +89,24 @@ export function softPreferencesFromJson(json: unknown): SoftPreferences {
     ...(budget ? { budget } : {}),
     ...(venueKinds ? { venueKinds } : {}),
     ...(cuisines ? { cuisines } : {}),
+  };
+}
+
+/**
+ * `softPreferencesFromJson` for a meeting's correction, which may also say
+ * what to avoid (#220). Same rule: each field on its own, known values only.
+ */
+export function tonightCorrectionFromJson(json: unknown): TonightCorrection {
+  const raw =
+    typeof json === "object" && json !== null
+      ? (json as Record<string, unknown>)
+      : {};
+  const avoidVenueKinds = onlyKnown(raw.avoidVenueKinds, VENUE_KINDS);
+  const avoidCuisines = onlyKnown(raw.avoidCuisines, CUISINES);
+  return {
+    ...softPreferencesFromJson(json),
+    ...(avoidVenueKinds ? { avoidVenueKinds } : {}),
+    ...(avoidCuisines ? { avoidCuisines } : {}),
   };
 }
 

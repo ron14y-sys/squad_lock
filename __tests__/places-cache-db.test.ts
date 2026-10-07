@@ -63,6 +63,7 @@ describe.skipIf(!CONNECTED)("places cache against a real database", () => {
       address: "1 Test St",
       location: CENTER,
       neighbourhood: null,
+      types: ["cafe"],
     };
     await saveCachedSearch(CENTER, RADIUS_M, [candidate]);
 
@@ -76,6 +77,7 @@ describe.skipIf(!CONNECTED)("places cache against a real database", () => {
       address: null,
       location: CENTER,
       neighbourhood: null,
+      types: ["cafe"],
     };
     const second: Candidate = {
       placeId: "db-test-place-2",
@@ -83,6 +85,7 @@ describe.skipIf(!CONNECTED)("places cache against a real database", () => {
       address: null,
       location: CENTER,
       neighbourhood: null,
+      types: ["cafe"],
     };
 
     await saveCachedSearch(CENTER, RADIUS_M, [first]);
@@ -98,6 +101,7 @@ describe.skipIf(!CONNECTED)("places cache against a real database", () => {
       address: null,
       location: CENTER,
       neighbourhood: null,
+      types: ["cafe"],
     };
     const cafesOnly: Candidate = {
       placeId: "db-test-place-cafe",
@@ -105,6 +109,7 @@ describe.skipIf(!CONNECTED)("places cache against a real database", () => {
       address: null,
       location: CENTER,
       neighbourhood: null,
+      types: ["cafe"],
     };
 
     await saveCachedSearch(CENTER, RADIUS_M, [everyKind]);

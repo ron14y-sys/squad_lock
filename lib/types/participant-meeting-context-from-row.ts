@@ -25,9 +25,9 @@
 
 import type { ParticipantMeetingContextModel } from "@/lib/generated/prisma/models";
 
-import { softPreferencesFromJson } from "@/lib/preferences/vocabulary";
+import { tonightCorrectionFromJson } from "@/lib/preferences/vocabulary";
 
-import type { SoftPreferences } from "./profile";
+import type { TonightCorrection } from "./profile";
 
 import type { MobilityWindow, ParticipantMeetingContext } from "./meeting";
 
@@ -45,14 +45,18 @@ export function participantMeetingContextFromRow(
     originLabel: row.originLabel,
     mobilityWindows: row.mobilityWindows as MobilityWindow[],
     softPreferences: correctionFromJson(row.softPreferences),
+    toleranceKm: row.toleranceKm,
+    earliestStart: row.earliestStart,
+    latestStart: row.latestStart,
+    untranslated: row.untranslated,
     note: row.note,
     createdAt: row.createdAt,
   };
 }
 
-function correctionFromJson(json: unknown): SoftPreferences | null {
+function correctionFromJson(json: unknown): TonightCorrection | null {
   if (json === null) return null;
-  const known = softPreferencesFromJson(json);
+  const known = tonightCorrectionFromJson(json);
   return Object.keys(known).length > 0 ? known : null;
 }
 
@@ -121,13 +125,29 @@ export function mergeContexts(
     mobilityWindows:
       newestWith((context) => context.mobilityWindows.length > 0)
         ?.mobilityWindows ?? [],
-    softPreferences: contexts.reduce<SoftPreferences | null>(
+    softPreferences: contexts.reduce<TonightCorrection | null>(
       (merged, context) =>
         context.softPreferences
           ? { ...merged, ...context.softPreferences }
           : merged,
       null
     ),
+    // This meeting's distance and start bounds: the newest row that set each
+    // one wins, the same as a repeated soft field. A second "too far" is
+    // computed from a tolerance the first already lowered, so it only ever
+    // tightens; an amendment that loosens it is a change of mind.
+    toleranceKm:
+      newestWith((context) => context.toleranceKm !== null)?.toleranceKm ??
+      null,
+    earliestStart:
+      newestWith((context) => context.earliestStart !== null)?.earliestStart ??
+      null,
+    latestStart:
+      newestWith((context) => context.latestStart !== null)?.latestStart ??
+      null,
+    untranslated:
+      newestWith((context) => context.untranslated !== null)?.untranslated ??
+      null,
     note: newestWith((context) => context.note !== null)?.note ?? null,
     createdAt: newest.createdAt,
   };

@@ -34,15 +34,13 @@
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { ExpectedConstraint } from "./judge";
 
 import { ALL_WEEKDAYS, filterTrimmedPairs } from "@/lib/matching/constraints";
 import type { VenueDietaryFacts } from "@/lib/matching/constraints";
 import { originOf, rankViable, straightLineKm } from "@/lib/matching/distance";
 import type { MatchAgentInput } from "@/lib/matching/agent";
-import type {
-  ConstraintUpdateInput,
-  ObjectionKind,
-} from "@/lib/extraction/constraint-updater";
+import type { ConstraintUpdateInput } from "@/lib/extraction/constraint-updater";
 import { APP_TIME_ZONE } from "@/lib/types";
 import type {
   Candidate,
@@ -279,6 +277,10 @@ function participantsOf(scenario: Scenario): Participant[] {
             // A scenario's mobility windows say nothing about preferences.
             // `null` is "no correction", which is not the same as `{}`.
             softPreferences: null,
+            toleranceKm: null,
+            earliestStart: null,
+            latestStart: null,
+            untranslated: null,
             note: null,
             createdAt: new Date(0),
             updatedAt: new Date(0),
@@ -409,17 +411,14 @@ export type RejectionCase = {
   text: string;
   /** What the person was reacting to. Fixtures use a stand-in evening. */
   rejected: ConstraintUpdateInput["rejected"];
-  expected: {
-    objection: ObjectionKind;
-    softPreferences: SoftPreferences;
-  };
+  expected: ExpectedConstraint;
 };
 
 type RejectionFixture = {
   id: string;
   text: string;
   venueIs?: VenueSoftFacts;
-  expected: { objection: ObjectionKind; softPreferences: SoftPreferences };
+  expected: ExpectedConstraint;
   why: string;
 };
 

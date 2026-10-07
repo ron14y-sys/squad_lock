@@ -250,6 +250,10 @@ function participantMeetingContextRow(
     softPreferences: null,
     rejectionText: null,
     rejectionOutcome: null,
+    toleranceKm: null,
+    earliestStart: null,
+    latestStart: null,
+    untranslated: null,
     note: null,
     createdAt: new Date("2026-08-27T09:00:00.000Z"),
     ...overrides,
@@ -378,6 +382,29 @@ describe("mergeContexts", () => {
 
     expect(merged?.softPreferences).toEqual({ venueKinds: ["bar"] });
     expect(merged?.origin).toEqual({ lat: 32.07, lng: 34.79 });
+  });
+
+  // #220: a second "too far" is computed from the first's tolerance, so the
+  // newest is the tightest; an amendment that loosens it is a change of mind.
+  it("takes tonight's distance and start bounds from the newest row that set each", () => {
+    const first = participantMeetingContextFromRow(
+      participantMeetingContextRow({
+        toleranceKm: 4,
+        latestStart: "21:00",
+        createdAt: new Date("2026-09-24T16:00:00.000Z"),
+      })
+    );
+    const second = participantMeetingContextFromRow(
+      participantMeetingContextRow({
+        toleranceKm: 3.2,
+        createdAt: new Date("2026-09-24T17:00:00.000Z"),
+      })
+    );
+
+    const merged = mergeContexts([first, second]);
+    expect(merged?.toleranceKm).toBe(3.2);
+    expect(merged?.latestStart).toBe("21:00");
+    expect(merged?.earliestStart).toBeNull();
   });
 
   it("takes the newest row that has the field", () => {

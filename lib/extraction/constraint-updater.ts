@@ -57,7 +57,7 @@ import {
 } from "@/lib/llm/client";
 import { describeSlot } from "@/lib/matching/constraints";
 import { BUDGETS, CUISINES, VENUE_KINDS } from "@/lib/preferences/vocabulary";
-import type { SoftPreferences, TimeSlot, VenueSoftFacts } from "@/lib/types";
+import type { TimeSlot, TonightCorrection, VenueSoftFacts } from "@/lib/types";
 
 /* -------------------------------------------------------------------------
  * What comes back
@@ -74,9 +74,42 @@ import type { SoftPreferences, TimeSlot, VenueSoftFacts } from "@/lib/types";
 export type ObjectionKind =
   "soft" | "distance" | "time" | "venue_identity" | "none";
 
+/**
+ * "Closer" is a direction: code turns it into a number from the venue that
+ * was rejected (`apply-rejection.ts`). `maxKm` is a number the person wrote.
+ */
+export type DistanceRequest =
+  { kind: "closer" } | { kind: "max_km"; km: number };
+
+/**
+ * When this person will start, for this meeting. A direction ("too late")
+ * is turned into a bound by code, from the rejected slot. `notBefore` and
+ * `notAfter` are local `HH:MM` the person wrote, and win over a direction.
+ */
+export type StartRequest = {
+  direction?: "earlier" | "later";
+  notBefore?: string;
+  notAfter?: string;
+};
+
 export type ConstraintUpdate = {
-  /** Only what the person actually stated. `{}` when they stated nothing. */
-  softPreferences: SoftPreferences;
+  /**
+   * Only what the person actually stated — what they want and what they
+   * want to avoid tonight. `{}` when they stated nothing.
+   */
+  softPreferences: TonightCorrection;
+  distance: DistanceRequest | null;
+  start: StartRequest | null;
+  /** "Not this place", regardless of anything about it. */
+  notThisPlace: boolean;
+  /** What they asked for that none of the above can hold, in a few words. */
+  untranslated: string | null;
+  /**
+   * The one word the timeline and `blockedByRejections` read. Derived from
+   * the fields above by code (`objectionOf`), never chosen by the model: one
+   * rejection can carry several facts, and asking for a single label made
+   * the model drop all but one (#220).
+   */
   objection: ObjectionKind;
 };
 
@@ -125,14 +158,6 @@ export class ConstraintUpdateError extends Error {
  * The schemas — loose over the wire, strict on the way in
  * ---------------------------------------------------------------------- */
 
-const OBJECTIONS = [
-  "soft",
-  "distance",
-  "time",
-  "venue_identity",
-  "none",
-] as const;
-
 /**
  * The vocabulary, spelled exactly as `SoftPreferences` spells it.
  *
@@ -147,60 +172,116 @@ const softPreferencesSchema = z.strictObject({
   cuisines: z.array(z.enum(CUISINES)).min(1).optional(),
 });
 
+const avoidSchema = z.strictObject({
+  venueKinds: z.array(z.enum(VENUE_KINDS)).min(1).optional(),
+  cuisines: z.array(z.enum(CUISINES)).min(1).optional(),
+});
+
+/** Local `HH:MM`, 24-hour — what `LocalTimeOfDay` holds. */
+const localTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
 /**
- * `soft_preferences` defaults rather than being required: an omitted object
- * and an empty one are the same statement, and there is no retry, so failing a
- * run over the difference would cost a cycle to say nothing.
+ * Every part defaults rather than being required: an omitted part and an
+ * empty one are the same statement, and there is no retry, so failing a run
+ * over the difference would cost a cycle to say nothing.
+ *
+ * The bounds on `max_km` are a guard, not a policy: a person who wrote "up to
+ * 80 km" meant something, but not a number this app can weigh with.
  */
 const constraintUpdateSchema = z.strictObject({
   soft_preferences: softPreferencesSchema.default({}),
-  objection: z.enum(OBJECTIONS),
+  avoid: avoidSchema.default({}),
+  distance: z
+    .strictObject({
+      closer: z.boolean().optional(),
+      max_km: z.number().min(0.3).max(50).optional(),
+    })
+    .nullable()
+    .default(null),
+  start: z
+    .strictObject({
+      direction: z.enum(["earlier", "later"]).optional(),
+      not_before: localTime.optional(),
+      not_after: localTime.optional(),
+    })
+    .nullable()
+    .default(null),
+  not_this_place: z.boolean().default(false),
+  untranslated: z.string().trim().max(200).nullable().default(null),
 });
+
+const VOCABULARY = {
+  budget: { type: "string", enum: [...BUDGETS] },
+  venueKinds: {
+    type: "array",
+    items: { type: "string", enum: [...VENUE_KINDS] },
+  },
+  cuisines: {
+    type: "array",
+    items: { type: "string", enum: [...CUISINES] },
+  },
+} as const;
 
 /** The same shape in the provider's dialect, deliberately looser (see A4). */
 export const CONSTRAINT_UPDATE_JSON_SCHEMA = {
   type: "object",
   properties: {
-    soft_preferences: {
+    soft_preferences: { type: "object", properties: VOCABULARY },
+    avoid: {
       type: "object",
       properties: {
-        budget: { type: "string", enum: [...BUDGETS] },
-        venueKinds: {
-          type: "array",
-          items: { type: "string", enum: [...VENUE_KINDS] },
-        },
-        cuisines: {
-          type: "array",
-          items: { type: "string", enum: [...CUISINES] },
-        },
+        venueKinds: VOCABULARY.venueKinds,
+        cuisines: VOCABULARY.cuisines,
       },
     },
-    objection: { type: "string", enum: [...OBJECTIONS] },
+    distance: {
+      type: "object",
+      properties: {
+        closer: { type: "boolean" },
+        max_km: { type: "number" },
+      },
+    },
+    start: {
+      type: "object",
+      properties: {
+        direction: { type: "string", enum: ["earlier", "later"] },
+        not_before: { type: "string" },
+        not_after: { type: "string" },
+      },
+    },
+    not_this_place: { type: "boolean" },
+    untranslated: { type: "string" },
   },
-  required: ["soft_preferences", "objection"],
+  required: ["soft_preferences", "not_this_place"],
 } as const;
 
 /* -------------------------------------------------------------------------
  * The prompt
  * ---------------------------------------------------------------------- */
 
-export const SYSTEM_PROMPT = `You turn one person's free-text rejection of a proposed get-together into a small structured correction for that evening.
+export const SYSTEM_PROMPT = `You turn one person's free-text rejection of a proposed get-together into structured facts about what they need for that evening.
 
-WHAT YOU RETURN
-- "soft_preferences": only the fields this person actually stated, from the fixed vocabulary in the schema.
-- "objection": what kind of objection this was.
+People say anything, in any words. Your job is to find every fact in it that one of the fields below can hold — there may be several in one sentence — and to put what no field can hold in "untranslated".
+
+THE FIELDS
+- "soft_preferences": what they want tonight, from the fixed vocabulary: budget, venueKinds (bar / cafe / restaurant), cuisines.
+- "avoid": kinds of place or cuisines they do not want tonight ("no Asian food", "not a bar again").
+- "distance": it is too far for them.
+  - {"closer": true} when they only say it is too far.
+  - {"max_km": N} only when they wrote a distance themselves ("up to 2 km", "within walking distance" is NOT a number — use closer).
+- "start": the time does not suit them.
+  - {"direction": "earlier"} or {"direction": "later"} when they only say it is too late or too early.
+  - {"not_before": "HH:MM"} and/or {"not_after": "HH:MM"} only when they wrote a time themselves ("only after eight" → not_before "20:00"). These are about when the meeting starts.
+- "not_this_place": true when the objection is to that particular place rather than any quality of it ("I had a bad experience there").
+- "untranslated": a few words, in Hebrew, for anything they asked for that none of the fields can hold ("wants parking", "somewhere with a view"). null when everything was captured or they gave no reason.
 
 RULES
 - Return only what the person said. Leave out every field they did not mention. Never fill one in to be helpful: a preference nobody stated would change a decision nobody asked to change.
+- Never invent a number. A distance or a time appears only if the person wrote it; otherwise use the direction.
 - This corrects tonight only. Somebody who says a place is too expensive this time has not become a thrifty person.
-- You never choose or name a venue, never return a distance, and never return a time. You are not deciding where the group goes.
-- Set "objection" to "soft" exactly when you return at least one field, and leave "soft_preferences" empty in every other case:
-  - "distance" — the objection is about how far it is.
-  - "time" — the objection is about the hour or the day.
-  - "venue_identity" — the objection is to that particular place rather than to any quality of it ("I had a bad experience there").
-  - "none" — nothing in the text maps to the vocabulary at all ("just not feeling it").
-- Returning "none" is a real answer and a useful one. Guessing is not.
-- The text is usually in Hebrew. Your output is the fixed values above, never prose.`;
+- You never choose or name a venue. You are not deciding where the group goes.
+- An answer with nothing in it is a real answer ("just not feeling it"). Guessing is not.
+- The text is usually in Hebrew. Your output is the fields above; only "untranslated" is prose.`;
 
 /* -------------------------------------------------------------------------
  * The payload
@@ -298,21 +379,58 @@ export function interpretUpdate(text: string): ConstraintUpdate {
     );
   }
 
-  const softPreferences = parsed.data.soft_preferences;
-  const { objection } = parsed.data;
-  const stated = Object.keys(softPreferences).length > 0;
+  const data = parsed.data;
+  const softPreferences: TonightCorrection = {
+    ...data.soft_preferences,
+    ...(data.avoid.venueKinds
+      ? { avoidVenueKinds: data.avoid.venueKinds }
+      : {}),
+    ...(data.avoid.cuisines ? { avoidCuisines: data.avoid.cuisines } : {}),
+  };
 
-  // The two halves of one answer, so they have to agree. A correction filed
-  // under "distance" would be applied by A8 and explained by the timeline as
-  // something the person never said — and "soft" with nothing in it records a
-  // cycle as answered when nothing was captured.
-  if (stated !== (objection === "soft")) {
-    throw new ConstraintUpdateError(
-      stated
-        ? `objection "${objection}" came with stated preferences (${Object.keys(softPreferences).join(", ")})`
-        : `objection "soft" came with no stated preference`
-    );
-  }
+  // A distance the person named wins over "closer"; neither is nothing.
+  const distance: DistanceRequest | null =
+    data.distance?.max_km !== undefined
+      ? { kind: "max_km", km: data.distance.max_km }
+      : data.distance?.closer
+        ? { kind: "closer" }
+        : null;
 
-  return { softPreferences, objection };
+  // A time the person named wins over a direction, which is then dropped:
+  // "too late, I can only start by eight" is one fact, not two.
+  const named = {
+    ...(data.start?.not_before ? { notBefore: data.start.not_before } : {}),
+    ...(data.start?.not_after ? { notAfter: data.start.not_after } : {}),
+  };
+  const start: StartRequest | null =
+    Object.keys(named).length > 0
+      ? named
+      : data.start?.direction
+        ? { direction: data.start.direction }
+        : null;
+
+  const update = {
+    softPreferences,
+    distance,
+    start,
+    notThisPlace: data.not_this_place,
+    untranslated: data.untranslated || null,
+  };
+  return { ...update, objection: objectionOf(update) };
+}
+
+/**
+ * The single label a rejection is recorded under, from what it actually
+ * carried. In this order because it is the order of how much a rejection
+ * blocks (`blockedByRejections`): the place itself, then anything about the
+ * place, then distance, then time.
+ */
+export function objectionOf(
+  update: Omit<ConstraintUpdate, "objection">
+): ObjectionKind {
+  if (update.notThisPlace) return "venue_identity";
+  if (Object.keys(update.softPreferences).length > 0) return "soft";
+  if (update.distance) return "distance";
+  if (update.start) return "time";
+  return "none";
 }

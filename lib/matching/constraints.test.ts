@@ -322,6 +322,40 @@ describe("the filter, before the agent", () => {
     expect(result.dropped[0].violations[0].kind).toBe("unavailable");
   });
 
+  // #220: "too late" / "not after half past six" for this meeting.
+  it("drops a slot that starts after someone's latest start for this meeting, and keeps one at it", () => {
+    const withLatest = (latestStart: string) =>
+      participant("u1", "Dana", {
+        context: {
+          id: "c1",
+          meetingId: "m1",
+          userId: "u1",
+          origin: null,
+          originLabel: null,
+          mobilityWindows: [],
+          softPreferences: null,
+          toleranceKm: null,
+          earliestStart: null,
+          latestStart,
+          untranslated: null,
+          note: null,
+          createdAt: new Date("2026-09-01T00:00:00.000Z"),
+        },
+      });
+
+    // MON_EVENING starts at 19:00 local.
+    const late = filterPairs(input({ participants: [withLatest("18:30")] }));
+    expect(late.viable).toHaveLength(0);
+    expect(late.dropped[0].violations[0]).toMatchObject({
+      kind: "unavailable",
+      participantId: "u1",
+    });
+
+    expect(
+      filterPairs(input({ participants: [withLatest("19:00")] })).viable
+    ).toHaveLength(1);
+  });
+
   it("drops a slot where somebody has no way of travelling at all", () => {
     const stranded = participant("u1", "Dana", {
       profile: profile({
@@ -348,6 +382,10 @@ describe("the filter, before the agent", () => {
           },
         ],
         softPreferences: null,
+        toleranceKm: null,
+        earliestStart: null,
+        latestStart: null,
+        untranslated: null,
         note: null,
         createdAt: new Date("2026-09-01T00:00:00.000Z"),
       },
@@ -385,6 +423,10 @@ describe("the filter, before the agent", () => {
           },
         ],
         softPreferences: null,
+        toleranceKm: null,
+        earliestStart: null,
+        latestStart: null,
+        untranslated: null,
         note: "borrowed the car",
         createdAt: new Date("2026-09-01T00:00:00.000Z"),
       },

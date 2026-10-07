@@ -241,6 +241,33 @@ function localMidnightOf(instant: Date): Date {
 }
 
 /**
+ * Busy blocks covering each local day of `outerWindow` up to `earliestStart`
+ * (`HH:MM`) — "only after eight" as the shape `commonFreeWindows` and the
+ * filter already understand (#220). Same day walk as `partOfDayWindows`.
+ */
+export function beforeEarliestStart(
+  outerWindow: TimeSlot,
+  earliestStart: string
+): TimeSlot[] {
+  const [hours, minutes] = earliestStart.split(":").map(Number);
+  const offsetMs = (hours * 60 + minutes) * 60_000;
+  const blocks: TimeSlot[] = [];
+
+  for (let day = 0; day <= SEARCH_HORIZON_DAYS + 2; day++) {
+    const dayMidnight = localMidnightOf(
+      new Date(outerWindow.start.getTime() + day * DAY_MS)
+    );
+    if (dayMidnight.getTime() >= outerWindow.end.getTime()) break;
+    blocks.push({
+      start: dayMidnight,
+      end: new Date(dayMidnight.getTime() + offsetMs),
+    });
+  }
+
+  return blocks;
+}
+
+/**
  * `outerWindow` narrowed to `part`'s local hours, one `TimeSlot` per calendar
  * day it spans — spec's own words in #168: "one window per day, not one long
  * window." A week-long horizon with no pinned date becomes up to
@@ -331,7 +358,7 @@ export type Blocked = {
  * | `venue_identity` | the venue | "not that place" |
  * | `soft` | the venue | too loud, too expensive — a property of the place, and 19:00 does not fix it |
  * | `time` | the pair | the same venue three hours earlier is the right answer, not a worse one |
- * | `distance` | the pair | reach genuinely varies by hour — "no car after 21:00" ([#89](https://github.com/ron14y-sys/squad_lock/issues/89)) |
+ * | `distance` | the venue | it is as far at every hour; blocking only the pair let the same venue come straight back at the next hour ([#211](https://github.com/ron14y-sys/squad_lock/issues/211)). The "no car after 21:00" case (#89) is a mobility amendment, not a rejection |
  * | `none`, `failed_*` | the pair | nothing was understood, so block the minimum #17 requires and let the sentence do the rest |
  *
  * Which venue a rejection was *about* is the one that was on screen when it
@@ -357,7 +384,8 @@ export function blockedByRejections(
   for (const rejection of rejections) {
     if (
       rejection.outcome !== "soft" &&
-      rejection.outcome !== "venue_identity"
+      rejection.outcome !== "venue_identity" &&
+      rejection.outcome !== "distance"
     ) {
       continue;
     }
@@ -502,8 +530,14 @@ export async function assembleRun(
       throw new Error(`a8: ${response.userId} has no preference profile`);
     }
 
-    const profile = preferenceProfileFromRow(profileRow);
+    const stored = preferenceProfileFromRow(profileRow);
     const context = mergeContexts(contextRows.get(response.userId) ?? []);
+    // #220: how far this person will go for *this* meeting outranks the
+    // profile's, on the same precedence as the origin below. Applied here,
+    // once, so the burden, the gate and A4's "within your range" all read it.
+    const profile = context?.toleranceKm
+      ? { ...stored, toleranceKm: context.toleranceKm }
+      : stored;
 
     return {
       userId: response.userId,
@@ -516,7 +550,14 @@ export async function assembleRun(
       origin: context?.origin ?? profile.home,
       // No calendar read: free, apart from the hours they set by hand
       // (`hardConstraints.unavailable`, which A2 applies regardless).
-      busy: calendars.busy.get(response.userId) ?? [],
+      busy: [
+        ...(calendars.busy.get(response.userId) ?? []),
+        // #220: before the earliest start this person accepts tonight is
+        // busy, so a free evening is moved later rather than dropped.
+        ...(context?.earliestStart
+          ? beforeEarliestStart(window, context.earliestStart)
+          : []),
+      ],
     };
   });
 
