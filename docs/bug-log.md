@@ -86,7 +86,7 @@ says so.
   treating an unread calendar as free could produce a proposal that clashes
   with a calendar nobody read (spec §5.7: a false positive is worse than a
   false negative).
-- **Fix:** [#214](https://github.com/ron14y-sys/squad_lock/pull/214). The calendar is optional, and the proposal says
+- **Fix:** [#209](https://github.com/ron14y-sys/squad_lock/pull/209). The calendar is optional, and the proposal says
   what was not checked:
   - `fetchBusyForConnections` reads every calendar it can and returns
     `{ busy, unread, rejected }`. No token, or a token Google refuses, puts the
