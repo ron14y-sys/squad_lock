@@ -19,6 +19,7 @@ import {
   groupSizeWithPending,
 } from "@/lib/db/groups";
 import { notifyInvitation } from "@/lib/email/notify";
+import { domainAcceptsMail } from "@/lib/email/mail-domain";
 import { after } from "next/server";
 
 /**
@@ -104,6 +105,27 @@ export async function POST(
 
   const { email } = parsed.data;
 
+  // Asked of members, not of invitations: whoever created the group, or
+  // joined before invitations were recorded, has no accepted invitation,
+  // so the check below never saw them — inviting yourself sent you an
+  // invitation to a group you were already in.
+  if (session.user?.email?.trim().toLowerCase() === email) {
+    return Response.json(
+      { error: "That is your own address." },
+      { status: 409 }
+    );
+  }
+  const alreadyMember = await prisma.groupMember.findFirst({
+    where: { groupId, user: { email: { equals: email, mode: "insensitive" } } },
+    select: { id: true },
+  });
+  if (alreadyMember) {
+    return Response.json(
+      { error: "This person is already a member." },
+      { status: 409 }
+    );
+  }
+
   const existing = await prisma.invitation.findUnique({
     where: { groupId_email: { groupId, email } },
   });
@@ -120,6 +142,16 @@ export async function POST(
   // @@unique on Invitation in prisma/schema.prisma.
   if (existing) {
     return Response.json(existing);
+  }
+
+  // Last, because it is the one check that leaves the machine. Catches a
+  // domain that cannot receive mail (`gmail.con`), not a mailbox that does
+  // not exist — that is what cancelling an invitation is for.
+  if (!(await domainAcceptsMail(email))) {
+    return Response.json(
+      { error: "This address cannot receive email." },
+      { status: 400 }
+    );
   }
 
   try {
