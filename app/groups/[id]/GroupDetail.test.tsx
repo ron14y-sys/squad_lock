@@ -179,3 +179,87 @@ test("shows a not-found message for a group the user isn't in", async () => {
     await screen.findByText("הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.")
   ).toBeInTheDocument();
 });
+
+test.each([
+  ["That is your own address.", "זו הכתובת שלך. אי אפשר להזמין את עצמך."],
+  [
+    "This address cannot receive email.",
+    "לכתובת הזו אי אפשר לשלוח מייל. כדאי לבדוק שאין טעות הקלדה.",
+  ],
+])("says why an invitation was refused: %s", async (error, shown) => {
+  const user = userEvent.setup();
+  const fetchMock = routeFetchMock();
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupDetail groupId="group-1" />);
+  await screen.findByText("Rothschild Regulars");
+
+  fetchMock.mockImplementationOnce(() =>
+    Promise.resolve(jsonResponse({ error }, 409))
+  );
+
+  await user.type(
+    screen.getByPlaceholderText("כתובת אימייל"),
+    "dana@example.com"
+  );
+  await user.click(screen.getByRole("button", { name: "הזמן" }));
+
+  expect(await screen.findByText(shown)).toBeInTheDocument();
+});
+
+test("cancelling a pending invitation DELETEs it and drops it from the list", async () => {
+  const user = userEvent.setup();
+  let invitations = [PENDING_INVITATION];
+  const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+    if (init?.method === "DELETE") {
+      invitations = [];
+      return Promise.resolve({ ok: true, status: 204 } as Response);
+    }
+    if (url === "/api/groups") return Promise.resolve(jsonResponse([GROUP]));
+    if (url === "/api/groups/group-1/invitations")
+      return Promise.resolve(jsonResponse(invitations));
+    throw new Error(`Unexpected fetch: ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupDetail groupId="group-1" />);
+  await user.click(
+    await screen.findByRole("button", {
+      name: "בטל את ההזמנה ל-yoav@example.com",
+    })
+  );
+
+  expect(
+    await screen.findByText("ההזמנה ל-yoav@example.com בוטלה.")
+  ).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.queryByText("ממתינים לאישור (1)")).not.toBeInTheDocument()
+  );
+  const deleteCall = fetchMock.mock.calls.find(
+    ([, init]) => init?.method === "DELETE"
+  );
+  expect(deleteCall![0]).toBe("/api/groups/group-1/invitations/inv-1");
+});
+
+test("says so when the invitation was accepted before it could be cancelled", async () => {
+  const user = userEvent.setup();
+  const fetchMock = routeFetchMock({
+    "/api/groups/group-1/invitations": () => jsonResponse([PENDING_INVITATION]),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupDetail groupId="group-1" />);
+  const button = await screen.findByRole("button", {
+    name: "בטל את ההזמנה ל-yoav@example.com",
+  });
+  fetchMock.mockImplementationOnce(() =>
+    Promise.resolve(
+      jsonResponse({ error: "This invitation has already been accepted." }, 409)
+    )
+  );
+  await user.click(button);
+
+  expect(
+    await screen.findByText("yoav@example.com כבר הצטרף/ה לקבוצה.")
+  ).toBeInTheDocument();
+});
