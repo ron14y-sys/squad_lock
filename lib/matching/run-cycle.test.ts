@@ -495,6 +495,26 @@ describe("venueSoftFactsFrom", () => {
     ).toBeUndefined();
     expect(venueSoftFactsFrom([])).toBeUndefined();
   });
+
+  // #219: what kind of place, and what food, read from Google's types.
+  it("reads kinds of place and cuisines from the venue's Places types", () => {
+    expect(
+      venueSoftFactsFrom([
+        {
+          placeId: "gastropub",
+          budget: "modest",
+          types: ["bar", "restaurant", "italian_restaurant", "food"],
+        },
+        { placeId: "club", types: ["night_club"] },
+      ])
+    ).toEqual({
+      gastropub: {
+        budget: "modest",
+        venueKinds: ["bar", "restaurant"],
+        cuisines: ["italian"],
+      },
+    });
+  });
 });
 
 describe("venueDietaryFactsFrom", () => {

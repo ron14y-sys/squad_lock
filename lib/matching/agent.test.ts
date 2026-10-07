@@ -646,6 +646,20 @@ describe("what the model is shown", () => {
     expect(payload).toContain('"burden_by_person"');
   });
 
+  // #219: fetched since #163 and only stored, so "I want a bar" reached a
+  // model that could not tell which venue was one.
+  it("says what each venue is: Google's label, its description, its kind", () => {
+    const bar = { ...NEAR, typeLabel: "בר", summary: "בירות מהחבית" };
+    const payload = buildPayload({
+      ...inputFor([bar]),
+      venueSoftFacts: { "place-near": { venueKinds: ["bar"] } },
+    });
+
+    expect(payload).toContain('"type_label": "בר"');
+    expect(payload).toContain('"summary": "בירות מהחבית"');
+    expect(payload).toMatch(/"venue_is": \{\s*"venueKinds": \[\s*"bar"/);
+  });
+
   it("marks a pair verified or not, so the model can prefer the checked one", () => {
     const payload = buildPayload(inputFor([NEAR, UNCHECKED]));
 

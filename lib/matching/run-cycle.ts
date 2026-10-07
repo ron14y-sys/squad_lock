@@ -68,6 +68,10 @@ import { LlmCallError, retryDelayMs } from "@/lib/llm/client";
 import { originOf } from "./distance";
 import { pairId } from "./schemas";
 import type { VenueDietaryFacts } from "./constraints";
+import {
+  cuisinesOfTypes,
+  venueKindsOfTypes,
+} from "@/lib/preferences/vocabulary";
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
 import { buildShortlist } from "./funnel";
 import {
@@ -586,6 +590,7 @@ export async function assembleRun(
     detailed.map(({ candidate, details }) => ({
       placeId: candidate.placeId,
       budget: details.budget,
+      types: candidate.types,
     }))
   );
   const venueFacts = venueDietaryFactsFrom(
@@ -689,16 +694,30 @@ export function venueDietaryFactsFrom(
  * What is known about each venue's soft side, keyed by place id. A venue with
  * nothing known is left out entirely and, when nothing at all is known,
  * `undefined` is returned so the caller omits the field: an empty object
- * would assert that nothing is true of these venues (#86, #139). Today only
- * `budget` can be sourced (from `priceLevel`); the other three have no
- * source yet and are not invented.
+ * would assert that nothing is true of these venues (#86, #139).
+ *
+ * `budget` comes from `priceLevel`; the kinds of place and the cuisines from
+ * the venue's Places `types` (#219). A list that matches nothing — a night
+ * club is none of bar, café or restaurant — is left out, like an unknown
+ * budget: not known, not "none".
  */
 export function venueSoftFactsFrom(
-  venues: { placeId: string; budget?: VenueSoftFacts["budget"] }[]
+  venues: {
+    placeId: string;
+    budget?: VenueSoftFacts["budget"];
+    types?: readonly string[];
+  }[]
 ): Record<string, VenueSoftFacts> | undefined {
   const facts: Record<string, VenueSoftFacts> = {};
   for (const venue of venues) {
-    if (venue.budget) facts[venue.placeId] = { budget: venue.budget };
+    const venueKinds = venueKindsOfTypes(venue.types ?? []);
+    const cuisines = cuisinesOfTypes(venue.types ?? []);
+    const known: VenueSoftFacts = {
+      ...(venue.budget ? { budget: venue.budget } : {}),
+      ...(venueKinds.length > 0 ? { venueKinds } : {}),
+      ...(cuisines.length > 0 ? { cuisines } : {}),
+    };
+    if (Object.keys(known).length > 0) facts[venue.placeId] = known;
   }
   return Object.keys(facts).length > 0 ? facts : undefined;
 }

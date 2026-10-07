@@ -109,6 +109,7 @@ describe("getCachedSearch / saveCachedSearch", () => {
       address: null,
       location: { lat: 32.08, lng: 34.78 },
       neighbourhood: null,
+      types: ["cafe"],
     };
     const client = fakeCacheClient();
     client.placeSearchCache.findUnique.mockResolvedValue({
@@ -121,6 +122,26 @@ describe("getCachedSearch / saveCachedSearch", () => {
     ]);
   });
 
+  // #219: a row cached before candidates carried `types` would leave every
+  // venue's kind unknown for the rest of its 30 days.
+  it("reads a row written before candidates carried types as a miss", async () => {
+    const client = fakeCacheClient();
+    client.placeSearchCache.findUnique.mockResolvedValue({
+      results: [
+        {
+          placeId: "p1",
+          name: "Cafe",
+          address: null,
+          location: { lat: 32.08, lng: 34.78 },
+          neighbourhood: null,
+        },
+      ],
+      fetchedAt: new Date(),
+    });
+
+    expect(await getCachedSearch(CENTER, 1500, undefined, client)).toBeNull();
+  });
+
   it("saveCachedSearch upserts on the rounded key with the results as JSON", async () => {
     const client = fakeCacheClient();
     const candidate: Candidate = {
@@ -129,6 +150,7 @@ describe("getCachedSearch / saveCachedSearch", () => {
       address: null,
       location: { lat: 32.08, lng: 34.78 },
       neighbourhood: null,
+      types: ["cafe"],
     };
 
     await saveCachedSearch(CENTER, 1500, [candidate], undefined, client);
@@ -172,6 +194,7 @@ describe("searchNeighbourhoodCached", () => {
       address: null,
       location: { lat: 32.08, lng: 34.78 },
       neighbourhood: null,
+      types: ["cafe"],
     };
     const client = fakeCacheClient();
     client.placeSearchCache.findUnique.mockResolvedValue({

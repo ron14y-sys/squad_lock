@@ -91,3 +91,61 @@ export function softPreferencesFromJson(json: unknown): SoftPreferences {
     ...(cuisines ? { cuisines } : {}),
   };
 }
+
+/* -------------------------------------------------------------------------
+ * Against Google Places types (#219)
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The Places types that make a venue each kind. A place can be several —
+ * a bar that serves food lists `bar` and `restaurant` — and is then each.
+ */
+export const VENUE_KIND_GOOGLE_TYPES: Record<VenueKind, string[]> = {
+  bar: ["bar", "pub", "wine_bar", "bar_and_grill"],
+  cafe: ["cafe", "coffee_shop", "tea_house"],
+  restaurant: ["restaurant"],
+};
+
+/** The table approved on #217. */
+export const CUISINE_GOOGLE_TYPES: Record<Cuisine, string[]> = {
+  italian: ["italian_restaurant"],
+  pizza: ["pizza_restaurant"],
+  burger: ["hamburger_restaurant"],
+  meat: ["steak_house", "barbecue_restaurant"],
+  asian: [
+    "asian_restaurant",
+    "chinese_restaurant",
+    "thai_restaurant",
+    "vietnamese_restaurant",
+  ],
+  sushi: ["sushi_restaurant", "japanese_restaurant", "ramen_restaurant"],
+  middle_eastern: [
+    "mediterranean_restaurant",
+    "middle_eastern_restaurant",
+    "lebanese_restaurant",
+    "turkish_restaurant",
+    "greek_restaurant",
+  ],
+  seafood: ["seafood_restaurant"],
+  mexican: ["mexican_restaurant"],
+  indian: ["indian_restaurant"],
+};
+
+function matching<T extends string>(
+  types: readonly string[],
+  table: Record<T, string[]>
+): T[] {
+  return (Object.keys(table) as T[]).filter((value) =>
+    table[value].some((type) => types.includes(type))
+  );
+}
+
+/** The kinds of place a venue's Places types make it, in vocabulary order. */
+export function venueKindsOfTypes(types: readonly string[]): VenueKind[] {
+  return matching(types, VENUE_KIND_GOOGLE_TYPES);
+}
+
+/** The cuisines a venue's Places types name, in vocabulary order. */
+export function cuisinesOfTypes(types: readonly string[]): Cuisine[] {
+  return matching(types, CUISINE_GOOGLE_TYPES);
+}
