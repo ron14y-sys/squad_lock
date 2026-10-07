@@ -10,6 +10,7 @@ import {
   type Classification,
 } from "@/evals/judge";
 import type { MatchOptionDraft, MatchRunDraft } from "@/lib/matching/agent";
+import type { ConstraintUpdate } from "@/lib/extraction/constraint-updater";
 
 /**
  * A5's judge, tested without a model.
@@ -173,25 +174,58 @@ describe("judge", () => {
 describe("judgeConstraint", () => {
   const expected = {
     objection: "soft" as const,
-    softPreferences: { noiseLevel: "quiet" as const },
+    softPreferences: { venueKinds: ["bar" as const] },
   };
+
+  /** A model's answer, with everything it did not say left empty. */
+  function got(answer: Partial<ConstraintUpdate>): ConstraintUpdate {
+    return {
+      objection: "none",
+      softPreferences: {},
+      distance: null,
+      start: null,
+      notThisPlace: false,
+      untranslated: null,
+      ...answer,
+    };
+  }
 
   it("passes the agreed field and nothing else", () => {
     expect(
-      judgeConstraint(expected, {
-        objection: "soft",
-        softPreferences: { noiseLevel: "quiet" },
-      }).pass
+      judgeConstraint(
+        expected,
+        got({ objection: "soft", softPreferences: { venueKinds: ["bar"] } })
+      ).pass
+    ).toBe(true);
+  });
+
+  // #217: a list is a set, and a list is never the same object twice — so
+  // comparing it with `===` failed every correct answer.
+  it("reads a list as a set, whatever its order", () => {
+    expect(
+      judgeConstraint(
+        {
+          objection: "soft",
+          softPreferences: { cuisines: ["sushi", "italian"] },
+        },
+        got({
+          objection: "soft",
+          softPreferences: { cuisines: ["italian", "sushi"] },
+        })
+      ).pass
     ).toBe(true);
   });
 
   // Set equality, not containment: an extra field is a preference nobody
   // stated, and it changes the next ranking on its own (#86).
   it("fails an answer that also invented a field", () => {
-    const verdict = judgeConstraint(expected, {
-      objection: "soft",
-      softPreferences: { noiseLevel: "quiet", budget: "modest" },
-    });
+    const verdict = judgeConstraint(
+      expected,
+      got({
+        objection: "soft",
+        softPreferences: { venueKinds: ["bar"], budget: "modest" },
+      })
+    );
 
     expect(verdict.pass).toBe(false);
     expect(verdict.reason).toContain("invented budget");
@@ -199,31 +233,75 @@ describe("judgeConstraint", () => {
 
   it("fails a missed field, a wrong value and a wrong objection", () => {
     expect(
-      judgeConstraint(expected, { objection: "soft", softPreferences: {} })
-        .reason
-    ).toContain("missed noiseLevel");
+      judgeConstraint(expected, got({ objection: "soft" })).reason
+    ).toContain("missed venueKinds");
 
     expect(
-      judgeConstraint(expected, {
-        objection: "soft",
-        softPreferences: { noiseLevel: "lively" },
-      }).reason
-    ).toContain("expected quiet");
+      judgeConstraint(
+        expected,
+        got({ objection: "soft", softPreferences: { venueKinds: ["cafe"] } })
+      ).reason
+    ).toContain("expected bar");
 
-    expect(
-      judgeConstraint(expected, { objection: "none", softPreferences: {} })
-        .reason
-    ).toContain('objection "none"');
+    expect(judgeConstraint(expected, got({})).reason).toContain(
+      'objection "none"'
+    );
   });
 
   // "Nothing mapped" and "the objection was distance" are different answers,
   // and the whole point of recording the kind is being able to tell them apart.
   it("does not accept one unmappable objection for another", () => {
     expect(
-      judgeConstraint(
-        { objection: "distance", softPreferences: {} },
-        { objection: "none", softPreferences: {} }
-      ).pass
+      judgeConstraint({ objection: "distance", softPreferences: {} }, got({}))
+        .pass
     ).toBe(false);
+  });
+
+  // #220: a distance or a time is as much an answer as a preference — right,
+  // wrong, missing or invented.
+  it("compares a distance and a start whole, and fails one nobody mentioned", () => {
+    const tooFar = {
+      objection: "distance" as const,
+      softPreferences: {},
+      distance: { kind: "max_km" as const, km: 2 },
+    };
+
+    expect(
+      judgeConstraint(
+        tooFar,
+        got({ objection: "distance", distance: { kind: "max_km", km: 2 } })
+      ).pass
+    ).toBe(true);
+    expect(
+      judgeConstraint(
+        tooFar,
+        got({ objection: "distance", distance: { kind: "closer" } })
+      ).reason
+    ).toContain("expected");
+    expect(
+      judgeConstraint(
+        expected,
+        got({
+          objection: "soft",
+          softPreferences: { venueKinds: ["bar"] },
+          start: { direction: "later" },
+        })
+      ).reason
+    ).toContain("invented start");
+  });
+
+  it("asks only that something was set aside as untranslated", () => {
+    const parking = {
+      objection: "none" as const,
+      softPreferences: {},
+      untranslated: true as const,
+    };
+
+    expect(judgeConstraint(parking, got({ untranslated: "חניה" })).pass).toBe(
+      true
+    );
+    expect(judgeConstraint(parking, got({})).reason).toContain(
+      "missed untranslated"
+    );
   });
 });

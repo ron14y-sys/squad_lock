@@ -54,7 +54,9 @@ const DETAILS_ENDPOINT = "https://places.googleapis.com/v1/places";
  * and address the venue, compute distance (`location`), and drop a
  * permanently/temporarily closed result (`businessStatus`). Nothing that
  * would push the call into a paid-per-request tier. `primaryTypeDisplayName`
- * ("Italian restaurant") is Pro too, so it costs nothing extra (#163).
+ * ("Italian restaurant") is Pro too, so it costs nothing extra (#163), and
+ * so is `types` — the machine-readable list a venue's kind and cuisine are
+ * read from (#219).
  */
 const SEARCH_FIELD_MASK = [
   "places.id",
@@ -63,6 +65,7 @@ const SEARCH_FIELD_MASK = [
   "places.location",
   "places.businessStatus",
   "places.primaryTypeDisplayName",
+  "places.types",
 ].join(",");
 
 /**
@@ -126,6 +129,7 @@ type RawPlace = {
   location?: RawLocation;
   businessStatus?: string;
   primaryTypeDisplayName?: { text: string };
+  types?: string[];
 };
 
 type SearchNearbyResponse = {
@@ -241,6 +245,9 @@ function parseSearchResult(raw: RawPlace): Candidate | null {
     address: raw.formattedAddress ?? null,
     location: { lat: raw.location.latitude, lng: raw.location.longitude },
     typeLabel: raw.primaryTypeDisplayName?.text,
+    // Always a list, even an empty one: the cache reads a candidate with no
+    // `types` key at all as written before #219, and fetches again.
+    types: raw.types ?? [],
     // Neighbourhood is not a Places field — whoever calls this already knows
     // which neighbourhood query produced the result and can attach it.
     neighbourhood: null,

@@ -10,7 +10,7 @@ import type {
   LocalWindow,
   TimeSlot,
 } from "./primitives";
-import type { MobilityMode, SoftPreferences } from "./profile";
+import type { MobilityMode, TonightCorrection } from "./profile";
 
 /**
  * The stored lifecycle (database enum `MeetingStatus`).
@@ -165,7 +165,28 @@ export type ParticipantMeetingContext = {
    * `{}` is not a state anyone can be in, and the column is nullable with no
    * default so that the two cannot be confused (A7's migration).
    */
-  softPreferences: SoftPreferences | null;
+  softPreferences: TonightCorrection | null;
+
+  /**
+   * How far this person will travel **for this meeting** (#220). Outranks the
+   * profile's `toleranceKm` — it is the denominator of their burden, and the
+   * "within the range you gave" in their justification. Set by A7 from a
+   * rejection ("too far", or a distance they named) or by an amendment.
+   */
+  toleranceKm: number | null;
+  /**
+   * The earliest and latest local start, `HH:MM`, this person accepts **for
+   * this meeting** (#220). A slot outside them is never proposed. Set by A7
+   * ("too late", "only after eight") or by an amendment.
+   */
+  earliestStart: LocalTimeOfDay | null;
+  latestStart: LocalTimeOfDay | null;
+  /**
+   * What a rejection asked for that the weighing has no lever for, in A7's
+   * words — kept so the levers people miss can be counted. The sentence
+   * itself still reaches A4 verbatim.
+   */
+  untranslated: string | null;
 
   note: string | null;
   createdAt: Date;

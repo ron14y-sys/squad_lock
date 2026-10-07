@@ -86,6 +86,11 @@ const amendmentSchema = z
     originLabel: z.string().trim().min(1).optional(),
     mobilityWindows: z.array(mobilityWindowSchema).optional(),
     note: z.string().trim().min(1).optional(),
+    // #220: how far, and when, this person can make it tonight — the same
+    // fields A7 fills from a rejection. The form is #222/#223.
+    toleranceKm: z.number().min(0.3).max(50).optional(),
+    earliestStart: localTimeOfDaySchema.optional(),
+    latestStart: localTimeOfDaySchema.optional(),
   })
   .strict();
 
@@ -107,7 +112,10 @@ export const respondToMeetingSchema = z
       data.origin !== undefined ||
       data.originLabel !== undefined ||
       (data.mobilityWindows !== undefined && data.mobilityWindows.length > 0) ||
-      data.note !== undefined,
+      data.note !== undefined ||
+      data.toleranceKm !== undefined ||
+      data.earliestStart !== undefined ||
+      data.latestStart !== undefined,
     {
       message:
         "An amendment needs at least one field — an empty one corrects nothing.",

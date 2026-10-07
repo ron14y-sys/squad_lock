@@ -97,10 +97,9 @@ function pad(text: string, width: number): string {
 const BASE_PROFILE: Omit<PreferenceProfile, "id" | "userId"> = {
   hardConstraints: { dietary: [], allergies: [], unavailable: [] },
   softPreferences: {
-    noiseLevel: "quiet",
-    activityStyle: "cultural",
     budget: "modest",
-    cuisine: "familiar",
+    venueKinds: ["cafe"],
+    cuisines: ["italian"],
   },
   home: { lat: 32.06, lng: 34.77 },
   homeNeighbourhood: "Florentin",
@@ -207,6 +206,10 @@ const PARTICIPANTS: Participant[] = [
           },
         ],
         softPreferences: null,
+        toleranceKm: null,
+        earliestStart: null,
+        latestStart: null,
+        untranslated: null,
         note: "on crutches this week",
         createdAt: new Date("2026-09-05T00:00:00.000Z"),
       },

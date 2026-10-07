@@ -18,7 +18,7 @@ const findMany = vi.fn();
 
 vi.mock("@/lib/db/client", () => ({
   getPrisma: () => ({
-    meeting: { findUnique: async () => MEETING, updateMany, findMany },
+    meeting: { findUnique: async () => meetingRow, updateMany, findMany },
     user: { updateMany: userUpdateMany },
     $transaction: async (fn: (tx: unknown) => unknown) => fn({}),
   }),
@@ -98,6 +98,9 @@ const MEETING = {
   matchRuns: [],
 };
 
+/** What `findUnique` hands back; a test may swap it for a variant of MEETING. */
+let meetingRow: typeof MEETING = MEETING;
+
 const FREE: BusyLookup = async (userIds) => ({
   busy: new Map(userIds.map((id) => [id, []])),
   unread: [],
@@ -138,6 +141,7 @@ beforeEach(() => {
   notifyCalendarReconnect.mockReset();
   runMatchingAgent.mockReset();
   persistMatchRun.mockReset().mockRejectedValue(new Error("not under test"));
+  meetingRow = MEETING;
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -214,6 +218,47 @@ describe("runCycle's stage", () => {
     await runCycle("m1", NOW, REJECTED);
 
     expect(notifyCalendarReconnect).not.toHaveBeenCalled();
+  });
+});
+
+describe("tonight's distance and start (#220)", () => {
+  it("weighs this meeting with the person's own tolerance and earliest start for it", async () => {
+    runMatchingAgent.mockRejectedValue(new Error("model timed out"));
+    meetingRow = {
+      ...MEETING,
+      participantContexts: [
+        {
+          id: "ctx-1",
+          meetingId: "m1",
+          userId: "u1",
+          originLat: null,
+          originLng: null,
+          originLabel: null,
+          mobilityWindows: [],
+          softPreferences: null,
+          rejectionText: "רחוק לי מדי, ורק אחרי שמונה",
+          rejectionOutcome: "distance",
+          toleranceKm: 2,
+          earliestStart: "20:00",
+          latestStart: null,
+          untranslated: null,
+          note: null,
+          createdAt: STAMP,
+        },
+      ],
+    } as unknown as typeof MEETING;
+
+    await runCycle("m1", NOW, FREE);
+
+    const [input] = runMatchingAgent.mock.calls[0];
+    // The profile said 5 km; tonight said 2.
+    expect(input.participants[0].profile.toleranceKm).toBe(2);
+    // Busy until 20:00 local (17:00Z) on the meeting's days.
+    expect(
+      input.participants[0].busy.some((block: { end: Date }) =>
+        block.end.toISOString().endsWith("T17:00:00.000Z")
+      )
+    ).toBe(true);
   });
 });
 

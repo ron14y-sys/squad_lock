@@ -71,8 +71,8 @@ async function main(): Promise<void> {
       meeting.id,
       user.id,
       "soft",
-      { noiseLevel: "quiet" },
-      "רועש לי מדי שם"
+      { venueKinds: ["bar"] },
+      "אני מעדיפה בר"
     );
 
     const afterFirst = await prisma.response.findUniqueOrThrow({
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     check(
       "the correction reads back as it was written",
       JSON.stringify(corrections[0]?.softPreferences) ===
-        JSON.stringify({ noiseLevel: "quiet" }),
+        JSON.stringify({ venueKinds: ["bar"] }),
       JSON.stringify(corrections[0]?.softPreferences)
     );
 

@@ -490,6 +490,21 @@ function participantViolations(
     }
   }
 
+  // #220: the latest start this person accepts for this meeting ("too late",
+  // "not after nine"). Its other half, the earliest start, is not checked
+  // here: `assembleRun` turns it into busy time, so a long evening is moved
+  // later rather than dropped.
+  const latestStart = participant.context?.latestStart;
+  if (
+    latestStart &&
+    weekMinuteOf(slot.start) % MINUTES_PER_DAY > minutesOfDay(latestStart)
+  ) {
+    at(
+      `${participant.name} asked to start by ${latestStart} for this meeting, and ${describeSlot(slot)} starts later`,
+      "unavailable"
+    );
+  }
+
   for (const busy of participant.busy) {
     if (slotsOverlap(slot, busy)) {
       at(

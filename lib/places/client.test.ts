@@ -64,7 +64,7 @@ describe("searchNeighbourhood", () => {
     expect(init.method).toBe("POST");
     expect(init.headers["X-Goog-Api-Key"]).toBe("test-key");
     expect(init.headers["X-Goog-FieldMask"]).toBe(
-      "places.id,places.displayName,places.formattedAddress,places.location,places.businessStatus,places.primaryTypeDisplayName"
+      "places.id,places.displayName,places.formattedAddress,places.location,places.businessStatus,places.primaryTypeDisplayName,places.types"
     );
     // No Enterprise field anywhere in this mask — that is the whole point.
     expect(init.headers["X-Goog-FieldMask"]).not.toMatch(/rating|OpeningHours/);
@@ -117,6 +117,7 @@ describe("searchNeighbourhood", () => {
         address: "1 Florentin St, Tel Aviv",
         location: { lat: 32.05, lng: 34.77 },
         neighbourhood: null,
+        types: [],
       },
     ]);
     expect(candidates[0]).not.toHaveProperty("rating");
@@ -139,6 +140,24 @@ describe("searchNeighbourhood", () => {
     const [candidate] = await searchNeighbourhood(CENTER, 1500);
 
     expect(candidate.typeLabel).toBe("מסעדה איטלקית");
+  });
+
+  it("keeps Google's types, which a venue's kind and cuisine are read from (#219)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      fakeResponse(true, {
+        places: [
+          {
+            id: "place-1",
+            location: { latitude: 32.05, longitude: 34.77 },
+            types: ["bar", "restaurant", "food"],
+          },
+        ],
+      })
+    );
+
+    const [candidate] = await searchNeighbourhood(CENTER, 1500);
+
+    expect(candidate.types).toEqual(["bar", "restaurant", "food"]);
   });
 
   it("is empty when the response has no places at all", async () => {

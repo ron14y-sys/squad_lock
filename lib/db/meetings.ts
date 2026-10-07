@@ -11,7 +11,10 @@ import {
   ResponseStatus,
 } from "@/lib/generated/prisma/client";
 import { meetingFromRow } from "@/lib/types/meeting-from-row";
-import { participantMeetingContextFromRow } from "@/lib/types/participant-meeting-context-from-row";
+import {
+  mergeContexts,
+  participantMeetingContextFromRow,
+} from "@/lib/types/participant-meeting-context-from-row";
 
 import { canonicalMeetingPair, meetingsConflict } from "./conflict-dismissal";
 import { GROUP_SIZE_FLOOR, GroupTooSmallError } from "./groups";
@@ -27,8 +30,8 @@ import type {
   ParticipantMeetingContext,
   Response,
 } from "@/lib/types/meeting";
-import type { SoftPreferences } from "@/lib/types/profile";
-import type { TimeSlot } from "@/lib/types/primitives";
+import type { TonightCorrection } from "@/lib/types/profile";
+import type { LatLng, TimeSlot } from "@/lib/types/primitives";
 
 /** spec §3.1's "Three Mandatory Caps": at most 3 open meetings per group. */
 const OPEN_MEETING_CAP = 3;
@@ -488,6 +491,9 @@ export async function respondToMeeting(
             originLabel: input.originLabel ?? null,
             mobilityWindows: input.mobilityWindows ?? [],
             note: input.note ?? null,
+            toleranceKm: input.toleranceKm ?? null,
+            earliestStart: input.earliestStart ?? null,
+            latestStart: input.latestStart ?? null,
           },
         });
         participantContext = participantMeetingContextFromRow(contextRow);
@@ -590,6 +596,8 @@ export async function respondToMeeting(
 export type RejectedOption = {
   venueName: string;
   slot: TimeSlot;
+  /** Where it was — what "too far" is measured against (#220). */
+  location: LatLng | null;
 };
 
 /**
@@ -623,8 +631,58 @@ export async function findRejectedOption(
   return {
     venueName: option.venueName,
     slot: { start: option.proposedDatetime, end: option.proposedEnd },
+    location:
+      option.venueLat !== null && option.venueLng !== null
+        ? { lat: option.venueLat, lng: option.venueLng }
+        : null,
   };
 }
+
+/**
+ * Where this person is starting from tonight and how far they will go, as
+ * the next weighing would see it (#220) — tonight's context over the
+ * profile, the precedence `assembleRun` applies. What "too far" is measured
+ * from, and the tolerance a "closer" tightens.
+ */
+export async function findTonightReach(
+  meetingId: string,
+  userId: string
+): Promise<{ origin: LatLng | null; toleranceKm: number }> {
+  const prisma = getPrisma();
+  const [profileRow, contextRows] = await Promise.all([
+    prisma.preferenceProfile.findUnique({ where: { userId } }),
+    prisma.participantMeetingContext.findMany({
+      where: { meetingId, userId },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+  const context = mergeContexts(
+    contextRows.map(participantMeetingContextFromRow)
+  );
+  const home =
+    profileRow?.homeLat != null && profileRow?.homeLng != null
+      ? { lat: profileRow.homeLat, lng: profileRow.homeLng }
+      : null;
+  return {
+    origin: context?.origin ?? home,
+    toleranceKm: context?.toleranceKm ?? profileRow?.toleranceKm ?? 5,
+  };
+}
+
+/** What a rejection set for this meeting besides the correction (#220). */
+export type TonightBounds = {
+  toleranceKm: number | null;
+  earliestStart: string | null;
+  latestStart: string | null;
+  untranslated: string | null;
+};
+
+const NO_BOUNDS: TonightBounds = {
+  toleranceKm: null,
+  earliestStart: null,
+  latestStart: null,
+  untranslated: null,
+};
 
 /**
  * Records what A7 made of one rejection: the sentence, the correction when
@@ -646,8 +704,9 @@ export async function recordRejectionOutcome(
   meetingId: string,
   userId: string,
   outcome: ExtractionOutcome,
-  correction: SoftPreferences | null,
-  reasonText: string
+  correction: TonightCorrection | null,
+  reasonText: string,
+  bounds: TonightBounds = NO_BOUNDS
 ): Promise<void> {
   const prisma = getPrisma();
 
@@ -656,6 +715,7 @@ export async function recordRejectionOutcome(
       data: {
         meetingId,
         userId,
+        ...bounds,
         softPreferences: correction ?? Prisma.DbNull,
         rejectionText: reasonText,
         rejectionOutcome: outcome,

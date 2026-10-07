@@ -469,6 +469,16 @@ model ParticipantMeetingContext {
   rejectionText    String?
   rejectionOutcome ExtractionOutcome?
 
+  /// This meeting only (#220): how far this person will travel, and the
+  /// earliest / latest local start (`HH:MM`) they accept. Set by A7 from a
+  /// rejection or by an amendment; NULL is "the profile's", and "no bound".
+  toleranceKm   Float?
+  earliestStart String?
+  latestStart   String?
+  /// What a rejection asked for that no lever can act on, in A7's words —
+  /// kept so the missing levers can be counted (#220).
+  untranslated  String?
+
   note String?
 
   createdAt DateTime @default(now())

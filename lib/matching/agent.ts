@@ -320,6 +320,12 @@ export function buildPayload(input: MatchAgentInput): string {
         venue_name: candidate?.name ?? pair.candidatePlaceId,
         neighbourhood: candidate?.neighbourhood ?? null,
         rating: candidate?.rating ?? null,
+        // Google's own words for what the place is ("בר", "מסעדה איטלקית")
+        // and its one-line description. Fetched since #163 but only stored,
+        // so "I want a bar" reached a model that could not tell which venue
+        // was one (#219).
+        type_label: candidate?.typeLabel ?? null,
+        summary: candidate?.summary ?? null,
         venue_is: venueSoftFacts?.[pair.candidatePlaceId] ?? null,
         slot_id: slotId(pair.slot),
         when: describeSlot(pair.slot, "long"),

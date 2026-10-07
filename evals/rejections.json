@@ -1,16 +1,15 @@
 [
   {
     "id": "two-fields",
-    "text": "גם יקר לי שם וגם רועש מדי, אני מעדיפה משהו פשוט ושקט",
+    "text": "גם יקר לי שם וגם בא לי יותר בר מאשר מסעדה",
     "venueIs": {
-      "budget": "splurge",
-      "noiseLevel": "lively"
+      "budget": "splurge"
     },
     "expected": {
       "objection": "soft",
       "softPreferences": {
         "budget": "modest",
-        "noiseLevel": "quiet"
+        "venueKinds": ["bar"]
       }
     },
     "why": "One sentence can carry two fields. Extracting one of them would leave half an objection on the table."
@@ -29,18 +28,24 @@
     "text": "רחוק לי מדי, אין לי דרך להגיע עד לשם",
     "expected": {
       "objection": "distance",
-      "softPreferences": {}
+      "softPreferences": {},
+      "distance": {
+        "kind": "closer"
+      }
     },
-    "why": "A real objection this vocabulary cannot hold. It is A12's material, and forcing it into a soft field would record a preference the person never expressed."
+    "why": "Too far, with no number: a direction, which code turns into a tolerance from the rejected venue (#220). The model never picks the number."
   },
   {
     "id": "time",
     "text": "מאוחר מדי בשבילי, אני לא יכול לצאת בשעה כזאת",
     "expected": {
       "objection": "time",
-      "softPreferences": {}
+      "softPreferences": {},
+      "start": {
+        "direction": "earlier"
+      }
     },
-    "why": "Same, for the hour. Note it is not 'none': the timeline can say what was wrong even though nothing was corrected."
+    "why": "Too late, with no time: a direction, which code turns into a latest start half an hour before the rejected one (#220)."
   },
   {
     "id": "venue-identity",
@@ -53,13 +58,74 @@
   },
   {
     "id": "preference-not-rejection",
-    "text": "האמת שדווקא בא לי משהו הרפתקני לאכול, לא את אותו הדבר כרגיל",
+    "text": "האמת שדווקא בא לי סושי הערב, לא את אותו הדבר כרגיל",
     "expected": {
       "objection": "soft",
       "softPreferences": {
-        "cuisine": "adventurous"
+        "cuisines": ["sushi"]
       }
     },
     "why": "Stated as a wish rather than a complaint. It is still exactly one field, and reading it as 'none' would drop what the person actually said."
+  },
+  {
+    "id": "avoid-cuisine",
+    "text": "רק לא אוכל אסייתי בבקשה, אכלתי כזה אתמול",
+    "expected": {
+      "objection": "soft",
+      "softPreferences": {
+        "avoidCuisines": ["asian"]
+      }
+    },
+    "why": "What someone does not want is as actionable as what they want, and a different field (#220)."
+  },
+  {
+    "id": "named-time",
+    "text": "אני יכולה להגיע רק אחרי שמונה",
+    "expected": {
+      "objection": "time",
+      "softPreferences": {},
+      "start": {
+        "notBefore": "20:00"
+      }
+    },
+    "why": "A time the person wrote is taken as written, not turned into a direction (#220)."
+  },
+  {
+    "id": "named-distance",
+    "text": "זה רחוק מדי, אני לא מוכן לנסוע יותר משני קילומטר",
+    "expected": {
+      "objection": "distance",
+      "softPreferences": {},
+      "distance": {
+        "kind": "max_km",
+        "km": 2
+      }
+    },
+    "why": "A distance the person wrote wins over 'closer'; one fact, not two (#220)."
+  },
+  {
+    "id": "several-facts",
+    "text": "גם רחוק לי וגם הייתי מעדיפה בר ולא מסעדה",
+    "expected": {
+      "objection": "soft",
+      "softPreferences": {
+        "venueKinds": ["bar"],
+        "avoidVenueKinds": ["restaurant"]
+      },
+      "distance": {
+        "kind": "closer"
+      }
+    },
+    "why": "One rejection, several facts: a distance, a kind of place wanted and one avoided, each in its field (#220). \"בר ולא מסעדה\" says \"not a restaurant\" in so many words, so the avoid is the literal reading. A bar that also serves food is a restaurant in Google's types too; keeping it when a wanted kind matches is #221's job, not the extraction's."
+  },
+  {
+    "id": "no-lever",
+    "text": "אין שם איפה להחנות, אני מגיע ברכב",
+    "expected": {
+      "objection": "none",
+      "softPreferences": {},
+      "untranslated": true
+    },
+    "why": "Nothing the weighing can act on — but it is set aside as untranslated, so the missing lever (parking) can be counted (#220). The first sweep read \"אין שם\" as 'not this place' two times in three; parking is a quality of the place, and the prompt now says a named quality is never not_this_place."
   }
 ]

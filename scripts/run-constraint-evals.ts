@@ -54,7 +54,17 @@ const sentence = args.filter((arg) => !known.has(arg)).join(" ");
 const PACE_MS = Number(process.env.EVAL_PACE_MS ?? 4_000);
 
 const shape = (update: ConstraintUpdate) =>
-  `${update.objection}${Object.keys(update.softPreferences).length ? ` ${JSON.stringify(update.softPreferences)}` : ""}`;
+  [
+    update.objection,
+    Object.keys(update.softPreferences).length
+      ? JSON.stringify(update.softPreferences)
+      : "",
+    update.distance ? `distance=${JSON.stringify(update.distance)}` : "",
+    update.start ? `start=${JSON.stringify(update.start)}` : "",
+    update.untranslated ? `untranslated="${update.untranslated}"` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
 type Row = {
   id: string;

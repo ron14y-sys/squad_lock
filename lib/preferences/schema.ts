@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { BUDGETS, CUISINES, VENUE_KINDS } from "./vocabulary";
+
 /**
  * PUT /api/preferences request body (B3, spec §5.1) — the model boundary
  * for `lib/types/profile.ts`'s `PreferenceProfile`.
@@ -47,15 +49,19 @@ const hardConstraintsSchema = z.object({
 });
 
 // Every field optional, mirroring `SoftPreferences` in lib/types/profile.ts
-// (#86): a declined this-or-that question stores nothing for that field
-// rather than a default, so a partial answer set must parse just as cleanly
-// as a full one.
+// (#86): a declined question stores nothing for that field rather than a
+// default, so a partial answer set must parse just as cleanly as a full one.
+// A list is never empty — "doesn't matter" leaves the field out.
+//
+// Not `.strict()`, on purpose: a key it does not know — `noiseLevel` from a
+// game page loaded before #217 — is dropped, not refused, so an old tab still
+// saves the answers that still mean something. An unknown *value* for a
+// known key is still refused.
 const softPreferencesSchema = z
   .object({
-    noiseLevel: z.enum(["lively", "quiet"]),
-    activityStyle: z.enum(["outdoorsy", "cultural"]),
-    budget: z.enum(["modest", "splurge"]),
-    cuisine: z.enum(["familiar", "adventurous"]),
+    budget: z.enum(BUDGETS),
+    venueKinds: z.array(z.enum(VENUE_KINDS)).min(1),
+    cuisines: z.array(z.enum(CUISINES)).min(1),
   })
   .partial();
 

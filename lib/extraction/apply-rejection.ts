@@ -26,7 +26,13 @@
  */
 
 import { failureOutcome, runConstraintUpdater } from "./constraint-updater";
-import { findRejectedOption, recordRejectionOutcome } from "@/lib/db/meetings";
+import { startBoundsFor, toleranceFor } from "./tonight-bounds";
+import {
+  findRejectedOption,
+  findTonightReach,
+  recordRejectionOutcome,
+} from "@/lib/db/meetings";
+import { straightLineKm } from "@/lib/matching/distance";
 
 export async function applyRejection(
   meetingId: string,
@@ -52,15 +58,38 @@ export async function applyRejection(
       },
     });
 
+    // #220: "too far" and "too late" become this meeting's numbers here,
+    // measured against what was rejected — the model never picks them.
+    const reach = update.distance
+      ? await findTonightReach(meetingId, userId)
+      : null;
+    const toleranceKm = toleranceFor(update.distance, {
+      distanceKm:
+        reach?.origin && rejected.location
+          ? straightLineKm(reach.origin, rejected.location)
+          : null,
+      currentKm: reach?.toleranceKm ?? 0,
+    });
+    const { earliestStart, latestStart } = startBoundsFor(
+      update.start,
+      rejected.slot.start
+    );
+
+    const hasCorrection = Object.keys(update.softPreferences).length > 0;
     await recordRejectionOutcome(
       meetingId,
       userId,
       update.objection,
-      // A correction only exists for a `soft` objection. The row itself is
-      // written either way, because the sentence has to survive this
-      // person's next rejection overwriting `Response.reasonText` (A8).
-      update.objection === "soft" ? update.softPreferences : null,
-      reasonText
+      // The row is written either way, because the sentence has to survive
+      // this person's next rejection overwriting `Response.reasonText` (A8).
+      hasCorrection ? update.softPreferences : null,
+      reasonText,
+      {
+        toleranceKm,
+        earliestStart,
+        latestStart,
+        untranslated: update.untranslated,
+      }
     );
   } catch (error) {
     // One line, greppable, in the shape A1's cost log already uses.

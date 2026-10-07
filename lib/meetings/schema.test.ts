@@ -136,6 +136,34 @@ describe("respondToMeetingSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  // #220: the fields #222/#223's form will send.
+  it("accepts an amendment with only tonight's distance or start bounds", () => {
+    for (const fields of [
+      { toleranceKm: 2 },
+      { earliestStart: "20:00" },
+      { latestStart: "21:30" },
+    ]) {
+      expect(
+        respondToMeetingSchema.safeParse({ kind: "amendment", ...fields })
+          .success
+      ).toBe(true);
+    }
+  });
+
+  it("refuses a start bound that is not HH:MM, or a distance out of range", () => {
+    for (const fields of [
+      { earliestStart: "8pm" },
+      { latestStart: "25:00" },
+      { toleranceKm: 0 },
+      { toleranceKm: 400 },
+    ]) {
+      expect(
+        respondToMeetingSchema.safeParse({ kind: "amendment", ...fields })
+          .success
+      ).toBe(false);
+    }
+  });
+
   it("rejects a fully empty amendment — it would correct nothing", () => {
     expect(
       respondToMeetingSchema.safeParse({ kind: "amendment" }).success

@@ -6,6 +6,7 @@ import {
   faultRetryNotBefore,
   isDue,
   MIN_PROPOSAL_LIFETIME_MS,
+  beforeEarliestStart,
   partOfDayWindows,
   RATE_LIMIT_RETRY_COOLDOWN_MS,
   CONTEXT_BATCH_MS,
@@ -113,13 +114,15 @@ describe("blockedByRejections", () => {
 
   // Reach varies by hour — "no car after 21:00" (#89) — so "too far" is the
   // other objection that is about the evening rather than the place.
-  it("leaves the venue open for a distance objection", () => {
+  // #211: blocking only the pair let the same venue come straight back at
+  // the next hour. It is as far at every hour.
+  it("blocks the whole venue for a distance objection", () => {
     const blocked = blockedByRejections(
       [asian],
       [rejection("2026-09-24T15:30:00.000Z", "distance")]
     );
 
-    expect(blocked.venues.size).toBe(0);
+    expect(blocked.venues.has(asian.placeId!)).toBe(true);
   });
 
   it("blocks only the pair when nothing was understood", () => {
@@ -199,6 +202,31 @@ describe("searchWindow", () => {
     const window = searchWindow(at("2026-09-24T00:00:00.000Z"), midday);
 
     expect(window.start).toEqual(midday);
+  });
+});
+
+describe("beforeEarliestStart (#220)", () => {
+  it("makes each local day busy until the earliest start", () => {
+    const window = searchWindow(
+      at("2026-09-24T00:00:00.000Z"),
+      at("2026-09-20T09:00:00.000Z")
+    );
+
+    // Local midnight is 21:00Z the day before; 20:00 local is 17:00Z.
+    expect(beforeEarliestStart(window, "20:00")).toEqual([
+      {
+        start: at("2026-09-23T21:00:00.000Z"),
+        end: at("2026-09-24T17:00:00.000Z"),
+      },
+    ]);
+  });
+
+  it("covers every day of a week-long horizon", () => {
+    const window = searchWindow(null, at("2026-09-20T09:00:00.000Z"));
+
+    expect(beforeEarliestStart(window, "20:00").length).toBeGreaterThanOrEqual(
+      7
+    );
   });
 });
 
@@ -494,6 +522,26 @@ describe("venueSoftFactsFrom", () => {
       venueSoftFactsFrom([{ placeId: "a" }, { placeId: "b" }])
     ).toBeUndefined();
     expect(venueSoftFactsFrom([])).toBeUndefined();
+  });
+
+  // #219: what kind of place, and what food, read from Google's types.
+  it("reads kinds of place and cuisines from the venue's Places types", () => {
+    expect(
+      venueSoftFactsFrom([
+        {
+          placeId: "gastropub",
+          budget: "modest",
+          types: ["bar", "restaurant", "italian_restaurant", "food"],
+        },
+        { placeId: "club", types: ["night_club"] },
+      ])
+    ).toEqual({
+      gastropub: {
+        budget: "modest",
+        venueKinds: ["bar", "restaurant"],
+        cuisines: ["italian"],
+      },
+    });
   });
 });
 

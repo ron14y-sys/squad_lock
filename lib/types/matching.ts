@@ -38,6 +38,12 @@ export type Candidate = {
   openingHours?: LocalWindow[];
   /** Google's own words for what the place is, e.g. "מסעדה איטלקית" (#163). */
   typeLabel?: string;
+  /**
+   * Google's Places types, e.g. `["bar", "restaurant"]` — what the venue's
+   * kind and cuisine are read from (#219). Absent on a candidate cached
+   * before #219.
+   */
+  types?: string[];
   /** Google's one-line description, fetched with the details. Often absent. */
   summary?: string;
 };

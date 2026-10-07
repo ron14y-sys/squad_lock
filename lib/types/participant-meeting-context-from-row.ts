@@ -11,10 +11,12 @@
  * the same shape (`lib/meetings/schema.ts`'s `respondToMeetingSchema`)
  * before it reaches this table.
  *
- * `softPreferences` is the same kind of cast, and is safe on the same terms:
- * A7's Constraint Updater is its only writer, and it validates against its
- * own schema before the value reaches this table. `null` means no correction
- * — the state every amendment row is in (issue #86).
+ * `softPreferences` is A7's, validated on the way in, but read through
+ * `softPreferencesFromJson` all the same: rows written before #217 hold the
+ * old vocabulary (`noiseLevel`, …), and only the current one may reach A4.
+ * `null` means no correction — the state every amendment row is in (issue
+ * #86) — and a row whose correction was entirely old vocabulary reads as
+ * `null` too, since `{}` is not a state anyone can be in.
  *
  * `mergeContexts` below is the other half of reading this table: one person
  * has *several* rows per meeting, and turning them into the single context a
@@ -23,7 +25,9 @@
 
 import type { ParticipantMeetingContextModel } from "@/lib/generated/prisma/models";
 
-import type { SoftPreferences } from "./profile";
+import { tonightCorrectionFromJson } from "@/lib/preferences/vocabulary";
+
+import type { TonightCorrection } from "./profile";
 
 import type { MobilityWindow, ParticipantMeetingContext } from "./meeting";
 
@@ -40,10 +44,20 @@ export function participantMeetingContextFromRow(
         : null,
     originLabel: row.originLabel,
     mobilityWindows: row.mobilityWindows as MobilityWindow[],
-    softPreferences: row.softPreferences as SoftPreferences | null,
+    softPreferences: correctionFromJson(row.softPreferences),
+    toleranceKm: row.toleranceKm,
+    earliestStart: row.earliestStart,
+    latestStart: row.latestStart,
+    untranslated: row.untranslated,
     note: row.note,
     createdAt: row.createdAt,
   };
+}
+
+function correctionFromJson(json: unknown): TonightCorrection | null {
+  if (json === null) return null;
+  const known = tonightCorrectionFromJson(json);
+  return Object.keys(known).length > 0 ? known : null;
 }
 
 /**
@@ -111,13 +125,29 @@ export function mergeContexts(
     mobilityWindows:
       newestWith((context) => context.mobilityWindows.length > 0)
         ?.mobilityWindows ?? [],
-    softPreferences: contexts.reduce<SoftPreferences | null>(
+    softPreferences: contexts.reduce<TonightCorrection | null>(
       (merged, context) =>
         context.softPreferences
           ? { ...merged, ...context.softPreferences }
           : merged,
       null
     ),
+    // This meeting's distance and start bounds: the newest row that set each
+    // one wins, the same as a repeated soft field. A second "too far" is
+    // computed from a tolerance the first already lowered, so it only ever
+    // tightens; an amendment that loosens it is a change of mind.
+    toleranceKm:
+      newestWith((context) => context.toleranceKm !== null)?.toleranceKm ??
+      null,
+    earliestStart:
+      newestWith((context) => context.earliestStart !== null)?.earliestStart ??
+      null,
+    latestStart:
+      newestWith((context) => context.latestStart !== null)?.latestStart ??
+      null,
+    untranslated:
+      newestWith((context) => context.untranslated !== null)?.untranslated ??
+      null,
     note: newestWith((context) => context.note !== null)?.note ?? null,
     createdAt: newest.createdAt,
   };

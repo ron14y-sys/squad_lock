@@ -11,6 +11,11 @@ import {
 
 import { REACH_BY_MODE, windowsCoverSlot } from "@/lib/matching/constraints";
 import {
+  softPreferencesFromJson,
+  tonightCorrectionFromJson,
+} from "@/lib/preferences/vocabulary";
+import { objectionOf } from "@/lib/extraction/constraint-updater";
+import {
   burdenValue,
   compareLeximin,
   straightLineKm,
@@ -19,7 +24,6 @@ import { APP_TIME_ZONE } from "@/lib/types";
 import type {
   LocalWindow,
   MobilityMode,
-  SoftPreferences,
   TimeSlot,
   VenueSoftFacts,
 } from "@/lib/types";
@@ -585,28 +589,23 @@ describe("the six answers from #86", () => {
   );
 
   it.each(scenarios.map((s) => [s.id, s] as const))(
-    "%s describes a venue on the same four axes a person answers",
+    "%s describes a venue on the same axes a person answers",
     (_id, scenario) => {
       // The vocabularies are identical on purpose: matching a venue to a
       // preference is a field comparison, not a translation between two
       // invented word lists. That mismatch — `"loud-bar"` against
-      // `avoid: ["loud", "bar-like"]` — is what #86 found.
-      const allowed: Record<keyof SoftPreferences, string[]> = {
-        noiseLevel: ["lively", "quiet"],
-        activityStyle: ["outdoorsy", "cultural"],
-        budget: ["modest", "splurge"],
-        cuisine: ["familiar", "adventurous"],
-      };
-
+      // `avoid: ["loud", "bar-like"]` — is what #86 found. The reader drops
+      // anything outside the vocabulary, so reading back unchanged is the
+      // check (#217).
       for (const venue of scenario.candidateVenues) {
-        for (const [axis, value] of Object.entries(venue.soft ?? {})) {
-          expect(allowed[axis as keyof SoftPreferences]).toContain(value);
-        }
+        expect(softPreferencesFromJson(venue.soft ?? {})).toEqual(
+          venue.soft ?? {}
+        );
       }
       for (const p of scenario.participants) {
-        for (const [axis, value] of Object.entries(p.softPreferences ?? {})) {
-          expect(allowed[axis as keyof SoftPreferences]).toContain(value);
-        }
+        expect(softPreferencesFromJson(p.softPreferences ?? {})).toEqual(
+          p.softPreferences ?? {}
+        );
       }
     }
   );
@@ -714,10 +713,24 @@ describe("the rejections A7 is measured on", () => {
     for (const one of cases) {
       expect(one.text.trim().length).toBeGreaterThan(0);
 
-      const stated = Object.keys(one.expected.softPreferences).length > 0;
-      // The same rule the updater enforces on a model's answer: a stated
-      // preference is exactly what "soft" means, and nothing else.
-      expect(stated).toBe(one.expected.objection === "soft");
+      // The label is derived, never chosen (#220): what the case expects
+      // must be what `objectionOf` makes of the facts it expects, or the
+      // fixture can never pass.
+      const expected = one.expected;
+      expect(expected.objection).toBe(
+        objectionOf({
+          softPreferences: expected.softPreferences,
+          distance: expected.distance ?? null,
+          start: expected.start ?? null,
+          notThisPlace: expected.objection === "venue_identity",
+          untranslated: null,
+        })
+      );
+      // And only in today's vocabulary (#217): an expectation the schema
+      // would refuse can never be met, and is found here, not by a sweep.
+      expect(tonightCorrectionFromJson(expected.softPreferences)).toEqual(
+        expected.softPreferences
+      );
     }
   });
 
