@@ -13,23 +13,12 @@ import {
   findNeighbourhoodById,
   findNeighbourhoodByLabel,
 } from "@/lib/geo/neighbourhoods";
+import { TOLERANCE_OPTIONS } from "@/lib/preferences/tolerance";
 import {
   MOBILITY_MODE_LABELS,
   WEEKDAY_LABELS,
 } from "@/lib/format/hebrew-labels";
 import { ScreenState } from "@/app/_components/ScreenState";
-
-/**
- * Labels the user sees; kilometres are what get stored and unit-tested
- * (spec §5.1 — "a 1-5 scale is an invisible mapping table nobody remembers
- * by week 6"). Illustrative steps, not a measured product decision.
- */
-const TOLERANCE_OPTIONS: { label: string; km: Kilometres }[] = [
-  { label: "ברגל", km: 1.5 },
-  { label: "בשכונה", km: 3 },
-  { label: "חצי מהעיר", km: 8 },
-  { label: "בכל מקום", km: 20 },
-];
 
 const WEEKDAYS: LocalWeekday[] = [
   "sunday",

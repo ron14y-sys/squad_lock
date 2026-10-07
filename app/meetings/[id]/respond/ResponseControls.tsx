@@ -1,6 +1,13 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import type { Kilometres } from "@/lib/types";
+import {
+  NEIGHBOURHOODS,
+  NEIGHBOURHOOD_GROUPS,
+  findNeighbourhoodById,
+} from "@/lib/geo/neighbourhoods";
+import { TOLERANCE_OPTIONS } from "@/lib/preferences/tolerance";
 
 type ResponseStatus = "pending" | "approved" | "cant_make_it" | "doesnt_suit";
 
@@ -26,12 +33,22 @@ const KNOWN_ERRORS: Record<string, string> = {
  * single reject button used to carry two meanings, and splitting it
  * revealed a third that isn't a rejection at all.
  *
- * The amendment form is deliberately minimal: origin label, one mobility
- * mode marked unavailable, and free text — sent as a `ParticipantMeetingContext`
- * scoped to this one meeting, so a recurring-style weekday/time window would
- * be redundant. `weekdays: []` (every day) with a full-day window is correct
- * here, not a shortcut: the amendment is only ever checked against this
- * meeting's own proposed slot, never against any other day.
+ * The amendment form: an origin, how far that makes tonight's travel
+ * (#222), one mobility mode marked unavailable, and free text — sent as a
+ * `ParticipantMeetingContext` scoped to this one meeting, so a
+ * recurring-style weekday/time window would be redundant. `weekdays: []`
+ * (every day) with a full-day window is correct here, not a shortcut: the
+ * amendment is only ever checked against this meeting's own proposed slot,
+ * never against any other day.
+ *
+ * The origin is the same fixed neighbourhood list the profile's own
+ * location picker uses (`lib/geo/neighbourhoods.ts`), not free text or a
+ * geocoding call — #222's bug fix: a typed label was never resolved to
+ * coordinates, so the burden was still measured from home no matter what
+ * anyone wrote here. Same reasoning the profile's picker already settled:
+ * a checked-in list costs nothing and never leaks more than a
+ * neighbourhood (spec §5.4), where a live autocomplete would spend the
+ * project's limited Places quota on every amendment.
  */
 export function ResponseControls({
   meetingId,
@@ -58,7 +75,8 @@ export function ResponseControls({
 }) {
   const [open, setOpen] = useState<Open>("none");
   const [reasonText, setReasonText] = useState("");
-  const [originLabel, setOriginLabel] = useState("");
+  const [originId, setOriginId] = useState("");
+  const [toleranceKm, setToleranceKm] = useState<Kilometres | "">("");
   const [unavailableMode, setUnavailableMode] = useState<Mode | "">("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -82,7 +100,8 @@ export function ResponseControls({
       }
       setOpen("none");
       setReasonText("");
-      setOriginLabel("");
+      setOriginId("");
+      setToleranceKm("");
       setUnavailableMode("");
       setNote("");
       onResponded();
@@ -103,17 +122,26 @@ export function ResponseControls({
           },
         ]
       : undefined;
+    // #222: origin and its label move together, from the one neighbourhood
+    // picked — never a label with no coordinates, and never the reverse.
+    const neighbourhood = originId
+      ? findNeighbourhoodById(originId)
+      : undefined;
 
     send({
       kind: "amendment",
-      ...(originLabel.trim() && { originLabel: originLabel.trim() }),
+      ...(neighbourhood && {
+        origin: neighbourhood.centre,
+        originLabel: neighbourhood.label,
+      }),
+      ...(toleranceKm && { toleranceKm }),
       ...(mobilityWindows && { mobilityWindows }),
       ...(note.trim() && { note: note.trim() }),
     });
   }
 
   const amendmentEmpty =
-    !originLabel.trim() && !unavailableMode && !note.trim();
+    !originId && !toleranceKm && !unavailableMode && !note.trim();
 
   return (
     <section className="sl-page !p-0">
@@ -191,14 +219,44 @@ export function ResponseControls({
           </p>
           <label className="flex flex-col gap-1">
             <span className="sl-sub">מגיע/ה מ... (אופציונלי)</span>
-            <input
-              type="text"
-              value={originLabel}
-              onChange={(e) => setOriginLabel(e.target.value)}
-              placeholder="לדוגמה: מהעבודה"
+            <select
+              value={originId}
+              onChange={(e) => setOriginId(e.target.value)}
               className="sl-field"
-            />
+            >
+              <option value="">—</option>
+              {NEIGHBOURHOOD_GROUPS.map((group) => (
+                <optgroup key={group} label={group}>
+                  {NEIGHBOURHOODS.filter((n) => n.group === group).map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
           </label>
+          <div className="flex flex-col gap-1">
+            <span className="sl-sub">
+              עד כמה אני מוכן/ה לנסוע הערב (אופציונלי)
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {TOLERANCE_OPTIONS.map((option) => {
+                const active = option.km === toleranceKm;
+                return (
+                  <button
+                    key={option.label}
+                    type="button"
+                    onClick={() => setToleranceKm(active ? "" : option.km)}
+                    aria-pressed={active}
+                    className={active ? "sl-chip on" : "sl-chip"}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <label className="flex flex-col gap-1">
             <span className="sl-sub">אין לי הערב (אופציונלי)</span>
             <select
