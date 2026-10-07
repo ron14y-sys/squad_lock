@@ -203,8 +203,11 @@ export async function seedScenario(
       meetingId: meeting.id,
       userIds,
       now,
-      busyFor: async (ids, window) =>
-        new Map(ids.map((id) => [id, busyOutside(window, free)])),
+      busyFor: async (ids, window) => ({
+        busy: new Map(ids.map((id) => [id, busyOutside(window, free)])),
+        unread: [],
+        rejected: [],
+      }),
       cleanup,
     };
   } catch (error) {

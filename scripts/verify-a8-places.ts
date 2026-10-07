@@ -54,8 +54,11 @@ const PINNED = new Date(
   )
 );
 
-const FREE: BusyLookup = async (userIds) =>
-  new Map(userIds.map((userId) => [userId, [] as TimeSlot[]]));
+const FREE: BusyLookup = async (userIds) => ({
+  busy: new Map(userIds.map((userId) => [userId, [] as TimeSlot[]])),
+  unread: [],
+  rejected: [],
+});
 
 /** Every Places request that actually left the machine, by endpoint. */
 const requests = { search: 0, details: 0, other: 0 };

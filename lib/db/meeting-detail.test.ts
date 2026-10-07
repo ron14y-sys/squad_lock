@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { describeContext, minutesUntil, withoutOrigin } from "./meeting-detail";
+import {
+  describeContext,
+  minutesUntil,
+  uncheckedCalendarsOf,
+  withoutOrigin,
+} from "./meeting-detail";
 
 const people = [
   { userId: "u1", name: "רון" },
@@ -129,5 +134,36 @@ describe("minutesUntil (B9 part five)", () => {
 
   it("is exact on a whole number of minutes", () => {
     expect(minutesUntil(at(10 * 60_000), now)).toBe(10);
+  });
+});
+
+describe("uncheckedCalendarsOf", () => {
+  it("names the people a proposal's calendar facts point at, and only them", () => {
+    expect(
+      uncheckedCalendarsOf(
+        [
+          { kind: "opening_hours" },
+          { kind: "calendar", userId: "u3" },
+          { kind: "dietary", tag: "vegan" },
+          { kind: "calendar", userId: "u1" },
+        ],
+        people
+      )
+    ).toEqual([
+      { userId: "u3", name: "אלדד" },
+      { userId: "u1", name: "רון" },
+    ]);
+  });
+
+  it("is empty for a proposal with no calendar facts", () => {
+    expect(uncheckedCalendarsOf([{ kind: "opening_hours" }], people)).toEqual(
+      []
+    );
+  });
+
+  it("leaves out someone who is no longer in the meeting", () => {
+    expect(
+      uncheckedCalendarsOf([{ kind: "calendar", userId: "gone" }], people)
+    ).toEqual([]);
   });
 });

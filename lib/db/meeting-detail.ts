@@ -39,6 +39,13 @@ export type ProposalDTO = {
   /** This viewer's own reason, and only this viewer's — never a comparison. */
   justification: string | null;
   unverified: UnverifiedFact[];
+  /**
+   * Whose calendar this proposal was not checked against — none connected
+   * when it was made, so they were treated as free apart from the hours they
+   * set. Read from the stored `calendar` facts, not from today's tokens: it
+   * describes this proposal, and still holds after the person connects.
+   */
+  uncheckedCalendars: MissingHomeDTO[];
   /** Ranks 2 and 3 — "we also considered X and Y" (spec §4.1c). */
   alsoConsidered: string[];
 };
@@ -113,16 +120,6 @@ export type MeetingDetailDTO = {
    * something — and empty otherwise.
    */
   missingHome: MissingHomeDTO[];
-  /**
-   * B9 part five: who is still in this meeting but has no Google Calendar
-   * connection on file (`User.googleRefreshToken` is null — never connected,
-   * or cleared by B10 after Google rejected the token). `fetchBusyForUsers`
-   * refuses to run without it, so the meeting sits in `weighing` with no
-   * proposal and no reason. Only worked out while it is `weighing`, and empty
-   * otherwise. Derived at read time rather than stored, so it clears itself
-   * the moment the person reconnects.
-   */
-  calendarMissing: MissingHomeDTO[];
   /**
    * B9 part five: whole minutes until the next automatic attempt, when a
    * rate-limited call (`Meeting.retryNotBefore`, B9 parts two and four) is
@@ -217,22 +214,19 @@ export function withoutOrigin(
 }
 
 /**
- * Who, among `people`, has no calendar connection. Asks only whether the
- * column is null -- the token itself is never read into memory.
+ * The people a proposal's stored `calendar` facts name, in the order stored.
+ * Someone no longer in the meeting's responses has no name to show and is
+ * left out.
  */
-async function findMissingCalendar(
-  people: MissingHomeDTO[]
-): Promise<MissingHomeDTO[]> {
-  if (people.length === 0) return [];
-  const missing = await getPrisma().user.findMany({
-    where: {
-      id: { in: people.map((p) => p.userId) },
-      googleRefreshToken: null,
-    },
-    select: { id: true },
+export function uncheckedCalendarsOf(
+  facts: readonly UnverifiedFact[],
+  people: readonly MissingHomeDTO[]
+): MissingHomeDTO[] {
+  return facts.flatMap((fact) => {
+    if (fact.kind !== "calendar") return [];
+    const person = people.find((p) => p.userId === fact.userId);
+    return person ? [person] : [];
   });
-  const missingIds = new Set(missing.map((u) => u.id));
-  return people.filter((p) => missingIds.has(p.userId));
 }
 
 /**
@@ -347,6 +341,8 @@ export async function getMeetingDetail(
   const latestRun = row.matchRuns[row.matchRuns.length - 1] ?? null;
   const topOption = latestRun?.options.find((o) => o.rank === 1) ?? null;
 
+  const unverified =
+    (topOption?.unverified as UnverifiedFact[] | null | undefined) ?? [];
   const proposal: ProposalDTO | null = topOption
     ? {
         venueName: topOption.venueName,
@@ -359,7 +355,11 @@ export async function getMeetingDetail(
           (
             topOption.participantJustifications as Record<string, string> | null
           )?.[viewerId] ?? null,
-        unverified: (topOption.unverified as UnverifiedFact[] | null) ?? [],
+        unverified,
+        uncheckedCalendars: uncheckedCalendarsOf(
+          unverified,
+          row.responses.map((r) => ({ userId: r.userId, name: r.user.name }))
+        ),
         alsoConsidered: latestRun!.options
           .filter((o) => o.rank !== 1)
           .map((o) => o.venueName),
@@ -374,17 +374,10 @@ export async function getMeetingDetail(
         )
       : [];
 
-  // B9 part five. Both only mean something while a run is actually being
+  // B9 part five. Only means something while a run is actually being
   // retried, which is `weighing` -- a stuck, closed or awaiting meeting is
   // not waiting on either.
   const weighing = row.status === "weighing";
-  const calendarMissing = weighing
-    ? await findMissingCalendar(
-        row.responses
-          .filter((r) => r.status !== "cant_make_it")
-          .map((r) => ({ userId: r.userId, name: r.user.name }))
-      )
-    : [];
   const retryInMinutes = weighing
     ? minutesUntil(row.retryNotBefore, now)
     : null;
@@ -490,7 +483,6 @@ export async function getMeetingDetail(
     isInitiator: row.initiatorId === viewerId,
     conflicts,
     missingHome,
-    calendarMissing,
     retryInMinutes,
     initiatorName: row.initiator.name,
     pinnedVenue: meeting.pinnedVenue,

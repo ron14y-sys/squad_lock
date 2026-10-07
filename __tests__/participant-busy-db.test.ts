@@ -10,10 +10,7 @@ import {
 
 import { getPrisma } from "@/lib/db/client";
 import type { TimeSlot } from "@/lib/types";
-import {
-  fetchBusyForUsers,
-  MissingCalendarConnectionError,
-} from "@/lib/calendar/participant-busy";
+import { fetchBusyForUsers } from "@/lib/calendar/participant-busy";
 
 /**
  * The one thing `lib/calendar/participant-busy.test.ts` cannot check: that
@@ -96,7 +93,7 @@ describe.skipIf(!CONNECTED)("fetchBusyForUsers against a real database", () => {
       },
     });
 
-    const busy = await fetchBusyForUsers([user.id], WINDOW);
+    const { busy } = await fetchBusyForUsers([user.id], WINDOW);
 
     expect(busy.get(user.id)).toEqual([
       {
@@ -112,7 +109,7 @@ describe.skipIf(!CONNECTED)("fetchBusyForUsers against a real database", () => {
     expect(params.get("refresh_token")).toBe("refresh-dana-real");
   });
 
-  it("raises MissingCalendarConnectionError for a user with no refresh token, before any network call", async () => {
+  it("reports a user with no refresh token as unread, with no network call", async () => {
     if (!prisma) return;
 
     const user = await prisma.user.create({
@@ -124,9 +121,10 @@ describe.skipIf(!CONNECTED)("fetchBusyForUsers against a real database", () => {
       },
     });
 
-    await expect(fetchBusyForUsers([user.id], WINDOW)).rejects.toThrow(
-      MissingCalendarConnectionError
-    );
+    const read = await fetchBusyForUsers([user.id], WINDOW);
+
+    expect(read.unread).toEqual([user.id]);
+    expect(read.busy.size).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

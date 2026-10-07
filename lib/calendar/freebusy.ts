@@ -43,16 +43,11 @@ import type { TimeSlot } from "@/lib/types";
  * or Google invalidated the token for some other reason. A caller sees this
  * and knows the fix is "sign in again", not "try again in a minute".
  *
- * `userId` is set by whoever maps tokens back to users
- * (`lib/calendar/participant-busy.ts`'s `fetchBusyForConnections`) — this
- * file only ever sees a raw token, never a user. B10 reads it in
- * `run-cycle.ts`'s fault branch to know who to clear and notify.
+ * This file only ever sees a raw token, never a user: whoever maps tokens
+ * back to users (`lib/calendar/participant-busy.ts`) says whose it was.
  */
 export class CalendarAuthError extends Error {
-  constructor(
-    detail: string,
-    public userId?: string
-  ) {
+  constructor(detail: string) {
     super(`calendar: ${detail}`);
     this.name = "CalendarAuthError";
   }
