@@ -116,7 +116,7 @@
         "kind": "closer"
       }
     },
-    "why": "One rejection, several facts. Asking for a single label made the model drop all but one; now each lands in its field (#220)."
+    "why": "One rejection, several facts: a distance, a kind of place wanted and one avoided, each in its field (#220). \"בר ולא מסעדה\" says \"not a restaurant\" in so many words, so the avoid is the literal reading. A bar that also serves food is a restaurant in Google's types too; keeping it when a wanted kind matches is #221's job, not the extraction's."
   },
   {
     "id": "no-lever",
@@ -126,6 +126,6 @@
       "softPreferences": {},
       "untranslated": true
     },
-    "why": "Nothing the weighing can act on — but it is set aside as untranslated, so the missing lever (parking) can be counted (#220)."
+    "why": "Nothing the weighing can act on — but it is set aside as untranslated, so the missing lever (parking) can be counted (#220). The first sweep read \"אין שם\" as 'not this place' two times in three; parking is a quality of the place, and the prompt now says a named quality is never not_this_place."
   }
 ]

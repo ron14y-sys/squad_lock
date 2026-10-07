@@ -252,7 +252,10 @@ export const CONSTRAINT_UPDATE_JSON_SCHEMA = {
     not_this_place: { type: "boolean" },
     untranslated: { type: "string" },
   },
-  required: ["soft_preferences", "not_this_place"],
+  // Only what every answer has. A required `not_this_place` made the model
+  // decide it on every rejection, and it said true to "I'd like sushi,
+  // not the usual" three times in three (#220).
+  required: ["soft_preferences"],
 } as const;
 
 /* -------------------------------------------------------------------------
@@ -264,16 +267,16 @@ export const SYSTEM_PROMPT = `You turn one person's free-text rejection of a pro
 People say anything, in any words. Your job is to find every fact in it that one of the fields below can hold — there may be several in one sentence — and to put what no field can hold in "untranslated".
 
 THE FIELDS
-- "soft_preferences": what they want tonight, from the fixed vocabulary: budget, venueKinds (bar / cafe / restaurant), cuisines.
-- "avoid": kinds of place or cuisines they do not want tonight ("no Asian food", "not a bar again").
+- "soft_preferences": what they want tonight, from the fixed vocabulary: budget, venueKinds (bar / cafe / restaurant), cuisines. "Too expensive" is budget "modest"; "somewhere nicer, I'm happy to spend" is budget "splurge".
+- "avoid": kinds of place or cuisines they say they do not want tonight ("no Asian food", "not a bar again").
 - "distance": it is too far for them.
   - {"closer": true} when they only say it is too far.
   - {"max_km": N} only when they wrote a distance themselves ("up to 2 km", "within walking distance" is NOT a number — use closer).
 - "start": the time does not suit them.
   - {"direction": "earlier"} or {"direction": "later"} when they only say it is too late or too early.
   - {"not_before": "HH:MM"} and/or {"not_after": "HH:MM"} only when they wrote a time themselves ("only after eight" → not_before "20:00"). These are about when the meeting starts.
-- "not_this_place": true when the objection is to that particular place rather than any quality of it ("I had a bad experience there").
-- "untranslated": a few words, in Hebrew, for anything they asked for that none of the fields can hold ("wants parking", "somewhere with a view"). null when everything was captured or they gave no reason.
+- "not_this_place": include it, as true, only when the objection is to that particular place as such ("I had a bad experience there", "not that place again"). Leave it out when they name something about the place — its price, kind, food, distance, hour, parking — or something they want instead; those go in their own fields or in "untranslated". The word "there" (שם) does not by itself make an objection about the place.
+- "untranslated": a few words, in Hebrew, for anything they asked for that none of the fields can hold ("wants parking", "somewhere with a view"). null when everything was captured, and null when they gave no reason at all ("just not feeling it" is not a request).
 
 RULES
 - Return only what the person said. Leave out every field they did not mention. Never fill one in to be helpful: a preference nobody stated would change a decision nobody asked to change.
@@ -421,15 +424,16 @@ export function interpretUpdate(text: string): ConstraintUpdate {
 
 /**
  * The single label a rejection is recorded under, from what it actually
- * carried. In this order because it is the order of how much a rejection
- * blocks (`blockedByRejections`): the place itself, then anything about the
- * place, then distance, then time.
+ * carried. Anything about the place first — what they want, or the place
+ * itself — since both block the whole venue (`blockedByRejections`); a stated
+ * want before "not this place", because it says more. Then distance, which
+ * also blocks the venue, then time.
  */
 export function objectionOf(
   update: Omit<ConstraintUpdate, "objection">
 ): ObjectionKind {
-  if (update.notThisPlace) return "venue_identity";
   if (Object.keys(update.softPreferences).length > 0) return "soft";
+  if (update.notThisPlace) return "venue_identity";
   if (update.distance) return "distance";
   if (update.start) return "time";
   return "none";

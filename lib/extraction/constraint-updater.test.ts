@@ -106,6 +106,10 @@ describe("interpretUpdate", () => {
   it.each([
     [{ not_this_place: true, distance: { closer: true } }, "venue_identity"],
     [
+      { soft_preferences: { cuisines: ["sushi"] }, not_this_place: true },
+      "soft",
+    ],
+    [
       { soft_preferences: { budget: "modest" }, distance: { closer: true } },
       "soft",
     ],
