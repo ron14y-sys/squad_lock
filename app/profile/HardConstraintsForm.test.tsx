@@ -125,7 +125,9 @@ test("shows what the preference game saved, with a way to change it", async () =
   );
   render(<HardConstraintsForm />);
 
-  expect(await screen.findByText("תקציב סטודנטים")).toBeInTheDocument();
+  expect(
+    await screen.findByText("תקציב סטודנטים · לא משנה לי · לא משנה לי")
+  ).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "לשנות" })).toHaveAttribute(
     "href",
     "/onboarding/preferences"

@@ -18,11 +18,26 @@ function putBodies(fetchMock: ReturnType<typeof vi.fn>) {
     .map(([url, init]) => ({ url, body: JSON.parse(init!.body as string) }));
 }
 
-// #217: one question (budget) until #218 adds kind of place and cuisine.
+/** Answers budget, then skips kind of place and cuisine (#218) — the saved set stays `{ budget: "splurge" }`. */
 async function playThroughTheGame(user: ReturnType<typeof userEvent.setup>) {
   await user.click(
     await screen.findByRole("button", { name: "פינוק חד-פעמי" })
   );
+  await skipRemainingQuestions(user);
+}
+
+/** Skips every question still ahead, whatever was already answered. */
+async function skipRemainingQuestions(
+  user: ReturnType<typeof userEvent.setup>
+) {
+  while (screen.queryByRole("heading", { name: "זה אתה." }) === null) {
+    const skip =
+      screen.queryByRole("button", {
+        name: "זה לא משנה לי — דלג",
+      }) ?? screen.queryByRole("button", { name: "דלג — השאר כמו שהיה" });
+    if (!skip) break;
+    await user.click(skip);
+  }
 }
 
 afterEach(() => {
@@ -107,9 +122,8 @@ test("a fully declined game saves an empty soft-preference set", async () => {
   vi.stubGlobal("fetch", fetchMock);
 
   render(<PreferenceGameContainer />);
-  await user.click(
-    await screen.findByRole("button", { name: "זה לא משנה לי — דלג" })
-  );
+  await screen.findByRole("button", { name: "זה לא משנה לי — דלג" });
+  await skipRemainingQuestions(user);
 
   expect(await screen.findByText("נשמר.")).toBeInTheDocument();
   expect(putBodies(fetchMock)[0]!.body).toEqual({ softPreferences: {} });
@@ -132,12 +146,15 @@ test("a replayed game starts from the saved answer, and skipping keeps it", asyn
   ).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByText("הבחירה שלך עד עכשיו")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "דלג — השאר כמו שהיה" }));
+  await skipRemainingQuestions(user);
 
   expect(await screen.findByText("נשמר.")).toBeInTheDocument();
   expect(putBodies(fetchMock)[0]!.body).toEqual({
     softPreferences: { budget: "modest" },
   });
-  expect(screen.getByText("תקציב סטודנטים")).toBeInTheDocument();
+  expect(
+    screen.getByText("תקציב סטודנטים · לא משנה לי · לא משנה לי")
+  ).toBeInTheDocument();
 });
 
 test("a replayed game can change a saved answer", async () => {
