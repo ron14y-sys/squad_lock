@@ -129,4 +129,19 @@ describe.skipIf(!CONNECTED)("places cache against a real database", () => {
       openingHours: [{ weekdays: ["friday"], from: "18:00", to: "23:00" }],
     });
   });
+
+  it("keeps servesVegetarianFood = false as false, not as not-known", async () => {
+    await saveCachedDetails(PLACE_ID, {
+      openingHours: [],
+      servesVegetarianFood: false,
+    });
+    expect((await getCachedDetails(PLACE_ID))?.servesVegetarianFood).toBe(
+      false
+    );
+
+    await saveCachedDetails(PLACE_ID, { openingHours: [] });
+    expect(
+      (await getCachedDetails(PLACE_ID))?.servesVegetarianFood
+    ).toBeUndefined();
+  });
 });

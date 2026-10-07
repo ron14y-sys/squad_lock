@@ -151,9 +151,9 @@ model Invitation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  group      Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  invitedBy  User  @relation("InvitationSender", fields: [invitedById], references: [id])
-  acceptedBy User? @relation("InvitationAcceptor", fields: [acceptedByUserId], references: [id])
+  group            Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  invitedBy        User              @relation("InvitationSender", fields: [invitedById], references: [id])
+  acceptedBy       User?             @relation("InvitationAcceptor", fields: [acceptedByUserId], references: [id])
   notificationLogs NotificationLog[]
 
   /// One live invitation per (group, email) at a time — inviting the same
@@ -549,20 +549,23 @@ model PlaceSearchCache {
 /// decides whether a proposal is real. Keyed on `placeId` directly, no
 /// rounding — a Places id is already exact and stable.
 model PlaceDetailsCache {
-  placeId       String   @id
-  rating        Float?
+  placeId              String   @id
+  rating               Float?
   /// `LocalWindow[]`, same shape `Candidate.openingHours` and
   /// `trimPairToViableSlots` already consume. `[]` means "fetched, no
   /// hours returned" — distinct from the row not existing at all, which
   /// means "never fetched."
-  openingHours  Json     @default("[]")
+  openingHours         Json     @default("[]")
   /// `modest` or `splurge`, from `priceLevel` (#139). NULL is "not known" —
   /// no price returned, or `PRICE_LEVEL_MODERATE`, which fits neither answer.
-  budget        String?
+  budget               String?
   /// Google's `editorialSummary` (#163). NULL when Google has none, which
   /// for Israeli venues is often.
-  summary       String?
-  fetchedAt     DateTime @default(now())
+  summary              String?
+  /// Google's `servesVegetarianFood`. NULL is "not known" — Google did not
+  /// say, or the row predates the field.
+  servesVegetarianFood Boolean?
+  fetchedAt            DateTime @default(now())
 
   @@map("place_details_cache")
 }
@@ -603,7 +606,7 @@ model NotificationLog {
   /// attempted, counting this row. The first send is 1; a retry writes a
   /// *new* row with `attempt` one higher than the row it retried. Never
   /// mutated -- this stays an append-only log, same as `MatchRun`.
-  attempt Int @default(1)
+  attempt   Int       @default(1)
   /// B9 part one -- set once this failed row has been claimed for a retry
   /// (whether or not the retry itself succeeds). The optimistic lock
   /// `retryDueNotifications` uses so two concurrent polls cannot both

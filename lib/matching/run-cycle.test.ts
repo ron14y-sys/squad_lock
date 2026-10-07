@@ -15,8 +15,10 @@ import {
   type DueInput,
   type PriorProposal,
   type RecordedRejection,
+  venueDietaryFactsFrom,
   venueSoftFactsFrom,
 } from "./run-cycle";
+import { checkPair } from "./constraints";
 import { ExternalRateLimitError } from "@/lib/external/rate-limit";
 import { LlmCallError } from "@/lib/llm/client";
 import { pairId } from "./schemas";
@@ -492,5 +494,85 @@ describe("venueSoftFactsFrom", () => {
       venueSoftFactsFrom([{ placeId: "a" }, { placeId: "b" }])
     ).toBeUndefined();
     expect(venueSoftFactsFrom([])).toBeUndefined();
+  });
+});
+
+describe("venueDietaryFactsFrom", () => {
+  it("is undefined when Google said nothing about any venue", () => {
+    expect(venueDietaryFactsFrom([{ placeId: "a" }])).toBeUndefined();
+    expect(venueDietaryFactsFrom([])).toBeUndefined();
+  });
+
+  it("leaves out a venue Google said nothing about", () => {
+    const facts = venueDietaryFactsFrom([
+      { placeId: "veg", servesVegetarianFood: true },
+      { placeId: "unknown" },
+    ]);
+    expect(Object.keys(facts!)).toEqual(["veg"]);
+  });
+
+  describe("against a participant's tags (checkPair)", () => {
+    const candidate = {
+      placeId: "p",
+      name: "Cafe",
+      address: null,
+      location: { lat: 32.08, lng: 34.78 },
+      neighbourhood: null,
+    };
+    const slot = {
+      start: new Date("2026-10-08T17:00:00Z"),
+      end: new Date("2026-10-08T19:00:00Z"),
+    };
+    function person(dietary: string[]) {
+      return {
+        userId: "u1",
+        name: "Dana",
+        profile: {
+          hardConstraints: { dietary, allergies: [], unavailable: [] },
+          softPreferences: {},
+          home: { lat: 32.08, lng: 34.78 },
+          toleranceKm: 5,
+          recurringMobilityRules: [],
+        },
+        context: null,
+        origin: { lat: 32.08, lng: 34.78 },
+        busy: [],
+      } as unknown as Parameters<typeof checkPair>[2][number];
+    }
+    function check(dietary: string[], servesVegetarianFood?: boolean) {
+      const facts = venueDietaryFactsFrom([
+        { placeId: "p", servesVegetarianFood },
+      ]);
+      const result = checkPair(candidate, slot, [person(dietary)], facts?.p);
+      // The test venue has no opening hours; only the dietary side is asked.
+      return {
+        violations: result.violations,
+        unverified: result.unverified.filter((f) => f.kind === "dietary"),
+      };
+    }
+
+    it("verifies a vegetarian ('צמחוני') when Google says the place serves it", () => {
+      const result = check(["צמחוני"], true);
+      expect(result.violations).toEqual([]);
+      expect(result.unverified).toEqual([]);
+    });
+
+    it("refuses a vegetarian or a vegan when Google says it does not", () => {
+      expect(check(["צמחוני"], false).violations).toHaveLength(1);
+      expect(check(["טבעוני"], false).violations).toHaveLength(1);
+    });
+
+    it("does not count vegetarian as vegan, nor say anything about kosher", () => {
+      expect(check(["טבעוני", "כשר"], true).unverified).toEqual([
+        { kind: "dietary", tag: "טבעוני" },
+        { kind: "dietary", tag: "כשר" },
+      ]);
+    });
+
+    it("leaves a vegetarian unverified when Google did not say", () => {
+      expect(check(["צמחוני"]).unverified).toEqual([
+        { kind: "dietary", tag: "צמחוני" },
+      ]);
+    });
   });
 });

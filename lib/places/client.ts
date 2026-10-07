@@ -70,12 +70,16 @@ const SEARCH_FIELD_MASK = [
  * the first two, so it rides in the same request (#139). `editorialSummary`
  * is not: it moves this call from Enterprise to Enterprise + Atmosphere, a
  * decision taken in #163 so the proposal can say a few words about the place.
+ * `servesVegetarianFood` is in that same Atmosphere tier, so it costs nothing
+ * more — and it is the one dietary fact Google has (no kosher, vegan or
+ * halal field exists).
  */
 const DETAILS_FIELD_MASK = [
   "rating",
   "regularOpeningHours",
   "priceLevel",
   "editorialSummary",
+  "servesVegetarianFood",
 ].join(",");
 
 /**
@@ -136,6 +140,7 @@ type PlaceDetailsResponse = {
     periods?: RawPeriod[];
   };
   editorialSummary?: { text: string };
+  servesVegetarianFood?: boolean;
 };
 
 /**
@@ -317,6 +322,8 @@ export async function fetchPlaceDetails(placeId: string): Promise<{
   openingHours: LocalWindow[];
   budget?: SoftPreferences["budget"];
   summary?: string;
+  /** Absent when Google does not say — not known, not "no". */
+  servesVegetarianFood?: boolean;
 }> {
   const url = `${DETAILS_ENDPOINT}/${placeId}?languageCode=${LANGUAGE_CODE}`;
   const response = await fetch(url, {
@@ -348,5 +355,6 @@ export async function fetchPlaceDetails(placeId: string): Promise<{
     openingHours: parseOpeningHours(data.regularOpeningHours),
     budget: budgetFromPriceLevel(data.priceLevel),
     summary: data.editorialSummary?.text,
+    servesVegetarianFood: data.servesVegetarianFood,
   };
 }

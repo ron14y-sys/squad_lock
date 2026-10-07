@@ -23,6 +23,55 @@ says so.
 
 ---
 
+## "גם שקלנו" listed the proposed venue twice — 2026-10-07
+
+- **Seen:** the proposal was קפה גן סיפור חולון, and under it: "גם שקלנו: קפה
+  גן סיפור חולון, קפה גן סיפור חולון".
+- **Cause:** an option is a venue _and_ an hour. A4 must return three
+  different `(venue, slot)` pairs, and here they were one café at three times.
+  `getMeetingDetail` (`lib/db/meeting-detail.ts`) listed the venue name of
+  ranks 2 and 3 without asking whether it was the same place.
+- **Fix:** [#214](https://github.com/ron14y-sys/squad_lock/pull/214). `alsoConsideredOf` lists the other venues only,
+  each once, in rank order (the same place means the same place id, or the
+  same name when there is none). When there are none, the line is not shown.
+- **Proof:** `meeting-detail.test.ts`, including the case exactly as seen
+  (fails on the old code).
+- **Still open:** A4 is still allowed to spend all three options on one
+  venue. Asking it for different venues where it can is a separate decision.
+
+## Every dietary requirement said "could not verify" — 2026-10-07
+
+- **Seen:** "לא הצלחנו לאמת אם הם עומדים בדרישת כשר" and the same for
+  vegetarian. The question was whether reading the place failed or the
+  information does not exist.
+- **Cause:** neither. The information was never asked for. A2 has the three
+  states (satisfies / violates / not known), but nothing ever filled in
+  `venueFacts`. `run-cycle.ts` said so in a comment ("B7 fetches no dietary
+  tags"). So every dietary tag was "not known", for every venue, always.
+- **Fix:** [#214](https://github.com/ron14y-sys/squad_lock/pull/214).
+  - Place Details now also asks for `servesVegetarianFood`, which is in the
+    same Enterprise + Atmosphere tier as `editorialSummary`. Checked in
+    Google's field table: no extra cost.
+  - The value is cached in a new nullable column. `venueDietaryFactsFrom`
+    turns it into facts for both the filter and the model:
+    - `true` satisfies a vegetarian tag, but not a vegan one;
+    - `false` refuses both;
+    - absent says nothing.
+  - Google has no field for kosher, vegan or halal, so those stay "could not
+    verify". That is the truth, and the note already tells people to call.
+- **Proof:** these fail on the old code:
+  - `client.test.ts`: the field is requested and returned.
+  - `places-cache-db.test.ts`: `false` survives the cache as `false`.
+  - `run-cycle.test.ts`: the facts, and their effect through `checkPair`.
+  - `run-stage.test.ts`: a run hands them to the model.
+- **Still open:**
+  - Cached rows from before this change (24-hour cache) say nothing until they
+    expire.
+  - Previews read a staging database that the deploy does not migrate. The
+    new column has to be applied there by hand, or details reads fail on
+    previews.
+  - No source for kosher at all.
+
 ## Inviting yourself, inviting a dead address, no way to cancel — 2026-10-07
 
 - **Seen:** manual test 4.4: "It let me invite myself and sent an email. It
@@ -271,6 +320,10 @@ existed. Cause and fix are in each issue and PR.
 | A profile's home coordinates were never written, so nothing could be weighed | [#132](https://github.com/ron14y-sys/squad_lock/issues/132) | see the issue                                             |
 
 ## Known and not yet fixed
+
+- **"Too far" brings back the same venue** — a `distance` rejection blocks
+  only the exact venue-and-hour pair, and nothing moves the next proposal
+  closer. ([#211](https://github.com/ron14y-sys/squad_lock/issues/211))
 
 - **Signing out opens NextAuth's default page, in English** — `התנתק` links to
   `/api/auth/signout`, and `auth.ts` sets a custom page only for sign-in.

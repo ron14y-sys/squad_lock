@@ -46,7 +46,11 @@ export type ProposalDTO = {
    * describes this proposal, and still holds after the person connects.
    */
   uncheckedCalendars: MissingHomeDTO[];
-  /** Ranks 2 and 3 — "we also considered X and Y" (spec §4.1c). */
+  /**
+   * The other venues among ranks 2 and 3 — "we also considered X and Y"
+   * (spec §4.1c). Each once, and never the proposed one: an option is a
+   * venue *and* an hour, so ranks 2 and 3 are often the same place later.
+   */
   alsoConsidered: string[];
 };
 
@@ -214,6 +218,29 @@ export function withoutOrigin(
 }
 
 /**
+ * The venue names "גם שקלנו" lists: ranks 2 and 3, in rank order, without
+ * the rank-1 venue and without repeats. A venue is the same by place id when
+ * it has one, and by name when it does not.
+ */
+export function alsoConsideredOf(
+  options: readonly {
+    rank: number;
+    venueName: string;
+    venuePlaceId: string | null;
+  }[]
+): string[] {
+  const key = (o: (typeof options)[number]) => o.venuePlaceId ?? o.venueName;
+  const seen = new Set(options.filter((o) => o.rank === 1).map(key));
+  const names: string[] = [];
+  for (const option of [...options].sort((a, b) => a.rank - b.rank)) {
+    if (seen.has(key(option))) continue;
+    seen.add(key(option));
+    names.push(option.venueName);
+  }
+  return names;
+}
+
+/**
  * The people a proposal's stored `calendar` facts name, in the order stored.
  * Someone no longer in the meeting's responses has no name to show and is
  * left out.
@@ -360,9 +387,7 @@ export async function getMeetingDetail(
           unverified,
           row.responses.map((r) => ({ userId: r.userId, name: r.user.name }))
         ),
-        alsoConsidered: latestRun!.options
-          .filter((o) => o.rank !== 1)
-          .map((o) => o.venueName),
+        alsoConsidered: alsoConsideredOf(latestRun!.options),
       }
     : null;
 
