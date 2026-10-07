@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runStageOf } from "@/lib/db/meeting-cards";
 
-import { runCycle, runDueMeetings } from "./run-cycle";
-import { CalendarAuthError } from "@/lib/calendar/freebusy";
+import { runCycle, runDueMeetings, type BusyLookup } from "./run-cycle";
 
 /**
  * #155: a run writes each stage onto the meeting as it enters it, and leaves
@@ -21,7 +20,15 @@ vi.mock("@/lib/db/client", () => ({
   getPrisma: () => ({
     meeting: { findUnique: async () => MEETING, updateMany, findMany },
     user: { updateMany: userUpdateMany },
+    $transaction: async (fn: (tx: unknown) => unknown) => fn({}),
   }),
+}));
+
+// Where a finished run's draft is handed over to be written — captured, so
+// a test can read what would have been stored.
+const persistMatchRun = vi.fn();
+vi.mock("@/lib/db/match-run", () => ({
+  persistMatchRun: (...args: unknown[]) => persistMatchRun(...args),
 }));
 
 const HOME = { lat: 32.0853, lng: 34.7818 };
@@ -90,14 +97,33 @@ const MEETING = {
   matchRuns: [],
 };
 
-const FREE = async () => new Map();
-const ALWAYS_BUSY = async (userIds: string[]) =>
-  new Map(
+const FREE: BusyLookup = async (userIds) => ({
+  busy: new Map(userIds.map((id) => [id, []])),
+  unread: [],
+  rejected: [],
+});
+const ALWAYS_BUSY: BusyLookup = async (userIds) => ({
+  busy: new Map(
     userIds.map((id) => [
       id,
       [{ start: new Date("2026-09-01"), end: new Date("2026-12-01") }],
     ])
-  );
+  ),
+  unread: [],
+  rejected: [],
+});
+/** u1's calendar was never connected. */
+const UNCONNECTED: BusyLookup = async (userIds) => ({
+  busy: new Map(),
+  unread: userIds,
+  rejected: [],
+});
+/** Google refused u1's token. */
+const REJECTED: BusyLookup = async (userIds) => ({
+  busy: new Map(),
+  unread: userIds,
+  rejected: userIds,
+});
 
 /** The `runStage` of every write, in order; `undefined` for writes that set something else. */
 function stagesWritten() {
@@ -110,6 +136,7 @@ beforeEach(() => {
   findMany.mockReset();
   notifyCalendarReconnect.mockReset();
   runMatchingAgent.mockReset();
+  persistMatchRun.mockReset().mockRejectedValue(new Error("not under test"));
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -164,12 +191,8 @@ describe("runCycle's stage", () => {
     ]);
   });
 
-  it("B10: clears the rejected user's token and notifies them, once", async () => {
-    const REJECTED: typeof FREE = async () => {
-      const error = new CalendarAuthError("token exchange failed (400)");
-      error.userId = "u1";
-      throw error;
-    };
+  it("B10: clears the rejected user's token, notifies them, and runs on", async () => {
+    runMatchingAgent.mockRejectedValue(new Error("model timed out"));
 
     await runCycle("m1", NOW, REJECTED);
 
@@ -178,22 +201,69 @@ describe("runCycle's stage", () => {
       data: { googleRefreshToken: null },
     });
     expect(notifyCalendarReconnect).toHaveBeenCalledWith("u1");
-    // Never reaches the model -- `calendars` is the only stage attempted.
-    expect(runMatchingAgent).not.toHaveBeenCalled();
-    expect(stagesWritten()).toEqual(["calendars", null]);
+    // A refused calendar no longer holds the meeting: the run reaches the
+    // model, with u1 treated as free.
+    expect(runMatchingAgent).toHaveBeenCalledOnce();
   });
 
   it("B10: sends no second email when the token was already cleared", async () => {
     userUpdateMany.mockResolvedValue({ count: 0 });
-    const REJECTED: typeof FREE = async () => {
-      const error = new CalendarAuthError("token exchange failed (400)");
-      error.userId = "u1";
-      throw error;
-    };
+    runMatchingAgent.mockRejectedValue(new Error("model timed out"));
 
     await runCycle("m1", NOW, REJECTED);
 
     expect(notifyCalendarReconnect).not.toHaveBeenCalled();
+  });
+});
+
+describe("a calendar that was not read", () => {
+  const DRAFT = {
+    options: [
+      { rank: 1, unverified: [{ kind: "opening_hours" }] },
+      { rank: 2, unverified: [] },
+    ],
+  };
+
+  it("does not stop the run, and is stored on every option as unchecked", async () => {
+    runMatchingAgent.mockResolvedValue({
+      draft: structuredClone(DRAFT),
+      call: {},
+    });
+
+    await runCycle("m1", NOW, UNCONNECTED);
+
+    expect(persistMatchRun).toHaveBeenCalledOnce();
+    const [draft] = persistMatchRun.mock.calls[0];
+    expect(draft.options[0].unverified).toEqual([
+      { kind: "opening_hours" },
+      { kind: "calendar", userId: "u1" },
+    ]);
+    expect(draft.options[1].unverified).toEqual([
+      { kind: "calendar", userId: "u1" },
+    ]);
+  });
+
+  it("adds nothing when every calendar was read", async () => {
+    runMatchingAgent.mockResolvedValue({
+      draft: structuredClone(DRAFT),
+      call: {},
+    });
+
+    await runCycle("m1", NOW, FREE);
+
+    const [draft] = persistMatchRun.mock.calls[0];
+    expect(draft.options).toEqual(DRAFT.options);
+  });
+
+  it("is not shown to the model", async () => {
+    runMatchingAgent.mockRejectedValue(new Error("model timed out"));
+
+    await runCycle("m1", NOW, UNCONNECTED);
+
+    const [input] = runMatchingAgent.mock.calls[0];
+    expect(JSON.stringify(input)).not.toContain('"calendar"');
+    // Free as far as the calendar goes.
+    expect(input.participants[0].busy).toEqual([]);
   });
 });
 

@@ -374,7 +374,13 @@ const idOfSlot = (slot: TimeSlot) =>
  */
 function unverifiedPhrase(facts: UnverifiedFact[]): string {
   return facts
-    .map((f) => (f.kind === "opening_hours" ? "opening hours" : `"${f.tag}"`))
+    .map((f) =>
+      f.kind === "opening_hours"
+        ? "opening hours"
+        : f.kind === "dietary"
+          ? `"${f.tag}"`
+          : `${f.userId}'s calendar`
+    )
     .join(", ");
 }
 

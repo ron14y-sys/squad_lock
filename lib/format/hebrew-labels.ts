@@ -42,16 +42,10 @@ export const MEETING_CARD_STATUS_LABELS: Record<MeetingCardStatus, string> = {
 export function meetingStatusLabel(
   status: MeetingCardStatus,
   waitingOn: number | null,
-  firstSearch = false,
-  calendarBlocked = false
+  firstSearch = false
 ): string {
   if (status === "waiting_on_others" && waitingOn !== null) {
     return `ממתין לעוד ${waitingOn}`;
-  }
-  // Nothing is being searched while someone's calendar is missing — saying
-  // so beats a "searching" label that never changes.
-  if (status === "reweighing" && calendarBlocked) {
-    return "תקוע — חסר חיבור ליומן";
   }
   if (status === "reweighing" && firstSearch) return "מחפשים הצעה";
   return MEETING_CARD_STATUS_LABELS[status];
@@ -106,9 +100,11 @@ const DIETARY_TAG_LABELS: Record<string, string> = {
 export function unverifiedNote(
   facts: readonly UnverifiedFact[]
 ): string | null {
-  if (facts.length === 0) return null;
+  // A calendar is about a person, not the venue — `uncheckedCalendarNote`.
+  const venueFacts = facts.filter((fact) => fact.kind !== "calendar");
+  if (venueFacts.length === 0) return null;
 
-  const parts = facts.map((fact) =>
+  const parts = venueFacts.map((fact) =>
     fact.kind === "opening_hours"
       ? "את שעות הפתיחה"
       : `אם הם עומדים בדרישת ${DIETARY_TAG_LABELS[fact.tag] ?? `״${fact.tag}״`}`
@@ -120,6 +116,20 @@ export function unverifiedNote(
       : `${parts.slice(0, -1).join(", ")} ו${parts[parts.length - 1]}`;
 
   return `לא הצלחנו לאמת ${list} — כדאי לטלפן ולוודא לפני שיוצאים.`;
+}
+
+/**
+ * Whose calendar a proposal was not checked against, for everyone else in
+ * the meeting — the viewer's own line, with its "connect" link, is the
+ * page's. Speaks of the calendar ("הוא לא מחובר"), so it needs no gender.
+ */
+export function uncheckedCalendarNote(names: readonly string[]): string | null {
+  if (names.length === 0) return null;
+  if (names.length === 1) {
+    return `הזמן הזה לא נבדק מול היומן של ${names[0]}, כי הוא עוד לא מחובר.`;
+  }
+  const list = `${names.slice(0, -1).join(", ")} ו${names[names.length - 1]}`;
+  return `הזמן הזה לא נבדק מול היומנים של ${list}, כי הם עוד לא מחוברים.`;
 }
 
 /** "חבר אחד" / "2 חברים" — Hebrew has a singular, so "1 חברים" reads as a mistake. */

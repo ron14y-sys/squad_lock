@@ -283,9 +283,15 @@ export type ConstraintViolation = {
  * Not a violation and not a warning to sit in a log: A4 reads these, prefers
  * pairs that have none, and attaches the "call ahead" note to the user when it
  * proposes one that has some.
+ *
+ * `calendar` is never produced here: it is about a person, not a pair, and
+ * `run-cycle.ts` adds it to the options after A4 has chosen — someone whose
+ * calendar was not read (none connected) was treated as free.
  */
 export type UnverifiedFact =
-  { kind: "opening_hours" } | { kind: "dietary"; tag: string };
+  | { kind: "opening_hours" }
+  | { kind: "dietary"; tag: string }
+  | { kind: "calendar"; userId: string };
 
 export type PairCheck = {
   candidatePlaceId: string;

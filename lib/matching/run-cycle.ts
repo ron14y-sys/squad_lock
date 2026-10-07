@@ -47,9 +47,8 @@ import {
 import { preferenceProfileFromRow } from "@/lib/types/preference-profile-from-row";
 import {
   fetchBusyForUsers,
-  MissingCalendarConnectionError,
+  type CalendarRead,
 } from "@/lib/calendar/participant-busy";
-import { CalendarAuthError } from "@/lib/calendar/freebusy";
 import { getPrisma } from "@/lib/db/client";
 import {
   fetchPlaceDetailsCached,
@@ -377,10 +376,15 @@ export function blockedByRejections(
  * `MatchRunSeenContext` records — the join C6's timeline reads to say *why* a
  * re-weighing happened. The pairs it dropped still have no caller and so
  * still have no place here; step 5 gives them one.
+ *
+ * `uncheckedCalendars` is everyone still coming whose calendar was not read
+ * (none connected, or Google refused the token). `weigh` writes it onto the
+ * proposal, so the page can say whose time was not checked.
  */
 export type AssembledRun = {
   input: MatchAgentInput;
   contextIds: string[];
+  uncheckedCalendars: string[];
 };
 
 /**
@@ -392,15 +396,14 @@ export type AssembledRun = {
  * `place_search_cache` and `place_details_cache` makes
  * `searchNeighbourhoodCached` and `fetchPlaceDetailsCached` return without
  * going out, which exercises the real code rather than bypassing it. A
- * calendar cannot be faked that way: `fetchBusyForUsers` raises for a
- * participant with no usable refresh token **on purpose** (B6 — treating an
- * unread calendar as "free" is the one mistake §5.7 names), so there is no
- * legitimate state in which it quietly returns nothing.
+ * calendar cannot be faked that way: a participant with no token comes back
+ * as `unread`, which the proposal then reports, so a fake that wants
+ * "everyone free and checked" has to say so.
  */
 export type BusyLookup = (
   userIds: string[],
   window: TimeSlot
-) => Promise<Map<string, TimeSlot[]>>;
+) => Promise<CalendarRead>;
 
 /** Told as a run enters each stage (#155). `runCycle` writes it to the meeting. */
 export type StageReport = (stage: RunStage) => Promise<void>;
@@ -480,10 +483,13 @@ export async function assembleRun(
 
   const window = searchWindow(meeting.pinnedDate, now);
   await reportStage("calendars");
-  const busyByUser = await busyFor(
+  const calendars = await busyFor(
     attending.map((response) => response.userId),
     window
   );
+  // B10: a refused token will never work again — clear it and tell its
+  // owner. The run itself goes on, with that person's calendar unread.
+  await Promise.all(calendars.rejected.map(handleCalendarAuthFailure));
 
   const participants: Participant[] = attending.map((response) => {
     const profileRow = response.user.preferenceProfile;
@@ -503,7 +509,9 @@ export async function assembleRun(
       // amendment outranks home. The recurring rules sit between the two and
       // are A12's to resolve; until then home is the fallback.
       origin: context?.origin ?? profile.home,
-      busy: busyByUser.get(response.userId) ?? [],
+      // No calendar read: free, apart from the hours they set by hand
+      // (`hardConstraints.unavailable`, which A2 applies regardless).
+      busy: calendars.busy.get(response.userId) ?? [],
     };
   });
 
@@ -630,6 +638,7 @@ export async function assembleRun(
       ...(venueSoftFacts ? { venueSoftFacts } : {}),
     },
     contextIds: meeting.participantContexts.map((row) => row.id),
+    uncheckedCalendars: calendars.unread,
   };
 }
 
@@ -691,7 +700,7 @@ export function venueSoftFactsFrom(
  * | | Examples | Left as |
  * | --- | --- | --- |
  * | **No solution** — an answer | no window the group shares, nothing survived the filter, nobody still coming | `stuck`, so the group is told instead of being retried at forever |
- * | **Fault** — no answer was reached | no Places key, a participant with no home location ([#132](https://github.com/ron14y-sys/squad_lock/issues/132)), a rejected calendar token, the model failing or timing out, two runs racing for one cycle number | `weighing`, so the next poll tries again |
+ * | **Fault** — no answer was reached | no Places key, a participant with no home location ([#132](https://github.com/ron14y-sys/squad_lock/issues/132)), a calendar Google could not be reached for, the model failing or timing out, two runs racing for one cycle number | `weighing`, so the next poll tries again |
  *
  * **A fault costs no cycle, and that needs no code**: the run is what counts
  * one, and a run that failed wrote nothing.
@@ -728,29 +737,6 @@ export async function runCycle(
       if (claimed.count > 0) {
         await notifyStuck(meetingId);
       }
-      return null;
-    }
-
-    // B10: a rejected Google refresh token is a fault like any other --
-    // the meeting stays in `weighing` -- but unlike a transient one, it
-    // will never clear itself. Only `fetchBusy`'s own caller
-    // (`fetchBusyForConnections`) knows which participant it was, which is
-    // why `error.userId` only exists once it has climbed this far.
-    if (error instanceof CalendarAuthError && error.userId) {
-      await clearStageAndSetRetry(meetingId, null);
-      await handleCalendarAuthFailure(error.userId);
-      console.warn(
-        `[a8] calendar auth failed meeting=${meetingId} user=${error.userId}`
-      );
-      return null;
-    }
-
-    // Somebody still in has no calendar connected. Expected, and waiting on
-    // that person rather than on us: the meeting page and the card say who,
-    // so this is not a failure to log on every poll.
-    if (error instanceof MissingCalendarConnectionError) {
-      await clearStageAndSetRetry(meetingId, null);
-      console.info(`[a8] waiting on a calendar meeting=${meetingId}`);
       return null;
     }
 
@@ -902,7 +888,7 @@ async function clearStageAndSetRetry(
 
 async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
   const reportStage = stageWriter(meetingId);
-  const { input, contextIds } = await assembleRun(
+  const { input, contextIds, uncheckedCalendars } = await assembleRun(
     meetingId,
     now,
     busyFor,
@@ -911,6 +897,20 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
   await reportStage("model");
   const { draft, call } = await runMatchingAgent(input);
   await reportStage("saving");
+
+  // Whose calendar this proposal was not checked against, kept with it as a
+  // fact (same as A2's opening hours) — so the page still says so after that
+  // person connects. Added after the model, which never sees it: it says
+  // nothing about which venue or evening is better.
+  for (const option of draft.options) {
+    option.unverified = [
+      ...option.unverified,
+      ...uncheckedCalendars.map((userId) => ({
+        kind: "calendar" as const,
+        userId,
+      })),
+    ];
+  }
 
   const top = draft.options.find((option) => option.rank === 1);
   if (!top) {

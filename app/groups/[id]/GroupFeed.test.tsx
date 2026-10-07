@@ -314,35 +314,3 @@ test("a meeting's opening search reads as a search, not a re-weighing", async ()
   expect(await screen.findByText("מחפשים הצעה")).toBeInTheDocument();
   expect(screen.queryByText("משוקלל מחדש")).not.toBeInTheDocument();
 });
-
-test("a meeting waiting on a missing calendar reads as stuck, and is not polled fast", async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  const fetchMock = vi.fn(() =>
-    Promise.resolve(
-      jsonResponse({
-        meetings: [
-          card({
-            status: "reweighing",
-            firstSearch: true,
-            calendarBlocked: true,
-            currentDatetime: null,
-          }),
-        ],
-        openCount: 1,
-      })
-    )
-  );
-  vi.stubGlobal("fetch", fetchMock);
-
-  render(<GroupFeed groupId="group-1" />);
-
-  expect(await screen.findByText("תקוע — חסר חיבור ליומן")).toBeInTheDocument();
-  expect(
-    screen.getByText("מישהו בקבוצה עוד לא חיבר יומן, ולכן ההצעה תקועה")
-  ).toBeInTheDocument();
-  expect(screen.queryByText("מחפשים הצעה")).not.toBeInTheDocument();
-
-  await vi.advanceTimersByTimeAsync(6000);
-  expect(fetchMock).toHaveBeenCalledTimes(1);
-  vi.useRealTimers();
-});

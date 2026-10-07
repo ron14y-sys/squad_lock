@@ -6,7 +6,7 @@
  *
  * - **`fetchBusyForConnections`** is the actual logic — who gets asked, in
  *   what order, what a missing or rejected connection means for the rest of
- *   the group. No database in it, so it is fully covered by a mocked
+ *   the group (nothing: it is reported, not fatal). No database in it, so it is fully covered by a mocked
  *   `fetch`, the same way `freebusy.ts`'s own tests are.
  * - **`fetchBusyForUsers`** is the thin database-touching wrapper: look up
  *   `googleRefreshToken` for a set of users, hand the result to the layer
@@ -31,67 +31,69 @@ export type CalendarConnection = {
 };
 
 /**
- * A participant with no refresh token on file at all — never signed in with
- * Google, or B2's sign-in upsert has not run for them yet. Distinct from
- * `CalendarAuthError` (`freebusy.ts`), which is a token that existed and was
- * rejected; this one never had a token to try.
+ * What reading a group's calendars came back with.
+ *
+ * - `busy` — the blocks of everyone whose calendar was read.
+ * - `unread` — whoever's calendar was not: no token on file, or a token
+ *   Google refused. They are left out of `busy`, so a run treats them as
+ *   free apart from the hours they set by hand.
+ * - `rejected` — the part of `unread` whose token was refused (B10), so the
+ *   caller can clear it and ask the person to reconnect.
  */
-export class MissingCalendarConnectionError extends Error {
-  constructor(userId: string) {
-    super(`calendar: user ${userId} has no Google refresh token on file`);
-    this.name = "MissingCalendarConnectionError";
-  }
-}
-
-function requireToken(connection: CalendarConnection): string {
-  if (!connection.googleRefreshToken) {
-    throw new MissingCalendarConnectionError(connection.userId);
-  }
-  return connection.googleRefreshToken;
-}
+export type CalendarRead = {
+  busy: Map<string, TimeSlot[]>;
+  unread: string[];
+  rejected: string[];
+};
 
 /**
- * Busy blocks for every connection, keyed by `userId`.
+ * Busy blocks for every connection that can be read.
  *
- * **Fails whole, not partial, and fails before the first network call if it
- * is going to fail at all.** Every connection is checked for a token up
- * front — a missing one for the fifth person means the other four's
- * Calendar API calls never fire either. The alternative, treating a missing
- * or rejected connection as "assume free", is the one mistake spec §5.7
- * calls out by name for the conflict check: a false positive here is worse
- * than a false negative, because the failure mode is a proposal that
- * collides with a calendar nobody actually read.
+ * **A calendar is optional.** Someone who never connected one, or whose
+ * token Google refused, does not hold up the rest of the group: they come
+ * back in `unread` and the run goes on without their calendar. That is the
+ * opposite of what B6 first decided (refuse the whole group, because a
+ * proposal could collide with a calendar nobody read). The collision risk
+ * is real, so it is not hidden: the proposal names whose calendar was not
+ * checked (`run-cycle.ts` stores it, the meeting page shows it), and that
+ * person still has to approve the time themselves.
  *
- * A rejected connection (`CalendarAuthError`, mid-flight) fails the same
- * way: `Promise.all` rejects on the first one, and whatever this was
- * computing for does not get a partial answer to work from.
+ * Anything else — a rate limit, a 5xx, the network — still fails the whole
+ * read: `Promise.all` rejects on the first one and the run is retried. A
+ * passing outage says nothing about whether someone is free.
  */
 export async function fetchBusyForConnections(
   connections: CalendarConnection[],
   window: TimeSlot
-): Promise<Map<string, TimeSlot[]>> {
-  const tokensByUser = connections.map(
-    (connection) => [connection.userId, requireToken(connection)] as const
-  );
+): Promise<CalendarRead> {
+  const refused = new Set<string>();
 
   const results = await Promise.all(
-    tokensByUser.map(async ([userId, token]) => {
+    connections.map(async ({ userId, googleRefreshToken }) => {
+      if (!googleRefreshToken) return null;
       try {
-        const busy = await fetchBusy(token, window);
-        return [userId, busy] as const;
+        return [userId, await fetchBusy(googleRefreshToken, window)] as const;
       } catch (error) {
-        // B10: `freebusy.ts` never knows whose token it was handed -- this
-        // is the one place that does, so this is where a rejected token
-        // gets attributed to a user before it keeps climbing.
+        // B10: `freebusy.ts` never knows whose token it was handed — this is
+        // the one place that does.
         if (error instanceof CalendarAuthError) {
-          error.userId = userId;
+          refused.add(userId);
+          return null;
         }
         throw error;
       }
     })
   );
 
-  return new Map(results);
+  const busy = new Map(results.filter((entry) => entry !== null));
+  // In the order the connections came in, so a list of names reads the same
+  // on every run.
+  const ids = connections.map((connection) => connection.userId);
+  return {
+    busy,
+    unread: ids.filter((id) => !busy.has(id)),
+    rejected: ids.filter((id) => refused.has(id)),
+  };
 }
 
 /**
@@ -101,7 +103,7 @@ export async function fetchBusyForConnections(
 export async function fetchBusyForUsers(
   userIds: string[],
   window: TimeSlot
-): Promise<Map<string, TimeSlot[]>> {
+): Promise<CalendarRead> {
   const prisma = getPrisma();
 
   const users = await prisma.user.findMany({
@@ -114,8 +116,7 @@ export async function fetchBusyForUsers(
 
   // A userId with no matching row at all (shouldn't happen — the caller's
   // own list should come from real memberships) reads the same as "no
-  // token": nothing this file can hand `fetchBusy`, so `requireToken` raises
-  // for it the same way.
+  // token": nothing this file can hand `fetchBusy`, so it comes back unread.
   const connections: CalendarConnection[] = userIds.map((userId) => ({
     userId,
     googleRefreshToken: tokenByUserId.get(userId) ?? null,
