@@ -29,6 +29,9 @@ const KNOWN_INVITE_ERRORS: Record<string, string> = {
   "This person is already a member.": "האדם הזה כבר חבר בקבוצה.",
   "Group not found.": "הקבוצה הזו לא נמצאה.",
   "Invalid invitation.": "כתובת האימייל לא תקינה.",
+  "That is your own address.": "זו הכתובת שלך. אי אפשר להזמין את עצמך.",
+  "This address cannot receive email.":
+    "לכתובת הזו אי אפשר לשלוח מייל. כדאי לבדוק שאין טעות הקלדה.",
 };
 
 function groupFullMessage(message: string): string | null {
@@ -119,6 +122,29 @@ export function GroupDetail({ groupId }: { groupId: string }) {
     }
   }
 
+  async function cancelInvitation(invitation: Invitation) {
+    setInviteMessage(null);
+    try {
+      const res = await fetch(
+        `/api/groups/${groupId}/invitations/${invitation.id}`,
+        { method: "DELETE" }
+      );
+      // 404: already gone (cancelled from another screen) — same end state.
+      if (!res.ok && res.status !== 404) {
+        setInviteMessage(
+          res.status === 409
+            ? `${invitation.email} כבר הצטרף/ה לקבוצה.`
+            : "לא הצלחנו לבטל את ההזמנה. נסה שוב."
+        );
+      } else {
+        setInviteMessage(`ההזמנה ל-${invitation.email} בוטלה.`);
+      }
+      load();
+    } catch {
+      setInviteMessage("לא הצלחנו לבטל את ההזמנה. נסה שוב.");
+    }
+  }
+
   if (loadState === "loading") {
     return <ScreenState kind="loading">טוען את הקבוצה…</ScreenState>;
   }
@@ -175,8 +201,19 @@ export function GroupDetail({ groupId }: { groupId: string }) {
           </h2>
           <div className="flex flex-col gap-2">
             {pendingInvitations.map((invitation) => (
-              <div key={invitation.id} className="sl-panel sl-sub">
-                {invitation.email}
+              <div
+                key={invitation.id}
+                className="sl-panel sl-sub flex items-center justify-between gap-2"
+              >
+                <span className="min-w-0 break-all">{invitation.email}</span>
+                <button
+                  type="button"
+                  onClick={() => cancelInvitation(invitation)}
+                  className="sl-btn shrink-0"
+                  aria-label={`בטל את ההזמנה ל-${invitation.email}`}
+                >
+                  בטל הזמנה
+                </button>
               </div>
             ))}
           </div>

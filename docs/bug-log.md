@@ -23,6 +23,51 @@ says so.
 
 ---
 
+## Inviting yourself, inviting a dead address, no way to cancel — 2026-10-07
+
+- **Seen:** manual test 4.4: "It let me invite myself and sent an email. It
+  lets you invite an invalid address. Add a way to remove an invitation or a
+  member."
+- **Cause:**
+  - The invite route (`app/api/groups/[id]/invitations/route.ts`) asked "is
+    there an _accepted invitation_ for this address?", not "is this person a
+    _member_?". A group's creator joins with no invitation at all, so for
+    them, and for anyone else who joined that way, the check always passed.
+    The result was an email, and a pending invitation taking one of the six
+    places.
+  - An address with a broken shape was already refused (`ron@gmail`,
+    `ron@@gmail.com`). One with a valid shape and a domain that cannot get
+    mail (`ron@gmail.con`) was accepted.
+  - Cancelling an invitation was never built, so a typo held a place in the
+    group for good.
+- **Fix:** PR not yet opened.
+  - The route refuses the inviter's own address ("זו הכתובת שלך") and any
+    address that belongs to a current member, case-insensitively, before
+    creating anything.
+  - `lib/email/mail-domain.ts` checks in DNS that the domain has an MX record,
+    or an address record to fall back on. If it has neither, the invite is
+    refused with "לכתובת הזו אי אפשר לשלוח מייל". A DNS timeout or server
+    error lets the invite through, so an outage never blocks one.
+  - `DELETE /api/groups/[id]/invitations/[invitationId]`: any member can
+    cancel a pending invitation. The row is deleted, its place is freed, and
+    the emailed link answers "not found". An invitation that is already
+    accepted is not touched. The group page has a "בטל הזמנה" button on each
+    pending invitation.
+- **Proof:** these fail on the old code:
+  - `__tests__/invitations-db.test.ts`: both routes, against a real database.
+    Covers your own address, a member who never had an invitation, a dead
+    domain, cancelling and freeing the place, an outsider, an accepted
+    invitation, and an invitation from another group.
+  - `GroupDetail.test.tsx`: the messages and the cancel button.
+  - `mail-domain.test.ts` covers the DNS rules. Checked once against real DNS:
+    `gmail.con` is refused, `gmail.com` and `walla.co.il` pass.
+- **Still open:**
+  - Typo domains that someone registered (`gmial.com`, `hotmial.com`) pass the
+    DNS check. A mailbox that does not exist on a real domain also passes.
+    Cancelling the invitation is the remedy for both.
+  - Removing a member or leaving a group is a separate task. It needs
+    decisions on open meetings and on who may remove whom.
+
 ## A new meeting never got a proposal: calendar permission missing — 2026-10-06
 
 - **Seen:** "I asked to create a meeting and it didn't create one." It had
