@@ -1,16 +1,15 @@
 [
   {
     "id": "two-fields",
-    "text": "גם יקר לי שם וגם רועש מדי, אני מעדיפה משהו פשוט ושקט",
+    "text": "גם יקר לי שם וגם בא לי יותר בר מאשר מסעדה",
     "venueIs": {
-      "budget": "splurge",
-      "noiseLevel": "lively"
+      "budget": "splurge"
     },
     "expected": {
       "objection": "soft",
       "softPreferences": {
         "budget": "modest",
-        "noiseLevel": "quiet"
+        "venueKinds": ["bar"]
       }
     },
     "why": "One sentence can carry two fields. Extracting one of them would leave half an objection on the table."
@@ -53,11 +52,11 @@
   },
   {
     "id": "preference-not-rejection",
-    "text": "האמת שדווקא בא לי משהו הרפתקני לאכול, לא את אותו הדבר כרגיל",
+    "text": "האמת שדווקא בא לי סושי הערב, לא את אותו הדבר כרגיל",
     "expected": {
       "objection": "soft",
       "softPreferences": {
-        "cuisine": "adventurous"
+        "cuisines": ["sushi"]
       }
     },
     "why": "Stated as a wish rather than a complaint. It is still exactly one field, and reading it as 'none' would drop what the person actually said."

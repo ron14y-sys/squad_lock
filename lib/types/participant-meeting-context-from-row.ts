@@ -11,10 +11,12 @@
  * the same shape (`lib/meetings/schema.ts`'s `respondToMeetingSchema`)
  * before it reaches this table.
  *
- * `softPreferences` is the same kind of cast, and is safe on the same terms:
- * A7's Constraint Updater is its only writer, and it validates against its
- * own schema before the value reaches this table. `null` means no correction
- * — the state every amendment row is in (issue #86).
+ * `softPreferences` is A7's, validated on the way in, but read through
+ * `softPreferencesFromJson` all the same: rows written before #217 hold the
+ * old vocabulary (`noiseLevel`, …), and only the current one may reach A4.
+ * `null` means no correction — the state every amendment row is in (issue
+ * #86) — and a row whose correction was entirely old vocabulary reads as
+ * `null` too, since `{}` is not a state anyone can be in.
  *
  * `mergeContexts` below is the other half of reading this table: one person
  * has *several* rows per meeting, and turning them into the single context a
@@ -22,6 +24,8 @@
  */
 
 import type { ParticipantMeetingContextModel } from "@/lib/generated/prisma/models";
+
+import { softPreferencesFromJson } from "@/lib/preferences/vocabulary";
 
 import type { SoftPreferences } from "./profile";
 
@@ -40,10 +44,16 @@ export function participantMeetingContextFromRow(
         : null,
     originLabel: row.originLabel,
     mobilityWindows: row.mobilityWindows as MobilityWindow[],
-    softPreferences: row.softPreferences as SoftPreferences | null,
+    softPreferences: correctionFromJson(row.softPreferences),
     note: row.note,
     createdAt: row.createdAt,
   };
+}
+
+function correctionFromJson(json: unknown): SoftPreferences | null {
+  if (json === null) return null;
+  const known = softPreferencesFromJson(json);
+  return Object.keys(known).length > 0 ? known : null;
 }
 
 /**

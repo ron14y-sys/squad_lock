@@ -6,9 +6,9 @@
  * the next weighing can act on.
  *
  * ```
- *   "It's too loud for me, I want somewhere quieter."
+ *   "I'd rather go to a bar."
  *        ↓  one extraction call
- *   { softPreferences: { noiseLevel: "quiet" }, objection: "soft" }
+ *   { softPreferences: { venueKinds: ["bar"] }, objection: "soft" }
  *        ↓
  *   a correction on that person's ParticipantMeetingContext — this meeting only
  * ```
@@ -23,7 +23,7 @@
  * It never sees the candidate list, never names a venue, and never returns a
  * distance or a time ([§4.1f](../../docs/spec.md)): a component that chooses
  * is a second decision-maker, and this system has one. It is shown the option
- * that was rejected — enough to tell what "too loud" refers to — and nothing
+ * that was rejected — enough to tell what "too expensive" refers to — and nothing
  * else about the search.
  *
  * ## An absent field is not an opinion
@@ -56,6 +56,7 @@ import {
   type LlmResult,
 } from "@/lib/llm/client";
 import { describeSlot } from "@/lib/matching/constraints";
+import { BUDGETS, CUISINES, VENUE_KINDS } from "@/lib/preferences/vocabulary";
 import type { SoftPreferences, TimeSlot, VenueSoftFacts } from "@/lib/types";
 
 /* -------------------------------------------------------------------------
@@ -141,10 +142,9 @@ const OBJECTIONS = [
  * places beats a consistent envelope and a mapping step.
  */
 const softPreferencesSchema = z.strictObject({
-  noiseLevel: z.enum(["lively", "quiet"]).optional(),
-  activityStyle: z.enum(["outdoorsy", "cultural"]).optional(),
-  budget: z.enum(["modest", "splurge"]).optional(),
-  cuisine: z.enum(["familiar", "adventurous"]).optional(),
+  budget: z.enum(BUDGETS).optional(),
+  venueKinds: z.array(z.enum(VENUE_KINDS)).min(1).optional(),
+  cuisines: z.array(z.enum(CUISINES)).min(1).optional(),
 });
 
 /**
@@ -164,10 +164,15 @@ export const CONSTRAINT_UPDATE_JSON_SCHEMA = {
     soft_preferences: {
       type: "object",
       properties: {
-        noiseLevel: { type: "string", enum: ["lively", "quiet"] },
-        activityStyle: { type: "string", enum: ["outdoorsy", "cultural"] },
-        budget: { type: "string", enum: ["modest", "splurge"] },
-        cuisine: { type: "string", enum: ["familiar", "adventurous"] },
+        budget: { type: "string", enum: [...BUDGETS] },
+        venueKinds: {
+          type: "array",
+          items: { type: "string", enum: [...VENUE_KINDS] },
+        },
+        cuisines: {
+          type: "array",
+          items: { type: "string", enum: [...CUISINES] },
+        },
       },
     },
     objection: { type: "string", enum: [...OBJECTIONS] },
@@ -205,7 +210,7 @@ export type ConstraintUpdateInput = {
   /** The rejection in the person's own words — B5 stored it as `reasonText`. */
   reasonText: string;
   /**
-   * The option they rejected. Enough context to tell what "too loud" refers
+   * The option they rejected. Enough context to tell what "too expensive" refers
    * to, and deliberately not the candidate list (§4.1f).
    */
   rejected: {

@@ -12,6 +12,7 @@
  * preference game (C2) now decides it. See `SoftPreferences` below.
  */
 
+import type { Budget, Cuisine, VenueKind } from "@/lib/preferences/vocabulary";
 import type {
   Kilometres,
   LatLng,
@@ -68,33 +69,33 @@ export type RecurringMobilityRule =
     };
 
 /**
- * The initial signal from the this-or-that preference game (spec §5.1, C2).
- * Four binary levers, not a free-text description, so the set can be handed
- * to the matching agent without any parsing step.
+ * What a person likes, short of requiring it (spec §5.1, #217): what it
+ * costs, what kind of place, what food. Set by the preference game (C2) on
+ * the profile, where it is a preference; the same shape on a meeting's
+ * context (`ParticipantMeetingContext.softPreferences`, written by A7 from a
+ * rejection) is a strong request for that meeting.
+ *
+ * The values live in `lib/preferences/vocabulary.ts`, with their Hebrew.
  *
  * **Every field is optional, and an absent one must change nothing.** Not
- * having an opinion about noise is a real state — someone skipped that
+ * having an opinion about food is a real state — someone skipped that
  * question, or the profile predates it — and it is not the same as wanting
- * either answer. A missing field may never cost a venue a place or win it
- * one; the agent weighs the fields that are present and is silent about the
- * rest (decided on [#86](https://github.com/ron14y-sys/squad_lock/issues/86)).
+ * every answer. A missing field may never cost a venue a place or win it one
+ * (decided on [#86](https://github.com/ron14y-sys/squad_lock/issues/86)).
+ * An empty list is not a state either: "doesn't matter" leaves the field out.
  *
- * That is already how the deterministic column behaves, because nothing in it
- * branches on `softPreferences` at all. The obligation is A4's prompt and
- * A6's justification check, and it is written into both.
- *
- * C2 therefore needs a way to decline a question rather than forcing four
- * answers, or it will manufacture opinions nobody holds.
+ * Noise level and activity style were the first vocabulary and were dropped
+ * on 2026-10-07. Rows still holding them are read through
+ * `softPreferencesFromJson`, which keeps only what is listed here.
  *
  * `VenueSoftFacts` in `./matching` is `Partial<SoftPreferences>` on purpose:
- * a venue answers the same four questions a person does, so matching one to
- * the other is a field comparison rather than a vocabulary translation.
+ * a venue answers the same questions a person does, so matching one to the
+ * other is a field comparison rather than a vocabulary translation.
  */
 export type SoftPreferences = {
-  noiseLevel?: "lively" | "quiet";
-  activityStyle?: "outdoorsy" | "cultural";
-  budget?: "modest" | "splurge";
-  cuisine?: "familiar" | "adventurous";
+  budget?: Budget;
+  venueKinds?: VenueKind[];
+  cuisines?: Cuisine[];
 };
 
 export type PreferenceProfile = {

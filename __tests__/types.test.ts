@@ -156,10 +156,9 @@ function preferenceProfileRow(
     userId: "u1",
     hardConstraints: { dietary: [], allergies: [], unavailable: [] },
     softPreferences: {
-      noiseLevel: "quiet",
-      activityStyle: "cultural",
       budget: "modest",
-      cuisine: "familiar",
+      venueKinds: ["cafe"],
+      cuisines: ["italian"],
     },
     homeLat: null,
     homeLng: null,
@@ -173,6 +172,27 @@ function preferenceProfileRow(
 }
 
 describe("preferenceProfileFromRow", () => {
+  // #217: a profile saved by the first game still holds noise, activity and
+  // "familiar"; only what the current vocabulary has may come out.
+  it("keeps only the current soft-preference vocabulary", () => {
+    const profile = preferenceProfileFromRow(
+      preferenceProfileRow({
+        softPreferences: {
+          noiseLevel: "quiet",
+          activityStyle: "cultural",
+          budget: "modest",
+          cuisine: "familiar",
+          venueKinds: ["bar", "club"],
+        },
+      })
+    );
+
+    expect(profile.softPreferences).toEqual({
+      budget: "modest",
+      venueKinds: ["bar"],
+    });
+  });
+
   it("composes the two home columns into one LatLng", () => {
     const profile = preferenceProfileFromRow(
       preferenceProfileRow({ homeLat: 32.08, homeLng: 34.78 })
@@ -272,6 +292,26 @@ describe("participantMeetingContextFromRow", () => {
     expect(context.note).toBe("No car tonight.");
   });
 
+  // #217: rows written before the vocabulary changed must not reach A4
+  // with answers to questions nobody is asked any more.
+  it("drops the old vocabulary from a stored correction, and reads nothing left as null", () => {
+    expect(
+      participantMeetingContextFromRow(
+        participantMeetingContextRow({
+          softPreferences: { noiseLevel: "quiet", budget: "modest" },
+        })
+      ).softPreferences
+    ).toEqual({ budget: "modest" });
+
+    expect(
+      participantMeetingContextFromRow(
+        participantMeetingContextRow({
+          softPreferences: { noiseLevel: "quiet", cuisine: "familiar" },
+        })
+      ).softPreferences
+    ).toBeNull();
+  });
+
   // A7 writes a correction here; an amendment leaves the column NULL. The two
   // must not collapse into one value: "no correction" is not "corrected to
   // nothing" (issue #86).
@@ -279,10 +319,10 @@ describe("participantMeetingContextFromRow", () => {
     expect(
       participantMeetingContextFromRow(
         participantMeetingContextRow({
-          softPreferences: { noiseLevel: "quiet" },
+          softPreferences: { venueKinds: ["bar"] },
         })
       ).softPreferences
-    ).toEqual({ noiseLevel: "quiet" });
+    ).toEqual({ venueKinds: ["bar"] });
 
     expect(
       participantMeetingContextFromRow(participantMeetingContextRow())
@@ -320,7 +360,7 @@ describe("mergeContexts", () => {
   const correction = participantMeetingContextFromRow(
     participantMeetingContextRow({
       id: "correction",
-      softPreferences: { noiseLevel: "quiet" },
+      softPreferences: { venueKinds: ["bar"] },
       createdAt: new Date("2026-09-24T17:30:00.000Z"),
     })
   );
@@ -328,7 +368,7 @@ describe("mergeContexts", () => {
   it("keeps both halves when a correction follows an amendment", () => {
     const merged = mergeContexts([amendment, correction]);
 
-    expect(merged?.softPreferences).toEqual({ noiseLevel: "quiet" });
+    expect(merged?.softPreferences).toEqual({ venueKinds: ["bar"] });
     expect(merged?.origin).toEqual({ lat: 32.07, lng: 34.79 });
     expect(merged?.mobilityWindows).toEqual(CAR_UNAVAILABLE);
   });
@@ -336,7 +376,7 @@ describe("mergeContexts", () => {
   it("keeps both halves in the other order too", () => {
     const merged = mergeContexts([correction, amendment]);
 
-    expect(merged?.softPreferences).toEqual({ noiseLevel: "quiet" });
+    expect(merged?.softPreferences).toEqual({ venueKinds: ["bar"] });
     expect(merged?.origin).toEqual({ lat: 32.07, lng: 34.79 });
   });
 
@@ -368,7 +408,7 @@ describe("mergeContexts", () => {
     );
 
     expect(mergeContexts([correction, second])?.softPreferences).toEqual({
-      noiseLevel: "quiet",
+      venueKinds: ["bar"],
       budget: "modest",
     });
   });
@@ -378,13 +418,15 @@ describe("mergeContexts", () => {
   it("lets the newest correction win on a field it repeats", () => {
     const lively = participantMeetingContextFromRow(
       participantMeetingContextRow({
-        softPreferences: { noiseLevel: "lively" },
+        softPreferences: { venueKinds: ["cafe"] },
         createdAt: new Date("2026-09-24T15:00:00.000Z"),
       })
     );
 
+    // A list is one answer: "a bar" after "a café" replaces it, it does not
+    // become "a bar or a café".
     expect(mergeContexts([lively, correction])?.softPreferences).toEqual({
-      noiseLevel: "quiet",
+      venueKinds: ["bar"],
     });
   });
 

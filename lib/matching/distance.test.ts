@@ -222,10 +222,9 @@ function profile(
     userId: "u1",
     hardConstraints: { dietary: [], allergies: [], unavailable: [] },
     softPreferences: {
-      noiseLevel: "quiet",
-      activityStyle: "cultural",
       budget: "modest",
-      cuisine: "familiar",
+      venueKinds: ["cafe"],
+      cuisines: ["italian"],
     },
     home: ROTHSCHILD,
     homeNeighbourhood: "Rothschild",

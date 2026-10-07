@@ -25,9 +25,11 @@
  * app speaks. An absent list means "nothing stated", which is exactly `[]` —
  * and unlike the origin, there is no meaningful `null` for it.
  *
- * `softPreferences` needs none of this (every field is optional, and `{}` is
- * a real state — [#86](https://github.com/ron14y-sys/squad_lock/issues/86)),
- * and `recurringMobilityRules` defaults to `[]` in the column already.
+ * `softPreferences` is not cast but read through `softPreferencesFromJson`:
+ * the column has outlived one vocabulary (#217), and only the current one may
+ * reach A4. `{}` is a real state for it
+ * ([#86](https://github.com/ron14y-sys/squad_lock/issues/86)).
+ * `recurringMobilityRules` defaults to `[]` in the column already.
  */
 
 import type { PreferenceProfileModel } from "@/lib/generated/prisma/models";
@@ -36,8 +38,8 @@ import type {
   HardConstraints,
   PreferenceProfile,
   RecurringMobilityRule,
-  SoftPreferences,
 } from "./profile";
+import { softPreferencesFromJson } from "@/lib/preferences/vocabulary";
 
 export function preferenceProfileFromRow(
   row: PreferenceProfileModel
@@ -51,7 +53,7 @@ export function preferenceProfileFromRow(
       unavailable: [],
       ...(row.hardConstraints as Partial<HardConstraints>),
     },
-    softPreferences: row.softPreferences as SoftPreferences,
+    softPreferences: softPreferencesFromJson(row.softPreferences),
     home:
       row.homeLat !== null && row.homeLng !== null
         ? { lat: row.homeLat, lng: row.homeLng }

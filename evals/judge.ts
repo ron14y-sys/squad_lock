@@ -206,6 +206,16 @@ export function judge(scenario: Scenario, draft: JudgeableRun): Verdict {
  * right" are two different claims, and only the second is what spec §12.5
  * counts.
  */
+/**
+ * One field's answer against the expected one. A list is a set — "bar, café"
+ * and "café, bar" are the same request (#217) — so it is compared sorted.
+ */
+function sameAnswer(want: unknown, got: unknown): boolean {
+  const key = (v: unknown) =>
+    JSON.stringify(Array.isArray(v) ? [...v].sort() : v);
+  return want !== undefined && key(want) === key(got);
+}
+
 export function judgeConstraint(
   expected: { objection: ObjectionKind; softPreferences: SoftPreferences },
   got: ConstraintUpdate
@@ -220,7 +230,7 @@ export function judgeConstraint(
   const differences = [
     ...Object.entries(got.softPreferences).flatMap(([field, value]) => {
       const want = expected.softPreferences[field as keyof SoftPreferences];
-      if (want === value) return [];
+      if (sameAnswer(want, value)) return [];
       return [
         want === undefined
           ? `invented ${field}=${value}`

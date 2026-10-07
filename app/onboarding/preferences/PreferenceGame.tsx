@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { SoftPreferences } from "@/lib/types";
+import { BUDGET_LABELS } from "@/lib/preferences/vocabulary";
 
 type Question<K extends keyof SoftPreferences = keyof SoftPreferences> = {
   key: K;
@@ -14,30 +15,15 @@ function question<K extends keyof SoftPreferences>(q: Question<K>): Question {
   return q as Question;
 }
 
+// #217 dropped noise, activity style and "familiar or adventurous" from the
+// vocabulary; the server no longer stores them, so they are no longer asked.
+// Kind of place and cuisine are #218's.
 const QUESTIONS: Question[] = [
-  question({
-    key: "noiseLevel",
-    prompt: "בר רועש או בית קפה שקט?",
-    left: { label: "בר רועש", value: "lively" },
-    right: { label: "בית קפה שקט", value: "quiet" },
-  }),
-  question({
-    key: "activityStyle",
-    prompt: "טיול בטבע או סיור במוזיאון?",
-    left: { label: "טיול בטבע", value: "outdoorsy" },
-    right: { label: "סיור במוזיאון", value: "cultural" },
-  }),
   question({
     key: "budget",
     prompt: "תקציב סטודנטים או פינוק חד-פעמי?",
-    left: { label: "תקציב סטודנטים", value: "modest" },
-    right: { label: "פינוק חד-פעמי", value: "splurge" },
-  }),
-  question({
-    key: "cuisine",
-    prompt: "אוכל מוכר ובטוח או משהו הרפתקני?",
-    left: { label: "אוכל מוכר", value: "familiar" },
-    right: { label: "משהו הרפתקני", value: "adventurous" },
+    left: { label: BUDGET_LABELS.modest, value: "modest" },
+    right: { label: BUDGET_LABELS.splurge, value: "splurge" },
   }),
 ];
 

@@ -18,13 +18,11 @@ function putBodies(fetchMock: ReturnType<typeof vi.fn>) {
     .map(([url, init]) => ({ url, body: JSON.parse(init!.body as string) }));
 }
 
-async function playThroughAllFourQuestions(
-  user: ReturnType<typeof userEvent.setup>
-) {
-  await user.click(await screen.findByRole("button", { name: "בר רועש" }));
-  await user.click(screen.getByRole("button", { name: "סיור במוזיאון" }));
-  await user.click(screen.getByRole("button", { name: "פינוק חד-פעמי" }));
-  await user.click(screen.getByRole("button", { name: "אוכל מוכר" }));
+// #217: one question (budget) until #218 adds kind of place and cuisine.
+async function playThroughTheGame(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    await screen.findByRole("button", { name: "פינוק חד-פעמי" })
+  );
 }
 
 afterEach(() => {
@@ -37,19 +35,14 @@ test("saves the answers to /api/preferences the moment the game finishes", async
   vi.stubGlobal("fetch", fetchMock);
 
   render(<PreferenceGameContainer />);
-  await playThroughAllFourQuestions(user);
+  await playThroughTheGame(user);
 
   expect(await screen.findByText("נשמר.")).toBeInTheDocument();
 
   const [{ url, body }] = putBodies(fetchMock);
   expect(url).toBe("/api/preferences");
   expect(body).toEqual({
-    softPreferences: {
-      noiseLevel: "lively",
-      activityStyle: "cultural",
-      budget: "splurge",
-      cuisine: "familiar",
-    },
+    softPreferences: { budget: "splurge" },
   });
 });
 
@@ -61,7 +54,7 @@ test("leads onward to the rest of onboarding once saved (#173)", async () => {
   );
 
   render(<PreferenceGameContainer />);
-  await playThroughAllFourQuestions(user);
+  await playThroughTheGame(user);
 
   expect(await screen.findByRole("link", { name: "להמשיך" })).toHaveAttribute(
     "href",
@@ -77,7 +70,7 @@ test("shows a sign-in prompt if the session expired mid-game", async () => {
   );
 
   render(<PreferenceGameContainer />);
-  await playThroughAllFourQuestions(user);
+  await playThroughTheGame(user);
 
   expect(
     await screen.findByText("התחבר כדי לשמור את התשובות שלך.")
@@ -94,7 +87,7 @@ test("offers a retry that resends the same answers after a failed save", async (
   vi.stubGlobal("fetch", fetchMock);
 
   render(<PreferenceGameContainer />);
-  await playThroughAllFourQuestions(user);
+  await playThroughTheGame(user);
 
   expect(await screen.findByText("לא הצלחנו לשמור.")).toBeInTheDocument();
 
@@ -104,12 +97,7 @@ test("offers a retry that resends the same answers after a failed save", async (
   const puts = putBodies(fetchMock);
   expect(puts).toHaveLength(2);
   expect(puts[1]!.body).toEqual({
-    softPreferences: {
-      noiseLevel: "lively",
-      activityStyle: "cultural",
-      budget: "splurge",
-      cuisine: "familiar",
-    },
+    softPreferences: { budget: "splurge" },
   });
 });
 
@@ -119,24 +107,20 @@ test("a fully declined game saves an empty soft-preference set", async () => {
   vi.stubGlobal("fetch", fetchMock);
 
   render(<PreferenceGameContainer />);
-  for (let i = 0; i < 4; i++) {
-    await user.click(
-      await screen.findByRole("button", { name: "זה לא משנה לי — דלג" })
-    );
-  }
+  await user.click(
+    await screen.findByRole("button", { name: "זה לא משנה לי — דלג" })
+  );
 
   expect(await screen.findByText("נשמר.")).toBeInTheDocument();
   expect(putBodies(fetchMock)[0]!.body).toEqual({ softPreferences: {} });
 });
 
-test("a replayed game starts from the saved answers, and skipping keeps them", async () => {
+test("a replayed game starts from the saved answer, and skipping keeps it", async () => {
   const user = userEvent.setup();
   const fetchMock = vi
     .fn(() => Promise.resolve(jsonResponse({})))
     .mockResolvedValueOnce(
-      jsonResponse({
-        softPreferences: { noiseLevel: "quiet", budget: "modest" },
-      })
+      jsonResponse({ softPreferences: { budget: "modest" } })
     );
   vi.stubGlobal("fetch", fetchMock);
 
@@ -144,23 +128,16 @@ test("a replayed game starts from the saved answers, and skipping keeps them", a
 
   // The saved side is marked, and skipping says it keeps it.
   expect(
-    await screen.findByRole("button", { name: "בית קפה שקט" })
+    await screen.findByRole("button", { name: "תקציב סטודנטים" })
   ).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByText("הבחירה שלך עד עכשיו")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "דלג — השאר כמו שהיה" }));
 
-  // No saved answer here — the ordinary decline.
-  await user.click(screen.getByRole("button", { name: "זה לא משנה לי — דלג" }));
-  await user.click(screen.getByRole("button", { name: "דלג — השאר כמו שהיה" }));
-  await user.click(screen.getByRole("button", { name: "זה לא משנה לי — דלג" }));
-
   expect(await screen.findByText("נשמר.")).toBeInTheDocument();
   expect(putBodies(fetchMock)[0]!.body).toEqual({
-    softPreferences: { noiseLevel: "quiet", budget: "modest" },
+    softPreferences: { budget: "modest" },
   });
-  expect(
-    screen.getByText("בית קפה שקט · לא משנה לי · תקציב סטודנטים · לא משנה לי")
-  ).toBeInTheDocument();
+  expect(screen.getByText("תקציב סטודנטים")).toBeInTheDocument();
 });
 
 test("a replayed game can change a saved answer", async () => {
@@ -168,20 +145,15 @@ test("a replayed game can change a saved answer", async () => {
   const fetchMock = vi
     .fn(() => Promise.resolve(jsonResponse({})))
     .mockResolvedValueOnce(
-      jsonResponse({ softPreferences: { noiseLevel: "quiet" } })
+      jsonResponse({ softPreferences: { budget: "modest" } })
     );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<PreferenceGameContainer />);
-  await user.click(await screen.findByRole("button", { name: "בר רועש" }));
-  for (let i = 0; i < 3; i++) {
-    await user.click(
-      screen.getByRole("button", { name: "זה לא משנה לי — דלג" })
-    );
-  }
+  await playThroughTheGame(user);
 
   expect(await screen.findByText("נשמר.")).toBeInTheDocument();
   expect(putBodies(fetchMock)[0]!.body).toEqual({
-    softPreferences: { noiseLevel: "lively" },
+    softPreferences: { budget: "splurge" },
   });
 });

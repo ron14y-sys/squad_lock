@@ -173,15 +173,32 @@ describe("judge", () => {
 describe("judgeConstraint", () => {
   const expected = {
     objection: "soft" as const,
-    softPreferences: { noiseLevel: "quiet" as const },
+    softPreferences: { venueKinds: ["bar" as const] },
   };
 
   it("passes the agreed field and nothing else", () => {
     expect(
       judgeConstraint(expected, {
         objection: "soft",
-        softPreferences: { noiseLevel: "quiet" },
+        softPreferences: { venueKinds: ["bar"] },
       }).pass
+    ).toBe(true);
+  });
+
+  // #217: a list is a set, and a list is never the same object twice — so
+  // comparing it with `===` failed every correct answer.
+  it("reads a list as a set, whatever its order", () => {
+    expect(
+      judgeConstraint(
+        {
+          objection: "soft",
+          softPreferences: { cuisines: ["sushi", "italian"] },
+        },
+        {
+          objection: "soft",
+          softPreferences: { cuisines: ["italian", "sushi"] },
+        }
+      ).pass
     ).toBe(true);
   });
 
@@ -190,7 +207,7 @@ describe("judgeConstraint", () => {
   it("fails an answer that also invented a field", () => {
     const verdict = judgeConstraint(expected, {
       objection: "soft",
-      softPreferences: { noiseLevel: "quiet", budget: "modest" },
+      softPreferences: { venueKinds: ["bar"], budget: "modest" },
     });
 
     expect(verdict.pass).toBe(false);
@@ -201,14 +218,14 @@ describe("judgeConstraint", () => {
     expect(
       judgeConstraint(expected, { objection: "soft", softPreferences: {} })
         .reason
-    ).toContain("missed noiseLevel");
+    ).toContain("missed venueKinds");
 
     expect(
       judgeConstraint(expected, {
         objection: "soft",
-        softPreferences: { noiseLevel: "lively" },
+        softPreferences: { venueKinds: ["cafe"] },
       }).reason
-    ).toContain("expected quiet");
+    ).toContain("expected bar");
 
     expect(
       judgeConstraint(expected, { objection: "none", softPreferences: {} })

@@ -120,16 +120,12 @@ test("shows what the preference game saved, with a way to change it", async () =
   fetchMock.mockResolvedValueOnce(
     jsonResponse({
       ...EMPTY_PROFILE,
-      softPreferences: { noiseLevel: "quiet", budget: "modest" },
+      softPreferences: { budget: "modest" },
     })
   );
   render(<HardConstraintsForm />);
 
-  expect(
-    await screen.findByText(
-      "בית קפה שקט · לא משנה לי · תקציב סטודנטים · לא משנה לי"
-    )
-  ).toBeInTheDocument();
+  expect(await screen.findByText("תקציב סטודנטים")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "לשנות" })).toHaveAttribute(
     "href",
     "/onboarding/preferences"

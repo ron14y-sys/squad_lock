@@ -21,11 +21,11 @@ import {
  */
 
 const input: ConstraintUpdateInput = {
-  reasonText: "רועש לי מדי שם, הייתי מעדיפה משהו שקט",
+  reasonText: "יקר לי מדי שם, הייתי מעדיפה בר",
   rejected: {
     venueName: "Beer Bazaar",
     neighbourhood: "Florentin",
-    venueIs: { noiseLevel: "lively" },
+    venueIs: { budget: "splurge" },
     slot: {
       start: new Date("2026-09-12T18:00:00.000Z"),
       end: new Date("2026-09-12T21:00:00.000Z"),
@@ -38,11 +38,26 @@ describe("interpretUpdate", () => {
     expect(
       interpretUpdate(
         JSON.stringify({
-          soft_preferences: { noiseLevel: "quiet" },
+          soft_preferences: { venueKinds: ["bar"], budget: "modest" },
           objection: "soft",
         })
       )
-    ).toEqual({ softPreferences: { noiseLevel: "quiet" }, objection: "soft" });
+    ).toEqual({
+      softPreferences: { venueKinds: ["bar"], budget: "modest" },
+      objection: "soft",
+    });
+  });
+
+  // #217: "I want a bar" had nowhere to land; now it is a field.
+  it("reads a kind of place and a cuisine", () => {
+    expect(
+      interpretUpdate(
+        JSON.stringify({
+          soft_preferences: { venueKinds: ["bar"], cuisines: ["sushi"] },
+          objection: "soft",
+        })
+      ).softPreferences
+    ).toEqual({ venueKinds: ["bar"], cuisines: ["sushi"] });
   });
 
   // "Nothing mapped" is an answer, not a failure — it is what makes A8 able to
@@ -70,7 +85,15 @@ describe("interpretUpdate", () => {
     ],
     [
       "a value outside the vocabulary",
-      { soft_preferences: { noiseLevel: "silent" }, objection: "soft" },
+      { soft_preferences: { cuisines: ["french"] }, objection: "soft" },
+    ],
+    [
+      "a field the old vocabulary had (#217)",
+      { soft_preferences: { noiseLevel: "quiet" }, objection: "soft" },
+    ],
+    [
+      "an empty list — 'doesn't matter' leaves the field out",
+      { soft_preferences: { venueKinds: [] }, objection: "soft" },
     ],
     [
       "an objection outside the vocabulary",
@@ -98,7 +121,7 @@ describe("buildPayload", () => {
 
     expect(payload).toContain("Beer Bazaar");
     expect(payload).toContain("Florentin");
-    expect(payload).toContain('"noiseLevel": "lively"');
+    expect(payload).toContain('"budget": "splurge"');
     expect(payload).toContain(input.reasonText);
   });
 });

@@ -23,10 +23,9 @@ describe("preferenceProfileInputSchema", () => {
         unavailable: [{ weekdays: ["friday"], from: "18:00", to: "23:00" }],
       },
       softPreferences: {
-        noiseLevel: "quiet",
-        activityStyle: "cultural",
         budget: "modest",
-        cuisine: "familiar",
+        venueKinds: ["bar", "cafe"],
+        cuisines: ["italian", "sushi"],
       },
       home: { lat: 32.08, lng: 34.78 },
       homeNeighbourhood: "Florentin",
@@ -46,23 +45,32 @@ describe("preferenceProfileInputSchema", () => {
 
   it("accepts a partial soft-preference set — a declined question stores nothing for that field (#86)", () => {
     const result = preferenceProfileInputSchema.safeParse({
-      softPreferences: { noiseLevel: "quiet", budget: "modest" },
+      softPreferences: { venueKinds: ["bar"] },
     });
 
     expect(result.success).toBe(true);
   });
 
-  it("rejects a soft preference value outside the this-or-that game's four levers", () => {
+  it.each([
+    ["a budget outside the vocabulary", { budget: "moderate" }],
+    ["a kind of place outside the vocabulary", { venueKinds: ["club"] }],
+    ["a cuisine outside the approved list", { cuisines: ["french"] }],
+    ["an empty list — 'doesn't matter' leaves the field out", { cuisines: [] }],
+  ])("rejects %s", (_case, softPreferences) => {
+    expect(
+      preferenceProfileInputSchema.safeParse({ softPreferences }).success
+    ).toBe(false);
+  });
+
+  // #217: a game page loaded before the vocabulary changed still sends
+  // `noiseLevel`. Its other answers must still save, and the old key must not.
+  it("drops a key from the old vocabulary instead of refusing the save", () => {
     const result = preferenceProfileInputSchema.safeParse({
-      softPreferences: {
-        noiseLevel: "moderate", // not one of "lively" | "quiet"
-        activityStyle: "cultural",
-        budget: "modest",
-        cuisine: "familiar",
-      },
+      softPreferences: { noiseLevel: "quiet", budget: "modest" },
     });
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.data?.softPreferences).toEqual({ budget: "modest" });
   });
 
   it("rejects a local time outside HH:MM 24-hour", () => {

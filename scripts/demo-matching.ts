@@ -97,10 +97,9 @@ function pad(text: string, width: number): string {
 const BASE_PROFILE: Omit<PreferenceProfile, "id" | "userId"> = {
   hardConstraints: { dietary: [], allergies: [], unavailable: [] },
   softPreferences: {
-    noiseLevel: "quiet",
-    activityStyle: "cultural",
     budget: "modest",
-    cuisine: "familiar",
+    venueKinds: ["cafe"],
+    cuisines: ["italian"],
   },
   home: { lat: 32.06, lng: 34.77 },
   homeNeighbourhood: "Florentin",

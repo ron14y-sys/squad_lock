@@ -53,7 +53,7 @@ function profile(
     id: "p1",
     userId: "u1",
     hardConstraints: { dietary: [], allergies: [], unavailable: [] },
-    softPreferences: { noiseLevel: "quiet" },
+    softPreferences: { venueKinds: ["cafe"] },
     home: ROTHSCHILD,
     homeNeighbourhood: "Rothschild",
     toleranceKm: 8,
@@ -761,7 +761,7 @@ describe("what the model is shown", () => {
                 origin: null,
                 originLabel: null,
                 mobilityWindows: [],
-                softPreferences: { noiseLevel: "quiet" },
+                softPreferences: { venueKinds: ["bar"] },
                 note: null,
                 createdAt: new Date("2026-09-10T10:00:00.000Z"),
               },
@@ -769,13 +769,13 @@ describe("what the model is shown", () => {
             YOAV,
           ]
         ),
-        rejections: { "u-shani": ["רועש לי מדי שם"] },
+        rejections: { "u-shani": ["הייתי מעדיפה בר"] },
       })
     );
 
     expect(people.Shani.stated_preferences).toEqual({ budget: "modest" });
-    expect(people.Shani.tonight_correction).toEqual({ noiseLevel: "quiet" });
-    expect(people.Shani.in_their_own_words).toEqual(["רועש לי מדי שם"]);
+    expect(people.Shani.tonight_correction).toEqual({ venueKinds: ["bar"] });
+    expect(people.Shani.in_their_own_words).toEqual(["הייתי מעדיפה בר"]);
 
     // Nobody else carries either field, so a justification cannot borrow one.
     expect(people.Yoav.tonight_correction).toBeNull();
