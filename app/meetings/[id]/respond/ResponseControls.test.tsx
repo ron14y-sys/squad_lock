@@ -121,7 +121,10 @@ test("an amendment sends only the fields that were filled in, meeting-scoped", a
   const submitButton = screen.getByRole("button", { name: "עדכן" });
   expect(submitButton).toBeDisabled();
 
-  await user.selectOptions(screen.getByRole("combobox"), "car");
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "אין לי הערב (אופציונלי)" }),
+    "car"
+  );
   expect(submitButton).not.toBeDisabled();
   await user.click(submitButton);
 
@@ -135,6 +138,144 @@ test("an amendment sends only the fields that were filled in, meeting-scoped", a
         window: { weekdays: [], from: "00:00", to: "23:59" },
       },
     ],
+  });
+});
+
+test("an amendment resolves the picked neighbourhood to real coordinates (#222)", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({})));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <ResponseControls
+      meetingId="meeting-1"
+      myStatus="pending"
+      remainingCycles={3}
+      amendmentIsFree={true}
+      disabled={false}
+      onResponded={vi.fn()}
+    />
+  );
+
+  await user.click(screen.getByRole("button", { name: "המצב שלי הערב שונה" }));
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "מגיע/ה מ... (אופציונלי)" }),
+    "ta-florentin"
+  );
+  await user.click(screen.getByRole("button", { name: "עדכן" }));
+
+  const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(init.body as string)).toEqual({
+    kind: "amendment",
+    origin: { lat: 32.0563, lng: 34.769 },
+    originLabel: "פלורנטין, תל אביב",
+  });
+});
+
+test("an amendment sends tonight's chosen travel tolerance (#222)", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({})));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <ResponseControls
+      meetingId="meeting-1"
+      myStatus="pending"
+      remainingCycles={3}
+      amendmentIsFree={true}
+      disabled={false}
+      onResponded={vi.fn()}
+    />
+  );
+
+  await user.click(screen.getByRole("button", { name: "המצב שלי הערב שונה" }));
+  const chip = screen.getByRole("button", { name: "בשכונה" });
+  await user.click(chip);
+  expect(chip).toHaveAttribute("aria-pressed", "true");
+  await user.click(screen.getByRole("button", { name: "עדכן" }));
+
+  const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(init.body as string)).toEqual({
+    kind: "amendment",
+    toleranceKm: 3,
+  });
+});
+
+test("clicking a selected tolerance chip again deselects it", async () => {
+  const user = userEvent.setup();
+  render(
+    <ResponseControls
+      meetingId="meeting-1"
+      myStatus="pending"
+      remainingCycles={3}
+      amendmentIsFree={true}
+      disabled={false}
+      onResponded={vi.fn()}
+    />
+  );
+
+  await user.click(screen.getByRole("button", { name: "המצב שלי הערב שונה" }));
+  const chip = screen.getByRole("button", { name: "ברגל" });
+  await user.click(chip);
+  expect(chip).toHaveAttribute("aria-pressed", "true");
+  await user.click(chip);
+  expect(chip).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("button", { name: "עדכן" })).toBeDisabled();
+});
+
+test("an amendment sends a not-before and not-after window for tonight (#223)", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({})));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <ResponseControls
+      meetingId="meeting-1"
+      myStatus="pending"
+      remainingCycles={3}
+      amendmentIsFree={true}
+      disabled={false}
+      onResponded={vi.fn()}
+    />
+  );
+
+  await user.click(screen.getByRole("button", { name: "המצב שלי הערב שונה" }));
+  await user.type(screen.getByLabelText("לא לפני"), "18:00");
+  await user.type(screen.getByLabelText("לא אחרי"), "21:00");
+  await user.click(screen.getByRole("button", { name: "עדכן" }));
+
+  const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(init.body as string)).toEqual({
+    kind: "amendment",
+    earliestStart: "18:00",
+    latestStart: "21:00",
+  });
+});
+
+test("only one of not-before or not-after can be set on its own", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({})));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <ResponseControls
+      meetingId="meeting-1"
+      myStatus="pending"
+      remainingCycles={3}
+      amendmentIsFree={true}
+      disabled={false}
+      onResponded={vi.fn()}
+    />
+  );
+
+  await user.click(screen.getByRole("button", { name: "המצב שלי הערב שונה" }));
+  await user.type(screen.getByLabelText("לא אחרי"), "20:00");
+  await user.click(screen.getByRole("button", { name: "עדכן" }));
+
+  const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(init.body as string)).toEqual({
+    kind: "amendment",
+    latestStart: "20:00",
   });
 });
 
