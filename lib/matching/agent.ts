@@ -225,7 +225,11 @@ HOW TO CHOOSE
 - Fairness order is advice, not an instruction. Every pair listed is a valid answer, and a better-suited venue further down may well be the right one — but passing over the fairest option trades someone's journey for something else, so name that trade in "traded_away".
 - Strongly prefer a pair marked "verified": true. A pair marked false carries something we could not check. Choose one only when the verified options are clearly worse.
 - A participant who stated no opinion on something has no opinion on it. That is a real state, not a neutral vote and not agreement with the majority. Never count a silence as a preference, never let one decide between two options, and never write a justification that describes a silence as a choice someone made.
-- A "tonight_correction" is what that person said about this evening after seeing an earlier proposal. For tonight it outranks their stated preference, field by field, and everything above about preferences applies to it too.
+- "stated_preferences" are standing, soft preferences from that person's profile. Use them to choose between pairs that are otherwise comparable; never give up fairness for one.
+- A "tonight_correction" is a request that person made for this evening, after seeing an earlier proposal or by changing their situation for tonight. It is stronger than a preference: prefer a pair whose venue answers it over one that does not, even at some cost in fairness, and name that cost in "traded_away". For tonight it outranks their stated preference, field by field, and the rule above about silences applies to it too.
+- In both, "venueKinds" are the kinds of place they want (bar, cafe, restaurant), "cuisines" the food, and "budget" the price level. In a tonight_correction, "avoidVenueKinds" and "avoidCuisines" are what they do not want tonight: do not choose such a venue, unless it also answers something that same person asked for (a bar that also serves food answers "a bar, not a restaurant").
+- "venue_is" says which kinds, cuisines and budget a venue is known to be, and "type_label" is Google's own name for it. A venue answers a request or a preference only where these say so.
+- "tonight_start" is the earliest ("not_before") and latest ("not_after") start that person accepts for this evening; the pairs already respect it. "tonight_note" is something they wrote about their situation tonight: read it like their own words.
 - "in_their_own_words" is everything that person has said when rejecting a proposal for this evening, oldest first. Not every objection reduces to a field, so read the sentences themselves and answer all of them where the pairs allow it — an earlier one is still true unless a later one takes it back.
 - Your three options must be three different (venue, slot) pairs.
 
@@ -235,11 +239,12 @@ HOW TO WRITE THE JUSTIFICATIONS
 - You do not know anyone's gender, so describe the place and the trip rather than the person ("קרוב לפלורנטין", not "תגיע בקלות").
 - Use only facts given above. Never invent a route, a road, a travel time, a transport schedule, or anything about a venue.
 - Never mention dietary needs or allergies: they are added to each person's justification after you answer.
-- Every justification names ALL of that person's own facts that apply to the pair, not just one: every stated preference or tonight_correction the venue answers (only where "venue_is" says so), and every travel mode they lose during the slot.
-- Every justification also names the trip: from their neighbourhood, and whether their burden is within the distance they said they would travel (1.0 or less — "מפלורנטין, בטווח שציינת כנוח לנסיעה") or beyond it (above 1.0 — "מפתח תקווה, מעט מעבר לטווח שציינת"). Never leave out a trip that is beyond their range; that is the fact they most need to see.
+- Every justification names ALL of that person's own facts that apply to the pair, not just one: every stated preference or tonight_correction the venue answers (only where "venue_is" or "type_label" says so), every part of their tonight_start the slot answers, and every travel mode they lose during the slot.
+- Name a tonight_correction the venue answers as their own request: "בר, כמו שביקשת", "אוכל איטלקי, כמו שביקשת". Name a stated preference as theirs, without the request: "בית קפה, מתאים להעדפות שלך". Name a tonight_start the slot answers the same way: "מתחיל אחרי 20:00, כמו שביקשת". Never say "כמו שביקשת" about something the venue or slot does not answer — if they asked for a bar and this is not one, say nothing about it.
+- Every justification also names the trip: from their neighbourhood, and whether their burden is within the distance they said they would travel (1.0 or less — "מפלורנטין, בטווח שציינת כנוח לנסיעה") or beyond it (above 1.0 — "מפתח תקווה, מעט מעבר לטווח שציינת"). When "tolerance_set_tonight" is true, that distance is the one they gave for this evening: "בטווח שציינת להערב". Never leave out a trip that is beyond their range; that is the fact they most need to see.
 - Never attribute a preference someone did not state. Two people get the same sentence only when their facts are the same.
-- A person's unavailable travel modes are private: mention them only in that person's own justification. Their correction and their own words are theirs on exactly the same terms.
-- When an option answers somebody's own objection, you may say so to them — "שקט יותר, כמו שביקשת". That is not the comparison forbidden below: it is their own request, not the cost of an option they did not get.
+- A person's unavailable travel modes are private: mention them only in that person's own justification. Their correction, their tonight_start, their tonight_note and their own words are theirs on exactly the same terms.
+- When an option answers somebody's own request, say so to them — "בר, כמו שביקשת". That is not the comparison forbidden below: it is their own request, not the cost of an option they did not get.
 - Name a constraint, never a comparison. "מפלורנטין, בטווח שציינת כנוח לנסיעה" is right. "רחוק יותר מהאפשרות ההוגנת ביותר" is forbidden — the person never sees what an option cost them.
 - "traded_away" is the opposite: it is internal, nobody is shown it, and it is where the honest cost of the choice belongs. Say what was given up and for whom. Leave it empty only when the option genuinely gives nothing up.`;
 
@@ -285,6 +290,25 @@ export function buildPayload(input: MatchAgentInput): string {
     // words the person will recognise (spec §12.4).
     tonight_correction: person.context?.softPreferences ?? null,
     in_their_own_words: rejections?.[person.userId] ?? null,
+    // #224: what else this person set for this meeting, present only when
+    // set. `tolerance_km` above is already tonight's when they gave one
+    // (`assembleRun`); the flag is what lets the justification say so.
+    ...(person.context?.toleranceKm ? { tolerance_set_tonight: true } : {}),
+    ...(person.context?.earliestStart || person.context?.latestStart
+      ? {
+          tonight_start: {
+            ...(person.context.earliestStart
+              ? { not_before: person.context.earliestStart }
+              : {}),
+            ...(person.context.latestStart
+              ? { not_after: person.context.latestStart }
+              : {}),
+          },
+        }
+      : {}),
+    // The free-text note from "המצב שלי הערב שונה" — their own words, on the
+    // same private terms as `in_their_own_words`.
+    ...(person.context?.note ? { tonight_note: person.context.note } : {}),
   }));
 
   // A3's order, applied to A2's survivors. `Infinity` parks anything the

@@ -800,6 +800,49 @@ describe("what the model is shown", () => {
     expect(people.Yoav.in_their_own_words).toBeNull();
   });
 
+  // #224: what a person set for this meeting reaches the model, so the
+  // justification can say "בטווח שציינת להערב" and "כמו שביקשת".
+  it("shows tonight's range, start window and note, and only to their owner", () => {
+    const shani = participant("u-shani", "Shani", ROTHSCHILD);
+    const { people } = parsePayload(
+      buildPayload(
+        inputFor(
+          [NEAR],
+          [
+            {
+              ...shani,
+              context: {
+                id: "ctx-1",
+                meetingId: "meeting-1",
+                userId: "u-shani",
+                origin: null,
+                originLabel: null,
+                mobilityWindows: [],
+                softPreferences: null,
+                toleranceKm: 2,
+                earliestStart: "20:00",
+                latestStart: null,
+                untranslated: null,
+                note: "אני מגיעה מהעבודה",
+                createdAt: new Date("2026-09-10T10:00:00.000Z"),
+              },
+            },
+            YOAV,
+          ]
+        )
+      )
+    );
+
+    expect(people.Shani.tolerance_set_tonight).toBe(true);
+    expect(people.Shani.tonight_start).toEqual({ not_before: "20:00" });
+    expect(people.Shani.tonight_note).toBe("אני מגיעה מהעבודה");
+
+    // Absent rather than empty for whoever set nothing (#86).
+    expect(people.Yoav).not.toHaveProperty("tolerance_set_tonight");
+    expect(people.Yoav).not.toHaveProperty("tonight_start");
+    expect(people.Yoav).not.toHaveProperty("tonight_note");
+  });
+
   it("tells the model to copy the ids back rather than tidy them", () => {
     expect(buildPayload(inputFor([NEAR]))).toContain(
       "Copy venue_id and slot_id"
