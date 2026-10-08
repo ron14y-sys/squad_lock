@@ -7,7 +7,12 @@ import type {
   PreferenceProfile,
   TimeSlot,
 } from "@/lib/types";
-import { buildShortlist, BURDEN_GATE_T, dedupeCandidates } from "./funnel";
+import {
+  buildShortlist,
+  BURDEN_GATE_T,
+  dedupeCandidates,
+  SHORTLIST_SIZE,
+} from "./funnel";
 
 /**
  * Same fixture shapes as `lib/matching/distance.test.ts` and
@@ -347,5 +352,47 @@ describe("buildShortlist", () => {
     });
 
     expect(result.shortlist).toHaveLength(24);
+  });
+
+  // #221: a profile preference is a third list in the fill.
+  it("brings in a preferred venue that fairness alone would cut", () => {
+    const dana = participant("u-dana", "Dana", ROTHSCHILD, 100);
+    const candidates = Array.from({ length: 30 }, (_, i) =>
+      candidate(`place-${i}`, { lat: 32.0648 + i * 0.0001, lng: 34.7749 })
+    );
+
+    const result = buildShortlist({
+      candidates,
+      participants: [dana],
+      slots: [THREE_HOUR_WINDOW],
+      preferred: new Set(["place-29"]),
+    });
+
+    const ids = result.shortlist.map((s) => s.candidate.placeId);
+    expect(ids).toHaveLength(24);
+    expect(ids).toContain("place-29");
+  });
+
+  it("never lets preferences fill more than their share, and keeps the fairest first", () => {
+    const dana = participant("u-dana", "Dana", ROTHSCHILD, 100);
+    const candidates = Array.from({ length: 60 }, (_, i) =>
+      candidate(`place-${i}`, { lat: 32.0648 + i * 0.0001, lng: 34.7749 })
+    );
+    // Every venue past the 30 fairest is preferred.
+    const preferred = new Set(candidates.slice(30).map((c) => c.placeId));
+
+    const result = buildShortlist({
+      candidates,
+      participants: [dana],
+      slots: [THREE_HOUR_WINDOW],
+      preferred,
+    });
+
+    const ids = result.shortlist.map((s) => s.candidate.placeId);
+    expect(ids).toHaveLength(SHORTLIST_SIZE);
+    expect(ids[0]).toBe("place-0");
+    // A third of 24, as agreed on #221 — written out, not computed from the
+    // constant, so changing the share is a change this test notices.
+    expect(ids.filter((id) => preferred.has(id))).toHaveLength(8);
   });
 });

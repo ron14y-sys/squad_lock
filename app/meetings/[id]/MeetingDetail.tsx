@@ -10,6 +10,7 @@ import {
   RESPONSE_STATUS_LABELS,
   RUN_STAGE_LABELS,
   uncheckedCalendarNote,
+  unmetRequestNote,
   unverifiedNote,
 } from "@/lib/format/hebrew-labels";
 import type { RunStage } from "@/lib/generated/prisma/enums";
@@ -150,6 +151,7 @@ function ProposalBlock({
   }
 
   const note = unverifiedNote(proposal.unverified);
+  const unmet = unmetRequestNote(proposal.unverified);
   const uncheckedMine = proposal.uncheckedCalendars.some(
     (p) => p.userId === viewerId
   );
@@ -188,6 +190,7 @@ function ProposalBlock({
         </p>
       )}
 
+      {unmet && <p className="sl-sub">{unmet}</p>}
       {note && <p className="sl-sub">{note}</p>}
       {/* A calendar is optional: whoever has none is treated as free apart
           from the hours they set, and the proposal says so. */}

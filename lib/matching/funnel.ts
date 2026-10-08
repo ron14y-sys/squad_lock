@@ -93,6 +93,12 @@ export const BURDEN_GATE_T = 2.0;
 export const SHORTLIST_SIZE = 24;
 
 /**
+ * #221: at most this share of the shortlist is brought in by a profile
+ * preference — a third, agreed on the issue. Tunable.
+ */
+export const PREFERRED_SHARE = 1 / 3;
+
+/**
  * One `Candidate` per `placeId`, first occurrence kept.
  *
  * "First" is deterministic, not arbitrary: candidates arrive in
@@ -126,6 +132,12 @@ export type FunnelInput = {
   /** The group's free windows — B6's `commonFreeWindows` output. */
   slots: TimeSlot[];
   venueFacts?: Record<string, VenueDietaryFacts>;
+  /**
+   * #221: venues matching a kind or cuisine someone listed in their profile.
+   * A third list in the fill (`fillShortlist`), never a reordering of the
+   * other two.
+   */
+  preferred?: ReadonlySet<string>;
   minimumMinutes?: number;
   burdenOptions?: BurdenOptions;
 };
@@ -209,9 +221,18 @@ function distancesTo(
  */
 function fillShortlist(
   passed: readonly CandidateScore[],
-  size: number
+  size: number,
+  preferred: ReadonlySet<string> = new Set()
 ): CandidateScore[] {
   const byLeximin = passed;
+  // #221: a mild boost, not a ranking. Fairest-first like `byLeximin`, it
+  // walks third in each round and stops at `PREFERRED_SHARE` of the list, so
+  // a profile preference can bring a venue in but never crowd fairness out —
+  // and everything here has already passed the burden gate.
+  const byPreference = passed.filter((score) =>
+    preferred.has(score.candidate.placeId)
+  );
+  const preferredCap = Math.floor(size * PREFERRED_SHARE);
   const byRating = [...passed]
     .filter((score) => score.candidate.rating !== undefined)
     .sort((a, b) => {
@@ -238,6 +259,8 @@ function fillShortlist(
 
   let li = 0;
   let ri = 0;
+  let pi = 0;
+  let fromPreference = 0;
   while (
     result.length < size &&
     (li < byLeximin.length || ri < byRating.length)
@@ -245,6 +268,12 @@ function fillShortlist(
     if (li < byLeximin.length) li = takeNext(byLeximin, li);
     if (result.length >= size) break;
     if (ri < byRating.length) ri = takeNext(byRating, ri);
+    if (result.length >= size) break;
+    if (fromPreference < preferredCap && pi < byPreference.length) {
+      const before = result.length;
+      pi = takeNext(byPreference, pi);
+      fromPreference += result.length - before;
+    }
   }
 
   return result;
@@ -295,7 +324,7 @@ export function buildShortlist(input: FunnelInput): FunnelResult {
     }
   }
 
-  const shortlist = fillShortlist(passed, SHORTLIST_SIZE);
+  const shortlist = fillShortlist(passed, SHORTLIST_SIZE, input.preferred);
   const shortlisted = new Set(
     shortlist.map((score) => score.candidate.placeId)
   );

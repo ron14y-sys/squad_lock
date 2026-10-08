@@ -405,6 +405,34 @@ test("tells the viewer where to fix it when they are the one missing", async () 
   ).toHaveAttribute("href", "/profile/location");
 });
 
+test("a proposal says when what was asked for tonight was not found (#221)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            proposal: {
+              ...detail().proposal,
+              unverified: [
+                { kind: "unmet_request", venueKinds: ["bar"], cuisines: [] },
+              ],
+            },
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText(
+      "לא מצאנו מקום שמתאים לכולם מהסוג שביקשתם (בר), אז הצענו משהו אחר."
+    )
+  ).toBeInTheDocument();
+});
+
 test("a proposal names whose calendar it was not checked against", async () => {
   vi.stubGlobal(
     "fetch",

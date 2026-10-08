@@ -382,7 +382,9 @@ function unverifiedPhrase(facts: UnverifiedFact[]): string {
         ? "opening hours"
         : f.kind === "dietary"
           ? `"${f.tag}"`
-          : `${f.userId}'s calendar`
+          : f.kind === "calendar"
+            ? `${f.userId}'s calendar`
+            : "the requested kind of place"
     )
     .join(", ");
 }
