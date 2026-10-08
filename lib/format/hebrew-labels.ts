@@ -4,6 +4,10 @@
 
 import type { LocalWeekday, MobilityMode } from "@/lib/types";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
+import {
+  CUISINE_LABELS,
+  VENUE_KIND_LABELS,
+} from "@/lib/preferences/vocabulary";
 import type { MeetingCardStatus, ResponseStatus } from "@/lib/types/meeting";
 import type { NotificationKind, RunStage } from "@/lib/generated/prisma/enums";
 
@@ -101,7 +105,10 @@ export function unverifiedNote(
   facts: readonly UnverifiedFact[]
 ): string | null {
   // A calendar is about a person, not the venue — `uncheckedCalendarNote`.
-  const venueFacts = facts.filter((fact) => fact.kind !== "calendar");
+  // An unmet request is about the search — `unmetRequestNote`.
+  const venueFacts = facts.filter(
+    (fact) => fact.kind === "opening_hours" || fact.kind === "dietary"
+  );
   if (venueFacts.length === 0) return null;
 
   const parts = venueFacts.map((fact) =>
@@ -130,6 +137,26 @@ export function uncheckedCalendarNote(names: readonly string[]): string | null {
   }
   const list = `${names.slice(0, -1).join(", ")} ו${names[names.length - 1]}`;
   return `הזמן הזה לא נבדק מול היומנים של ${list}, כי הם עוד לא מחוברים.`;
+}
+
+/**
+ * #221: tonight someone asked for a kind of place or a cuisine, and nothing
+ * the whole group could reach answered it, so something else was offered.
+ * Said plainly instead of offering a restaurant to someone who asked for a
+ * bar as if the request had been heard.
+ */
+export function unmetRequestNote(
+  facts: readonly UnverifiedFact[]
+): string | null {
+  const fact = facts.find((f) => f.kind === "unmet_request");
+  if (!fact || fact.kind !== "unmet_request") return null;
+  const asked = [
+    ...fact.venueKinds.map((kind) => VENUE_KIND_LABELS[kind]),
+    ...fact.cuisines.map((cuisine) => CUISINE_LABELS[cuisine]),
+  ];
+  return asked.length > 0
+    ? `לא מצאנו מקום שמתאים לכולם מהסוג שביקשתם (${asked.join(", ")}), אז הצענו משהו אחר.`
+    : "לא מצאנו מקום שמתאים לכולם ועונה על מה שביקשתם הערב, אז הצענו משהו אחר.";
 }
 
 /** "חבר אחד" / "2 חברים" — Hebrew has a singular, so "1 חברים" reads as a mistake. */

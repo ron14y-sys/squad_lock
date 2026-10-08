@@ -67,13 +67,21 @@ import { ExternalRateLimitError } from "@/lib/external/rate-limit";
 import { LlmCallError, retryDelayMs } from "@/lib/llm/client";
 import { originOf } from "./distance";
 import { pairId } from "./schemas";
-import type { VenueDietaryFacts } from "./constraints";
+import type { UnverifiedFact, VenueDietaryFacts } from "./constraints";
 import {
   cuisinesOfTypes,
   venueKindsOfTypes,
 } from "@/lib/preferences/vocabulary";
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
+import type { TonightCorrection } from "@/lib/types/profile";
 import { buildShortlist } from "./funnel";
+import {
+  answersRequest,
+  googleTypesFor,
+  isRequest,
+  matchesAnyPreference,
+} from "./requests";
+import { DEFAULT_INCLUDED_TYPES } from "@/lib/places/client";
 import {
   notifyCalendarReconnect,
   notifyProposalWaiting,
@@ -418,6 +426,8 @@ export type AssembledRun = {
   input: MatchAgentInput;
   contextIds: string[];
   uncheckedCalendars: string[];
+  /** #221: set when tonight's requests were answered by no venue that could be offered. */
+  unmetRequest: Extract<UnverifiedFact, { kind: "unmet_request" }> | null;
 };
 
 /**
@@ -589,10 +599,36 @@ export async function assembleRun(
   // TIME_OF_DAY_VENUE_KINDS's own comment). `undefined` keeps today's
   // behaviour, every kind, when no part was chosen.
   const includedTypes = part ? TIME_OF_DAY_VENUE_KINDS[part] : undefined;
+  // #221: what was asked for tonight — in a rejection or an amendment — is a
+  // request; what a profile lists is a preference. Either way the search
+  // asks for it, in one more call per centre, because the part of day's
+  // 20 most popular places may hold no bar at all. A request replaces the
+  // part's kinds in that call rather than being intersected with them: "a
+  // bar" in the morning intersects to nothing, and the part of day still
+  // decides the hours.
+  const requests = participants.flatMap((participant) =>
+    isRequest(participant.context?.softPreferences)
+      ? [participant.context!.softPreferences!]
+      : []
+  );
+  const preferences = participants.map(
+    (participant) => participant.profile.softPreferences
+  );
+  const wantedTypes = googleTypesFor(
+    requests.length > 0 ? requests : preferences
+  );
+  const baseTypes = includedTypes ?? DEFAULT_INCLUDED_TYPES;
+  // No second call when the first already asks for every one of them.
+  const extraTypes = wantedTypes.some((type) => !baseTypes.includes(type))
+    ? wantedTypes
+    : null;
   const pools = await Promise.all(
-    deriveSearchCentres(origins).map((centre) =>
-      searchNeighbourhoodCached(centre, SEARCH_RADIUS_METERS, includedTypes)
-    )
+    deriveSearchCentres(origins).flatMap((centre) => [
+      searchNeighbourhoodCached(centre, SEARCH_RADIUS_METERS, includedTypes),
+      ...(extraTypes
+        ? [searchNeighbourhoodCached(centre, SEARCH_RADIUS_METERS, extraTypes)]
+        : []),
+    ])
   );
   // `buildShortlist` dedupes, so the pools are merged and not reconciled.
   // Blocked venues come out here rather than at the end: a venue that may
@@ -606,15 +642,95 @@ export async function assembleRun(
     );
   }
 
+  const preferred = new Set(
+    found
+      .filter((candidate) =>
+        matchesAnyPreference(candidate.types ?? [], preferences)
+      )
+      .map((candidate) => candidate.placeId)
+  );
+
+  await reportStage("venue_details");
+  // #221: a request narrows the pool to the venues that answer everyone who
+  // made one. When none of them can be offered — too far for someone, shut,
+  // already rejected — the whole pool is weighed instead and the proposal
+  // says so (`unmetRequest`), rather than ending a meeting over a bar.
+  const answering =
+    requests.length > 0
+      ? found.filter((candidate) =>
+          requests.every((request) =>
+            answersRequest(candidate.types ?? [], request)
+          )
+        )
+      : found;
+  let weighed = await weighPool(
+    answering,
+    participants,
+    slots,
+    preferred,
+    blocked
+  );
+  const unmet = requests.length > 0 && weighed.ranked.length === 0;
+  if (unmet) {
+    weighed = await weighPool(found, participants, slots, preferred, blocked);
+  }
+  const { ranked, viable, shortlisted, venueFacts, venueSoftFacts } = weighed;
+
+  if (ranked.length === 0) {
+    throw new NoSolutionError(
+      `nothing survived the filter for ${meetingId} — ${shortlisted.droppedPairs.length} pairs dropped, ${shortlisted.gatedOut.length} gated out, ${blocked.venues.size} venues and ${blocked.pairs.size} pairs already rejected`
+    );
+  }
+
+  // Which run this is, counted from the runs themselves. It cannot come from
+  // `Meeting.cycleCount`, which counts something else — see `runCycle`.
+  const cycleNumber =
+    (meeting.matchRuns[meeting.matchRuns.length - 1]?.cycleNumber ?? 0) + 1;
+
+  return {
+    input: {
+      meetingId,
+      cycleNumber,
+      occasion: meeting.occasion,
+      participants,
+      candidates: ranked.map((score) => score.candidate),
+      viable,
+      ranked,
+      rejections,
+      // Both stay absent rather than empty when Google said nothing: an
+      // empty object would tell A2 and A4 that nothing is true of these
+      // venues rather than that nothing is known (the rule
+      // `findRejectedOption` follows, #139).
+      ...(venueFacts ? { venueFacts } : {}),
+      ...(venueSoftFacts ? { venueSoftFacts } : {}),
+    },
+    contextIds: meeting.participantContexts.map((row) => row.id),
+    uncheckedCalendars: calendars.unread,
+    unmetRequest: unmet ? unmetRequestOf(requests) : null,
+  };
+}
+
+/**
+ * The funnel's two passes over one pool, and the exact pairs already
+ * rejected taken out. Split out of `assembleRun` (#221) so a request that
+ * nothing answers can be weighed again over the whole pool.
+ */
+async function weighPool(
+  pool: Candidate[],
+  participants: Participant[],
+  slots: TimeSlot[],
+  preferred: ReadonlySet<string>,
+  blocked: ReturnType<typeof blockedByRejections>
+) {
   // First pass — no hours anywhere, so every candidate looks open all window.
   // Its only job is to choose whose Enterprise-tier details are worth buying.
   const provisional = buildShortlist({
-    candidates: found,
+    candidates: pool,
     participants,
     slots,
+    preferred,
   });
 
-  await reportStage("venue_details");
   const detailed = await Promise.all(
     provisional.shortlist.map(async (score) => ({
       candidate: score.candidate,
@@ -649,6 +765,7 @@ export async function assembleRun(
     participants,
     slots,
     venueFacts,
+    preferred,
   });
   // An identical proposal is never repeated, so the exact pairs go last —
   // they can only be recognised once the funnel has cut the evenings.
@@ -662,37 +779,17 @@ export async function assembleRun(
   const ranked = shortlisted.shortlist.filter((score) =>
     offerable.has(score.candidate.placeId)
   );
+  return { ranked, viable, shortlisted, venueFacts, venueSoftFacts };
+}
 
-  if (ranked.length === 0) {
-    throw new NoSolutionError(
-      `nothing survived the filter for ${meetingId} — ${shortlisted.droppedPairs.length} pairs dropped, ${shortlisted.gatedOut.length} gated out, ${blocked.venues.size} venues and ${blocked.pairs.size} pairs already rejected`
-    );
-  }
-
-  // Which run this is, counted from the runs themselves. It cannot come from
-  // `Meeting.cycleCount`, which counts something else — see `runCycle`.
-  const cycleNumber =
-    (meeting.matchRuns[meeting.matchRuns.length - 1]?.cycleNumber ?? 0) + 1;
-
+/** What was asked for and not found, across everyone who asked (#221). */
+export function unmetRequestOf(
+  requests: readonly TonightCorrection[]
+): Extract<UnverifiedFact, { kind: "unmet_request" }> {
   return {
-    input: {
-      meetingId,
-      cycleNumber,
-      occasion: meeting.occasion,
-      participants,
-      candidates: ranked.map((score) => score.candidate),
-      viable,
-      ranked,
-      rejections,
-      // Both stay absent rather than empty when Google said nothing: an
-      // empty object would tell A2 and A4 that nothing is true of these
-      // venues rather than that nothing is known (the rule
-      // `findRejectedOption` follows, #139).
-      ...(venueFacts ? { venueFacts } : {}),
-      ...(venueSoftFacts ? { venueSoftFacts } : {}),
-    },
-    contextIds: meeting.participantContexts.map((row) => row.id),
-    uncheckedCalendars: calendars.unread,
+    kind: "unmet_request",
+    venueKinds: [...new Set(requests.flatMap((r) => r.venueKinds ?? []))],
+    cuisines: [...new Set(requests.flatMap((r) => r.cuisines ?? []))],
   };
 }
 
@@ -991,12 +1088,8 @@ async function clearStageAndSetRetry(
 
 async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
   const reportStage = stageWriter(meetingId);
-  const { input, contextIds, uncheckedCalendars } = await assembleRun(
-    meetingId,
-    now,
-    busyFor,
-    reportStage
-  );
+  const { input, contextIds, uncheckedCalendars, unmetRequest } =
+    await assembleRun(meetingId, now, busyFor, reportStage);
   await reportStage("model");
   const { draft, call } = await runMatchingAgent(input);
   await reportStage("saving");
@@ -1012,6 +1105,8 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
         kind: "calendar" as const,
         userId,
       })),
+      // #221: "we found no bar", on every option, since none of them is one.
+      ...(unmetRequest ? [unmetRequest] : []),
     ];
   }
 

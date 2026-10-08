@@ -4,6 +4,7 @@ import {
   meetingStatusLabel,
   membersLabel,
   uncheckedCalendarNote,
+  unmetRequestNote,
   unverifiedNote,
 } from "./hebrew-labels";
 
@@ -57,5 +58,40 @@ describe("unverifiedNote", () => {
         { kind: "calendar", userId: "u1" },
       ])
     ).toBe("לא הצלחנו לאמת את שעות הפתיחה — כדאי לטלפן ולוודא לפני שיוצאים.");
+  });
+});
+
+describe("unmetRequestNote (#221)", () => {
+  it("names what was asked for and not found", () => {
+    expect(
+      unmetRequestNote([
+        { kind: "opening_hours" },
+        { kind: "unmet_request", venueKinds: ["bar"], cuisines: ["italian"] },
+      ])
+    ).toBe(
+      "לא מצאנו מקום שמתאים לכולם מהסוג שביקשתם (בר, איטלקי), אז הצענו משהו אחר."
+    );
+  });
+
+  it("says it plainly when only an avoidance went unmet", () => {
+    expect(
+      unmetRequestNote([
+        { kind: "unmet_request", venueKinds: [], cuisines: [] },
+      ])
+    ).toBe(
+      "לא מצאנו מקום שמתאים לכולם ועונה על מה שביקשתם הערב, אז הצענו משהו אחר."
+    );
+  });
+
+  it("is nothing when every request was answered", () => {
+    expect(unmetRequestNote([{ kind: "opening_hours" }])).toBeNull();
+  });
+
+  it("is not read as something about the venue", () => {
+    expect(
+      unverifiedNote([
+        { kind: "unmet_request", venueKinds: ["bar"], cuisines: [] },
+      ])
+    ).toBeNull();
   });
 });

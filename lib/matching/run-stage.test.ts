@@ -33,16 +33,19 @@ vi.mock("@/lib/db/match-run", () => ({
 
 const HOME = { lat: 32.0853, lng: 34.7818 };
 
+const NEXT_DOOR = {
+  placeId: "p1",
+  name: "Next door",
+  address: null,
+  location: HOME,
+  neighbourhood: null,
+};
+
+// Called as (centre, radius, includedTypes); a test may answer by the types.
+const searchNeighbourhoodCached = vi.fn();
 vi.mock("@/lib/db/places-cache", () => ({
-  searchNeighbourhoodCached: async () => [
-    {
-      placeId: "p1",
-      name: "Next door",
-      address: null,
-      location: HOME,
-      neighbourhood: null,
-    },
-  ],
+  searchNeighbourhoodCached: (...args: unknown[]) =>
+    searchNeighbourhoodCached(...args),
   fetchPlaceDetailsCached: async () => ({
     openingHours: [{ weekdays: [], from: "18:00", to: "23:00" }],
     servesVegetarianFood: true,
@@ -140,6 +143,7 @@ beforeEach(() => {
   findMany.mockReset();
   notifyCalendarReconnect.mockReset();
   runMatchingAgent.mockReset();
+  searchNeighbourhoodCached.mockReset().mockResolvedValue([NEXT_DOOR]);
   persistMatchRun.mockReset().mockRejectedValue(new Error("not under test"));
   meetingRow = MEETING;
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -259,6 +263,148 @@ describe("tonight's distance and start (#220)", () => {
         block.end.toISOString().endsWith("T17:00:00.000Z")
       )
     ).toBe(true);
+  });
+});
+
+describe("what people asked for (#221)", () => {
+  const venue = (placeId: string, types: string[], east = 0) => ({
+    placeId,
+    name: placeId,
+    address: null,
+    location: { lat: HOME.lat, lng: HOME.lng + east },
+    neighbourhood: null,
+    types,
+  });
+  const BAR = venue("bar", ["bar"], 0.001);
+  const ANOTHER_BAR = venue("another-bar", ["pub", "bar"], 0.002);
+  const RESTAURANT = venue("restaurant", ["restaurant"], 0.003);
+  const BAR_WITH_FOOD = venue("bar-with-food", ["bar", "restaurant"], 0.004);
+
+  /** The base search answers `base`; the one asking for bars, `bars`. */
+  function searchReturns(base: unknown[], bars: unknown[]) {
+    searchNeighbourhoodCached.mockImplementation(
+      async (_centre: unknown, _radius: unknown, types?: string[]) =>
+        types?.includes("pub") ? bars : base
+    );
+  }
+
+  /** u1 said this tonight, in a rejection. */
+  function askedTonight(softPreferences: object) {
+    meetingRow = {
+      ...MEETING,
+      participantContexts: [
+        {
+          id: "ctx-1",
+          meetingId: "m1",
+          userId: "u1",
+          originLat: null,
+          originLng: null,
+          originLabel: null,
+          mobilityWindows: [],
+          softPreferences,
+          rejectionText: "בא לי בר",
+          rejectionOutcome: "soft",
+          toleranceKm: null,
+          earliestStart: null,
+          latestStart: null,
+          untranslated: null,
+          note: null,
+          createdAt: STAMP,
+        },
+      ],
+    } as unknown as typeof MEETING;
+  }
+
+  /** u1's profile lists these. */
+  function prefers(softPreferences: object) {
+    const [response] = MEETING.responses;
+    meetingRow = {
+      ...MEETING,
+      responses: [
+        {
+          ...response,
+          user: {
+            ...response.user,
+            preferenceProfile: {
+              ...response.user.preferenceProfile,
+              softPreferences,
+            },
+          },
+        },
+      ],
+    } as unknown as typeof MEETING;
+  }
+
+  async function candidatesSent() {
+    await runCycle("m1", NOW, FREE);
+    const [input] = runMatchingAgent.mock.calls[0];
+    return input.candidates.map((c: { placeId: string }) => c.placeId).sort();
+  }
+
+  function typesSearched() {
+    return searchNeighbourhoodCached.mock.calls.map(([, , types]) => types);
+  }
+
+  beforeEach(() => {
+    runMatchingAgent.mockRejectedValue(new Error("stop here"));
+  });
+
+  it("searches for a bar asked for tonight, and offers only bars", async () => {
+    askedTonight({ venueKinds: ["bar"] });
+    searchReturns([RESTAURANT, BAR], [ANOTHER_BAR]);
+
+    expect(await candidatesSent()).toEqual(["another-bar", "bar"]);
+    expect(typesSearched()).toContainEqual(
+      expect.arrayContaining(["bar", "pub", "wine_bar"])
+    );
+  });
+
+  it("adds what a profile prefers to the pool, without narrowing it", async () => {
+    prefers({ venueKinds: ["bar"] });
+    searchReturns([RESTAURANT], [BAR]);
+
+    expect(await candidatesSent()).toEqual(["bar", "restaurant"]);
+  });
+
+  it("makes no second search when nobody wants anything in particular", async () => {
+    searchReturns([RESTAURANT], [BAR]);
+
+    expect(await candidatesSent()).toEqual(["restaurant"]);
+    expect(typesSearched().every((types) => types === undefined)).toBe(true);
+  });
+
+  it("offers something else when nothing answers, and says so on every option", async () => {
+    askedTonight({ venueKinds: ["bar"] });
+    searchReturns([RESTAURANT], []);
+    runMatchingAgent.mockResolvedValue({
+      draft: {
+        options: [
+          { rank: 1, unverified: [] },
+          { rank: 2, unverified: [] },
+        ],
+      },
+      call: {},
+    });
+
+    await runCycle("m1", NOW, FREE);
+
+    const [input] = runMatchingAgent.mock.calls[0];
+    expect(input.candidates.map((c: { placeId: string }) => c.placeId)).toEqual(
+      ["restaurant"]
+    );
+    const [draft] = persistMatchRun.mock.calls[0];
+    for (const option of draft.options) {
+      expect(option.unverified).toEqual([
+        { kind: "unmet_request", venueKinds: ["bar"], cuisines: [] },
+      ]);
+    }
+  });
+
+  it("keeps a bar that serves food when the same person avoided restaurants", async () => {
+    askedTonight({ venueKinds: ["bar"], avoidVenueKinds: ["restaurant"] });
+    searchReturns([RESTAURANT, BAR_WITH_FOOD], []);
+
+    expect(await candidatesSent()).toEqual(["bar-with-food"]);
   });
 });
 

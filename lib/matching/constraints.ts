@@ -55,6 +55,7 @@ import type {
 } from "@/lib/types";
 import { APP_TIME_ZONE } from "@/lib/types";
 import { slotId } from "./schemas";
+import type { Cuisine, VenueKind } from "@/lib/preferences/vocabulary";
 
 /* -------------------------------------------------------------------------
  * Local wall clock against instants
@@ -291,7 +292,11 @@ export type ConstraintViolation = {
 export type UnverifiedFact =
   | { kind: "opening_hours" }
   | { kind: "dietary"; tag: string }
-  | { kind: "calendar"; userId: string };
+  | { kind: "calendar"; userId: string }
+  // #221: what was asked for tonight and answered by no venue that could be
+  // offered. Like `calendar`, about the run rather than the venue, and added
+  // after the model.
+  | { kind: "unmet_request"; venueKinds: VenueKind[]; cuisines: Cuisine[] };
 
 export type PairCheck = {
   candidatePlaceId: string;
