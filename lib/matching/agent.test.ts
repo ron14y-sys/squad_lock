@@ -809,6 +809,67 @@ describe("what the model is shown", () => {
 
 /* --------------------------------------------------------------- the slot key */
 
+/* -------------------------------------------------------- a pinned venue (#212) */
+
+describe("a venue the initiator named (#212)", () => {
+  const PINNED = { placeId: "place-far", name: "Far" };
+  const pinnedInput = () => ({
+    ...inputFor([NEAR, MIDDLE, FAR]),
+    pinnedVenue: PINNED,
+  });
+
+  it("is rank 1, with the others as alternatives", () => {
+    const draft = interpretAnswer(
+      answer([
+        { rank: 1, venue: "place-far" },
+        { rank: 2, venue: "place-near" },
+        { rank: 3, venue: "place-middle" },
+      ]),
+      pinnedInput()
+    );
+
+    expect(draft.options[0].venue.placeId).toBe("place-far");
+  });
+
+  it("rejects an answer whose rank 1 is somewhere else, even a fairer place", () => {
+    const answered = answer([
+      { rank: 1, venue: "place-near" },
+      { rank: 2, venue: "place-far" },
+      { rank: 3, venue: "place-middle" },
+    ]);
+
+    expect(() => interpretAnswer(answered, pinnedInput())).toThrow(
+      AgentAnswerError
+    );
+    expect(() => interpretAnswer(answered, pinnedInput())).toThrow(
+      /pinned venue "Far"/
+    );
+  });
+
+  it("changes nothing when no venue was named", () => {
+    const draft = interpretAnswer(
+      answer([
+        { rank: 1, venue: "place-near" },
+        { rank: 2, venue: "place-far" },
+        { rank: 3, venue: "place-middle" },
+      ]),
+      inputFor([NEAR, MIDDLE, FAR])
+    );
+
+    expect(draft.options[0].venue.placeId).toBe("place-near");
+  });
+
+  it("tells the model which venue was asked for, and says so only then", () => {
+    const named = buildPayload(pinnedInput());
+    const unnamed = buildPayload(inputFor([NEAR, MIDDLE, FAR]));
+
+    expect(named).toContain('Pinned venue: "Far" (venue_id place-far)');
+    expect(unnamed).not.toContain("Pinned venue");
+    // The people and the pairs are still where `parsePayload` finds them.
+    expect(parsePayload(named).pairs.length).toBeGreaterThan(0);
+  });
+});
+
 describe("slot ids", () => {
   it("names the same slot the same way every time", () => {
     expect(slotId(THURSDAY)).toBe(slotId({ ...THURSDAY }));

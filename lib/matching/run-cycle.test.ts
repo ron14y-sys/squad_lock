@@ -8,6 +8,7 @@ import {
   MIN_PROPOSAL_LIFETIME_MS,
   beforeEarliestStart,
   partOfDayWindows,
+  pinnedVenueReason,
   RATE_LIMIT_RETRY_COOLDOWN_MS,
   CONTEXT_BATCH_MS,
   RUN_ATTEMPT_COOLDOWN_MS,
@@ -23,6 +24,7 @@ import { checkPair } from "./constraints";
 import { ExternalRateLimitError } from "@/lib/external/rate-limit";
 import { LlmCallError } from "@/lib/llm/client";
 import { pairId } from "./schemas";
+import type { CandidateScore } from "./distance";
 
 /**
  * A8b's two rules, with no database and no clock.
@@ -622,5 +624,30 @@ describe("venueDietaryFactsFrom", () => {
         { kind: "dietary", tag: "צמחוני" },
       ]);
     });
+  });
+});
+
+describe("pinnedVenueReason (#212)", () => {
+  const scored = (...placeIds: string[]) =>
+    placeIds.map((placeId) => ({
+      candidate: { placeId },
+    })) as unknown as CandidateScore[];
+
+  it("is null when the venue is among what may be proposed", () => {
+    expect(pinnedVenueReason("a", scored("b", "a"), new Set())).toBeNull();
+  });
+
+  it("is too_far when the burden gate cut it, in either pass", () => {
+    expect(pinnedVenueReason("a", scored("b"), new Set(["a"]))).toBe("too_far");
+  });
+
+  it("is unavailable when anything else took it out", () => {
+    expect(pinnedVenueReason("a", scored("b"), new Set(["c"]))).toBe(
+      "unavailable"
+    );
+  });
+
+  it("trusts being offered over having been gated", () => {
+    expect(pinnedVenueReason("a", scored("a"), new Set(["a"]))).toBeNull();
   });
 });

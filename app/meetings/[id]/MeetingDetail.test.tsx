@@ -433,6 +433,38 @@ test("a proposal says when what was asked for tonight was not found (#221)", asy
   ).toBeInTheDocument();
 });
 
+test("a proposal says when the venue that was asked for could not be offered (#212)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            proposal: {
+              ...detail().proposal,
+              unverified: [
+                {
+                  kind: "unmet_pinned_venue",
+                  venue: "בר הים",
+                  reason: "too_far",
+                },
+              ],
+            },
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText(
+      "המקום שביקשתם (בר הים) רחוק מדי עבור חלק מהחברים, אז הצענו משהו אחר."
+    )
+  ).toBeInTheDocument();
+});
+
 test("a proposal names whose calendar it was not checked against", async () => {
   vi.stubGlobal(
     "fetch",

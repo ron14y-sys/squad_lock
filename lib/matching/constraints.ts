@@ -296,7 +296,19 @@ export type UnverifiedFact =
   // #221: what was asked for tonight and answered by no venue that could be
   // offered. Like `calendar`, about the run rather than the venue, and added
   // after the model.
-  | { kind: "unmet_request"; venueKinds: VenueKind[]; cuisines: Cuisine[] };
+  | { kind: "unmet_request"; venueKinds: VenueKind[]; cuisines: Cuisine[] }
+  // #212: the venue the initiator named could not be offered, and this says
+  // why. Same standing as `unmet_request`: about the run, added after the
+  // model, and never read by it.
+  | { kind: "unmet_pinned_venue"; venue: string; reason: PinnedVenueReason };
+
+/**
+ * Why the venue an initiator named was not proposed (#212): Google knows no
+ * such place; it is too far for someone (the burden gate); or it fails
+ * something else — shut at every shared hour, a calendar, a dietary need, or
+ * an earlier rejection of that exact evening.
+ */
+export type PinnedVenueReason = "not_found" | "too_far" | "unavailable";
 
 export type PairCheck = {
   candidatePlaceId: string;

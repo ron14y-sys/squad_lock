@@ -159,6 +159,27 @@ export function unmetRequestNote(
     : "לא מצאנו מקום שמתאים לכולם ועונה על מה שביקשתם הערב, אז הצענו משהו אחר.";
 }
 
+/**
+ * #212: the initiator named a venue and the proposal is somewhere else. Said
+ * plainly, so a card that once showed their bar is never followed by a
+ * proposal that looks as if the request had not been read. States the
+ * constraint that stopped it and never a comparison (spec §5.6).
+ */
+export function unmetPinnedVenueNote(
+  facts: readonly UnverifiedFact[]
+): string | null {
+  const fact = facts.find((f) => f.kind === "unmet_pinned_venue");
+  if (!fact || fact.kind !== "unmet_pinned_venue") return null;
+  switch (fact.reason) {
+    case "not_found":
+      return `לא מצאנו מקום בשם ״${fact.venue}״, אז הצענו משהו אחר.`;
+    case "too_far":
+      return `המקום שביקשתם (${fact.venue}) רחוק מדי עבור חלק מהחברים, אז הצענו משהו אחר.`;
+    case "unavailable":
+      return `לא מצאנו זמן שמתאים לכולם והמקום שביקשתם פתוח בו (${fact.venue}), אז הצענו משהו אחר.`;
+  }
+}
+
 /** "חבר אחד" / "2 חברים" — Hebrew has a singular, so "1 חברים" reads as a mistake. */
 export function membersLabel(count: number): string {
   return count === 1 ? "חבר אחד" : `${count} חברים`;
