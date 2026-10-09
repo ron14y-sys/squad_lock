@@ -18,6 +18,7 @@ function card(overrides: Record<string, unknown> = {}) {
     currentDatetime: "2026-09-15T18:00:00.000Z",
     pinnedWhen: null,
     pinnedVenue: null,
+    proposedVenue: null,
     occasion: null,
     createdAt: "2026-09-01T00:00:00.000Z",
     approvedCount: 0,
@@ -313,4 +314,43 @@ test("a meeting's opening search reads as a search, not a re-weighing", async ()
 
   expect(await screen.findByText("מחפשים הצעה")).toBeInTheDocument();
   expect(screen.queryByText("משוקלל מחדש")).not.toBeInTheDocument();
+});
+
+test("a card names the venue of the proposal, not the one that was asked for (#212)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          meetings: [
+            card({ pinnedVenue: "בר הים", proposedVenue: "קפה נחמה" }),
+          ],
+          openCount: 1,
+        })
+      )
+    )
+  );
+
+  render(<GroupFeed groupId="group-1" />);
+
+  expect(await screen.findByText(/בקפה נחמה/)).toBeInTheDocument();
+  expect(screen.queryByText(/בר הים/)).not.toBeInTheDocument();
+});
+
+test("a card names the venue that was asked for while there is no proposal yet (#212)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          meetings: [card({ pinnedVenue: "בר הים", currentDatetime: null })],
+          openCount: 1,
+        })
+      )
+    )
+  );
+
+  render(<GroupFeed groupId="group-1" />);
+
+  expect(await screen.findByText(/בבר הים/)).toBeInTheDocument();
 });

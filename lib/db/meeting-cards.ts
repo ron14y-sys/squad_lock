@@ -72,6 +72,13 @@ export type MeetingCardDTO = {
   currentDatetime: string | null;
   pinnedWhen: PinnedWhen | null;
   pinnedVenue: string | null;
+  /**
+   * The venue of the proposal on the table (rank 1 of the latest run), or
+   * `null` before there is one. What a card says once there is a proposal:
+   * `pinnedVenue` is only what was asked for, and the run may have put the
+   * meeting somewhere else (#212).
+   */
+  proposedVenue: string | null;
   occasion: string | null;
   createdAt: string;
   approvedCount: number;
@@ -128,7 +135,21 @@ function sortMeetingCards<T extends MeetingCardDTO>(cards: T[]): T[] {
 type MeetingRowWithResponses = MeetingModel & {
   responses: (ResponseModel & { user: { name: string } })[];
   _count: { matchRuns: number };
+  /** The latest run only, and only its first option (#212). */
+  matchRuns: { options: { venueName: string }[] }[];
 };
+
+/**
+ * What the cards need of the latest run, and nothing more: its first option's
+ * venue, to name where the meeting actually is (#212).
+ */
+const LATEST_PROPOSAL_VENUE = {
+  orderBy: { cycleNumber: "desc" },
+  take: 1,
+  select: {
+    options: { where: { rank: 1 }, take: 1, select: { venueName: true } },
+  },
+} as const;
 
 /** One meeting row → the card the feed and the all-groups timeline both draw. */
 function toMeetingCardDTO(
@@ -166,6 +187,7 @@ function toMeetingCardDTO(
     currentDatetime: meeting.currentDatetime?.toISOString() ?? null,
     pinnedWhen: meeting.pinnedWhen,
     pinnedVenue: meeting.pinnedVenue,
+    proposedVenue: row.matchRuns[0]?.options[0]?.venueName ?? null,
     occasion: meeting.occasion,
     createdAt: meeting.createdAt.toISOString(),
     approvedCount,
@@ -203,6 +225,7 @@ export async function listMeetingCardsForGroup(
     include: {
       responses: { include: { user: { select: { name: true } } } },
       _count: { select: { matchRuns: true } },
+      matchRuns: LATEST_PROPOSAL_VENUE,
     },
   });
 
@@ -247,6 +270,7 @@ export async function listOpenMeetingCardsForUser(
           group: { select: { id: true, name: true } },
           responses: { include: { user: { select: { name: true } } } },
           _count: { select: { matchRuns: true } },
+          matchRuns: LATEST_PROPOSAL_VENUE,
         },
       },
     },

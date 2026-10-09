@@ -36,6 +36,7 @@ function meeting(overrides: Record<string, unknown> = {}) {
     currentDatetime: "2026-09-15T18:00:00.000Z",
     pinnedWhen: null,
     pinnedVenue: null,
+    proposedVenue: null,
     occasion: null,
     approvedCount: 0,
     totalCount: 2,
@@ -217,4 +218,19 @@ test("shows a sign-in prompt when unauthenticated", async () => {
   expect(
     await screen.findByText("התחבר כדי לראות את הקבוצות שלך.")
   ).toBeInTheDocument();
+});
+
+test("the timeline names the proposal's venue, not the one that was asked for (#212)", async () => {
+  serve({
+    meetings: () =>
+      jsonResponse({
+        meetings: [
+          meeting({ pinnedVenue: "בר הים", proposedVenue: "קפה נחמה" }),
+        ],
+      }),
+  });
+  render(<GroupsList />);
+
+  expect(await screen.findByText(/קפה נחמה/)).toBeInTheDocument();
+  expect(screen.queryByText(/בר הים/)).not.toBeInTheDocument();
 });
