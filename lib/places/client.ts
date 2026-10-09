@@ -47,6 +47,8 @@ import type {
 } from "@/lib/types";
 
 const SEARCH_ENDPOINT = "https://places.googleapis.com/v1/places:searchNearby";
+const TEXT_SEARCH_ENDPOINT =
+  "https://places.googleapis.com/v1/places:searchText";
 const DETAILS_ENDPOINT = "https://places.googleapis.com/v1/places";
 
 /**
@@ -316,6 +318,65 @@ export async function searchNeighbourhood(
   return places
     .map(parseSearchResult)
     .filter((candidate): candidate is Candidate => candidate !== null);
+}
+
+/**
+ * How far from the group's centre a typed venue name is looked up first.
+ * Only a bias — Google still returns the best match anywhere — but it is what
+ * picks the Florentin branch of a chain over the Haifa one.
+ */
+export const VENUE_LOOKUP_BIAS_METERS = 5000;
+
+/**
+ * #212: the one place the initiator named, resolved from the words they
+ * typed. `null` when Google knows no such place, or only a closed one.
+ *
+ * Text Search, with the same Essentials + Pro field mask as the neighbourhood
+ * search, so naming a venue costs one Pro-tier request and no Enterprise field
+ * (spec §6.3). The first result is taken: Google ranks by relevance to the
+ * words, nearer to `near` first, and the proposal shows the name it resolved
+ * to, so a wrong match is visible rather than silent.
+ */
+export async function findPlaceByText(
+  query: string,
+  near: LatLng,
+  biasRadiusMeters: number = VENUE_LOOKUP_BIAS_METERS
+): Promise<Candidate | null> {
+  const response = await fetch(TEXT_SEARCH_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-FieldMask": SEARCH_FIELD_MASK,
+      ...apiKeyHeader(),
+    },
+    body: JSON.stringify({
+      textQuery: query,
+      languageCode: LANGUAGE_CODE,
+      locationBias: {
+        circle: {
+          center: { latitude: near.lat, longitude: near.lng },
+          radius: biasRadiusMeters,
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    const message = `places: searchText failed (${response.status}): ${body}`;
+    if (response.status === 429) {
+      throw new ExternalRateLimitError(
+        "places",
+        message,
+        retryAfterMsOf(response)
+      );
+    }
+    throw new Error(message);
+  }
+
+  const data = (await response.json()) as SearchNearbyResponse;
+  const [first] = data.places ?? [];
+  return first ? parseSearchResult(first) : null;
 }
 
 /**

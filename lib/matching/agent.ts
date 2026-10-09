@@ -176,6 +176,15 @@ export type MatchAgentInput = {
    * ([tasks/a7-plan.md](../../tasks/a7-plan.md), decision 2).
    */
   rejections?: Record<string, string[]>;
+  /**
+   * #212: the venue the initiator named, **only when it can be offered** —
+   * resolved to a place and present in `viable`. Rank 1 must be a pair at it
+   * (`validateOptions` checks), and ranks 2 and 3 are the alternatives. Absent
+   * when none was named, and absent when it could not be offered: that case
+   * is said on the proposal by code (`unmet_pinned_venue`), not asked of the
+   * model, which would otherwise be handed a rule it cannot satisfy.
+   */
+  pinnedVenue?: { placeId: string; name: string };
   /** Streams the answer as it arrives — the progress C5/C6 render (§4.1e). */
   onText?: (chunk: string, soFar: string) => void;
 };
@@ -227,6 +236,7 @@ HOW TO CHOOSE
 - A participant who stated no opinion on something has no opinion on it. That is a real state, not a neutral vote and not agreement with the majority. Never count a silence as a preference, never let one decide between two options, and never write a justification that describes a silence as a choice someone made.
 - A "tonight_correction" is what that person said about this evening after seeing an earlier proposal. For tonight it outranks their stated preference, field by field, and everything above about preferences applies to it too.
 - "in_their_own_words" is everything that person has said when rejecting a proposal for this evening, oldest first. Not every objection reduces to a field, so read the sentences themselves and answer all of them where the pairs allow it — an earlier one is still true unless a later one takes it back.
+- When the payload names a pinned venue, the person who opened the meeting asked for it by name. Rank 1 MUST be a pair at that venue, at the best of its slots. Ranks 2 and 3 are alternatives, and the fairness advice above applies to them, not to rank 1. In "traded_away" for rank 1, say that it is the requested place.
 - Your three options must be three different (venue, slot) pairs.
 
 HOW TO WRITE THE JUSTIFICATIONS
@@ -351,6 +361,13 @@ export function buildPayload(input: MatchAgentInput): string {
   return [
     occasion ? `Occasion: ${occasion}` : "Occasion: a get-together.",
     `Weighing round ${cycleNumber}.`,
+    // Kept inside the first block, with no blank line of its own: the blocks
+    // below are told apart by blank lines.
+    ...(input.pinnedVenue
+      ? [
+          `Pinned venue: "${input.pinnedVenue.name}" (venue_id ${input.pinnedVenue.placeId}) — the person who opened the meeting asked for it. Rank 1 must be a pair at this venue.`,
+        ]
+      : []),
     "",
     "Participants:",
     JSON.stringify(people, null, 2),
@@ -590,6 +607,16 @@ function validateOptions(
   if (ranks.some((rank, i) => rank !== i + 1)) {
     throw new AgentAnswerError(
       `ranks must run 1..${expected} with no repeats, got [${ranks.join(", ")}]`
+    );
+  }
+
+  // #212: a venue the initiator named and that could be offered is what the
+  // first proposal is. Left to the prompt alone, a model that preferred the
+  // fairer venue would drop it without a word.
+  const pinned = input.pinnedVenue;
+  if (pinned && options[0]?.venue_id !== pinned.placeId) {
+    throw new AgentAnswerError(
+      `rank 1 must be at the pinned venue "${pinned.name}" (${pinned.placeId}), got ${options[0]?.venue_id}`
     );
   }
 
