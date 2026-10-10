@@ -12,6 +12,7 @@ import { findConflictingMeetings } from "./conflict-dismissal";
 import { CYCLE_CAP } from "./meetings";
 import { getPrisma } from "./client";
 import { MOBILITY_MODE_LABELS } from "@/lib/format/hebrew-labels";
+import { nextRunAt } from "@/lib/matching/due";
 
 import type { RunStage } from "@/lib/generated/prisma/enums";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
@@ -131,6 +132,14 @@ export type MeetingDetailDTO = {
    * for any meeting that is not `weighing`.
    */
   retryInMinutes: number | null;
+  /**
+   * #215: whole minutes until the rules let the next proposal start, while
+   * one is being waited for — after a rejection or an amendment, the batching
+   * window and the proposal's minimum lifetime. Null when a rate limit is the
+   * reason (`retryInMinutes` says that), when the wait is over and the run
+   * only needs a poll to start it, and for any meeting that is not `weighing`.
+   */
+  nextRunInMinutes: number | null;
   initiatorName: string;
   pinnedVenue: string | null;
   occasion: string | null;
@@ -407,6 +416,26 @@ export async function getMeetingDetail(
     ? minutesUntil(row.retryNotBefore, now)
     : null;
 
+  // #215: the same rules `isDue` applies, read as a time. A context row no
+  // run has read yet is what a rejection or an amendment leaves behind.
+  const seenContextIds = new Set(
+    row.matchRuns.flatMap((run) => run.seenContexts.map((c) => c.contextId))
+  );
+  const nextRunInMinutes =
+    weighing && retryInMinutes === null
+      ? minutesUntil(
+          nextRunAt({
+            updatedAt: row.updatedAt,
+            lastRunAt: latestRun?.createdAt ?? null,
+            firstUnseenContextAt:
+              row.participantContexts.find((c) => !seenContextIds.has(c.id))
+                ?.createdAt ?? null,
+            retryNotBefore: row.retryNotBefore,
+          }),
+          now
+        )
+      : null;
+
   const timeline: TimelineEvent[] = [
     {
       kind: "initiated",
@@ -509,6 +538,7 @@ export async function getMeetingDetail(
     conflicts,
     missingHome,
     retryInMinutes,
+    nextRunInMinutes,
     initiatorName: row.initiator.name,
     pinnedVenue: meeting.pinnedVenue,
     occasion: meeting.occasion,

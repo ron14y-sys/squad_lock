@@ -91,6 +91,7 @@ type MeetingDetail = {
   conflicts: Conflict[];
   missingHome: MissingHome[];
   retryInMinutes: number | null;
+  nextRunInMinutes: number | null;
   initiatorName: string;
   pinnedVenue: string | null;
   occasion: string | null;
@@ -229,18 +230,33 @@ function ProposalBlock({
 function ReweighingBlock({
   runStage,
   firstSearch,
+  nextRunInMinutes,
 }: {
   runStage: RunStage | null;
   /** No proposal has ever been made — the opening search, not a new one. */
   firstSearch: boolean;
+  /** #215: how long the rules make a new proposal wait, once a run is not under way. */
+  nextRunInMinutes: number | null;
 }) {
   const heading = firstSearch ? "מחפשים הצעה" : "מחפשים הצעה חדשה";
+  // A wait is only worth naming after a rejection or an amendment, which is
+  // when it is deliberate; the opening search is retried after a fault, and
+  // saying when would promise a result nobody can promise.
+  const waiting = !runStage && !firstSearch && nextRunInMinutes !== null;
   return (
     <section className="sl-panel" role="status" aria-busy="true">
       <h2 className="sl-sec">{heading}</h2>
       <div className="sl-skel" aria-hidden="true" />
       <p className="sl-sub">
-        {runStage ? RUN_STAGE_LABELS[runStage] : `${heading}…`}
+        {runStage
+          ? RUN_STAGE_LABELS[runStage]
+          : waiting
+            ? `ההצעה הבאה תהיה מוכנה ${
+                nextRunInMinutes === 1
+                  ? "בעוד כדקה"
+                  : `בעוד כ-${nextRunInMinutes} דקות`
+              }.`
+            : `${heading}…`}
       </p>
     </section>
   );
@@ -515,6 +531,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
         <ReweighingBlock
           runStage={detail.runStage}
           firstSearch={detail.proposal === null}
+          nextRunInMinutes={detail.nextRunInMinutes}
         />
       ) : (
         <>
