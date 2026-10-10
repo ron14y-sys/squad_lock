@@ -44,6 +44,7 @@ type MeetingCard = {
   currentDatetime: string | null;
   pinnedWhen: PinnedWhen | null;
   pinnedVenue: string | null;
+  proposedVenue: string | null;
   occasion: string | null;
   createdAt: string;
   approvedCount: number;
@@ -64,7 +65,10 @@ function summaryLine(card: MeetingCard): string {
   if (card.occasion) return card.occasion;
   const time =
     card.currentDatetime && ` בשעה ${meetingTimeLabel(card.currentDatetime)}`;
-  const venue = card.pinnedVenue ? ` ב${card.pinnedVenue}` : "";
+  // Where the proposal is, once there is one — not where it was asked to be
+  // (#212): the two differ whenever the asked-for place could not be offered.
+  const where = card.proposedVenue ?? card.pinnedVenue;
+  const venue = where ? ` ב${where}` : "";
   return `${card.approvedCount} מתוך ${card.totalCount} אישרו${venue}${time ?? ""}`;
 }
 

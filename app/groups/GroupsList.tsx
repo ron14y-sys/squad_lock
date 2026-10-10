@@ -41,6 +41,7 @@ type OpenMeeting = {
     date?: string;
   } | null;
   pinnedVenue: string | null;
+  proposedVenue: string | null;
   occasion: string | null;
   approvedCount: number;
   totalCount: number;
@@ -53,7 +54,9 @@ function summaryLine(meeting: OpenMeeting): string {
   if (meeting.status === "stuck")
     parts.push("לא מצאנו הצעה — צריך להחליט ידנית");
   if (meeting.occasion) parts.push(meeting.occasion);
-  else if (meeting.pinnedVenue) parts.push(meeting.pinnedVenue);
+  // The proposal's venue once there is one, else the one asked for (#212).
+  else if (meeting.proposedVenue ?? meeting.pinnedVenue)
+    parts.push((meeting.proposedVenue ?? meeting.pinnedVenue) as string);
   if (meeting.currentDatetime) {
     parts.push(`בשעה ${meetingTimeLabel(meeting.currentDatetime)}`);
   }
