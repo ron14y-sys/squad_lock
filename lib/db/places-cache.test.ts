@@ -110,6 +110,7 @@ describe("getCachedSearch / saveCachedSearch", () => {
       location: { lat: 32.08, lng: 34.78 },
       neighbourhood: null,
       types: ["cafe"],
+      primaryType: "cafe",
     };
     const client = fakeCacheClient();
     client.placeSearchCache.findUnique.mockResolvedValue({
@@ -142,6 +143,46 @@ describe("getCachedSearch / saveCachedSearch", () => {
     expect(await getCachedSearch(CENTER, 1500, undefined, client)).toBeNull();
   });
 
+  it("reads a row written before candidates carried a primary type as a miss (#240)", async () => {
+    const client = fakeCacheClient();
+    client.placeSearchCache.findUnique.mockResolvedValue({
+      results: [
+        {
+          placeId: "p1",
+          name: "Cafe",
+          address: null,
+          location: { lat: 32.08, lng: 34.78 },
+          neighbourhood: null,
+          types: ["cafe"],
+        },
+      ],
+      fetchedAt: new Date(),
+    });
+
+    expect(await getCachedSearch(CENTER, 1500, undefined, client)).toBeNull();
+  });
+
+  it("serves a row whose place has no primary type at all, rather than asking again forever", async () => {
+    const candidate: Candidate = {
+      placeId: "p1",
+      name: "Somewhere",
+      address: null,
+      location: { lat: 32.08, lng: 34.78 },
+      neighbourhood: null,
+      types: [],
+      primaryType: null,
+    };
+    const client = fakeCacheClient();
+    client.placeSearchCache.findUnique.mockResolvedValue({
+      results: [candidate],
+      fetchedAt: new Date(),
+    });
+
+    expect(await getCachedSearch(CENTER, 1500, undefined, client)).toEqual([
+      candidate,
+    ]);
+  });
+
   it("saveCachedSearch upserts on the rounded key with the results as JSON", async () => {
     const client = fakeCacheClient();
     const candidate: Candidate = {
@@ -151,6 +192,7 @@ describe("getCachedSearch / saveCachedSearch", () => {
       location: { lat: 32.08, lng: 34.78 },
       neighbourhood: null,
       types: ["cafe"],
+      primaryType: "cafe",
     };
 
     await saveCachedSearch(CENTER, 1500, [candidate], undefined, client);
@@ -195,6 +237,7 @@ describe("searchNeighbourhoodCached", () => {
       location: { lat: 32.08, lng: 34.78 },
       neighbourhood: null,
       types: ["cafe"],
+      primaryType: "cafe",
     };
     const client = fakeCacheClient();
     client.placeSearchCache.findUnique.mockResolvedValue({

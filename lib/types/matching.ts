@@ -44,6 +44,12 @@ export type Candidate = {
    * before #219.
    */
   types?: string[];
+  /**
+   * Google's one type for what the place *is* (#240), e.g. `yoga_studio` for
+   * a studio that also lists `cafe` among its `types`. `null` when Google
+   * names none; absent on a candidate cached before #240.
+   */
+  primaryType?: string | null;
   /** Google's one-line description, fetched with the details. Often absent. */
   summary?: string;
 };

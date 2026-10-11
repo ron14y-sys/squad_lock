@@ -76,6 +76,7 @@ import type {
 } from "./constraints";
 import {
   cuisinesOfTypes,
+  isVenuePrimaryType,
   venueKindsOfTypes,
 } from "@/lib/preferences/vocabulary";
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
@@ -636,9 +637,17 @@ export async function assembleRun(
   // among Google's twenty most popular. One already offered and turned down
   // (`blocked.venues`) is not asked for again: the group has answered it.
   const pinnedName = meeting.pinnedVenue?.trim() || null;
-  const pinnedFound = pinnedName
+  const pinnedResult = pinnedName
     ? await findPlaceByText(pinnedName, meanOf(origins))
     : null;
+  // #240: a name that resolves to something other than a restaurant, bar or
+  // café — a studio, a shop — is not weighed, and the proposal says what it
+  // is not. The form catches this first (`checkNamedVenue`); this is for a
+  // name that reached the run anyway.
+  const pinnedFound =
+    pinnedResult && isVenuePrimaryType(pinnedResult.primaryType)
+      ? pinnedResult
+      : null;
   const pinned =
     pinnedFound && !blocked.venues.has(pinnedFound.placeId)
       ? pinnedFound
@@ -686,8 +695,11 @@ export async function assembleRun(
   // `buildShortlist` dedupes, so the pools are merged and not reconciled.
   // Blocked venues come out here rather than at the end: a venue that may
   // not be proposed should not first cost an Enterprise-tier details call.
+  // #240: only a restaurant, bar or café by its *primary* type — the search
+  // also returns places that merely list one of those among their types.
   const found = pools
     .flat()
+    .filter((candidate) => isVenuePrimaryType(candidate.primaryType))
     .filter((candidate) => !blocked.venues.has(candidate.placeId));
   if (withPinned(found).length === 0) {
     throw new NoSolutionError(
@@ -757,7 +769,7 @@ export async function assembleRun(
     unmetPinnedVenue = {
       kind: "unmet_pinned_venue",
       venue: pinnedName,
-      reason: "not_found",
+      reason: pinnedResult ? "not_a_venue" : "not_found",
     };
   } else if (pinned) {
     const reason = pinnedVenueReason(pinned.placeId, ranked, weighed.gated);
@@ -816,7 +828,7 @@ export async function assembleRun(
 }
 
 /** The middle of a group's origins — where a typed venue name is looked for first. */
-function meanOf(points: LatLng[]): LatLng {
+export function meanOf(points: LatLng[]): LatLng {
   const sum = points.reduce(
     (total, point) => ({
       lat: total.lat + point.lat,

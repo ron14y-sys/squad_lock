@@ -26,6 +26,30 @@ function capReachedMessage(message: string): string | null {
   return "כבר יש 3 פגישות פתוחות בקבוצה. סגרו אחת כדי לפתוח חדשה.";
 }
 
+/**
+ * #240: the venue typed was not found, or is not a restaurant, bar or café.
+ * The server counts the misses; `attemptsLeft` is how many it will still try.
+ */
+export const VENUE_LOCKED_MESSAGE =
+  "לא הצלחנו לזהות את המקום. אפשר לפתוח את הפגישה בלי מקום מסוים, והסוכן יבחר.";
+
+function venueMessage(body: {
+  error?: string;
+  venue?: string;
+  attemptsLeft?: number;
+}): string | null {
+  if (body.error === "venue_lookup_blocked") return VENUE_LOCKED_MESSAGE;
+  const problem =
+    body.error === "venue_not_found"
+      ? `לא מצאנו מקום בשם ״${body.venue}״. אולי יש טעות בשם?`
+      : body.error === "venue_not_a_venue"
+        ? `״${body.venue}״ הוא לא מסעדה, בר או בית קפה. יכול להיות שהתבלבלת?`
+        : null;
+  if (!problem) return null;
+  if (!body.attemptsLeft) return `${problem} ${VENUE_LOCKED_MESSAGE}`;
+  return `${problem} ${body.attemptsLeft === 1 ? "אפשר לתקן עוד פעם אחת." : `אפשר לתקן עוד ${body.attemptsLeft} פעמים.`}`;
+}
+
 function groupTooSmallMessage(message: string): string | null {
   // GroupTooSmallError's text (#174), e.g. "Group g1 has 2 members; a
   // meeting needs at least 3."
@@ -38,6 +62,9 @@ export function NewMeeting({ groupId }: { groupId: string }) {
   const [date, setDate] = useState("");
   const [part, setPart] = useState<TimeOfDayPart | "">("");
   const [venue, setVenue] = useState("");
+  // #240: after three misses the server stops looking venues up; the field
+  // locks and the meeting can still be opened without one.
+  const [venueLocked, setVenueLocked] = useState(false);
   const [occasion, setOccasion] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -49,7 +76,7 @@ export function NewMeeting({ groupId }: { groupId: string }) {
     const body: Record<string, string> = {};
     if (date) body.date = date;
     if (part) body.part = part;
-    if (venue.trim()) body.venue = venue.trim();
+    if (venue.trim() && !venueLocked) body.venue = venue.trim();
     if (occasion.trim()) body.occasion = occasion.trim();
 
     try {
@@ -69,6 +96,16 @@ export function NewMeeting({ groupId }: { groupId: string }) {
       }
       if (!res.ok) {
         const responseBody = await res.json();
+        const aboutVenue = venueMessage(responseBody);
+        if (aboutVenue) {
+          if (!responseBody.attemptsLeft) {
+            setVenueLocked(true);
+            setVenue("");
+          }
+          setErrorMessage(aboutVenue);
+          setSubmitState("error");
+          return;
+        }
         const message =
           capReachedMessage(responseBody.error ?? "") ??
           groupTooSmallMessage(responseBody.error ?? "") ??
@@ -156,6 +193,7 @@ export function NewMeeting({ groupId }: { groupId: string }) {
             value={venue}
             onChange={(e) => setVenue(e.target.value)}
             placeholder="למשל, בית קפה נורדאו"
+            disabled={venueLocked}
             className="sl-field"
           />
         </label>

@@ -39,6 +39,8 @@ const NEXT_DOOR = {
   address: null,
   location: HOME,
   neighbourhood: null,
+  types: ["restaurant"],
+  primaryType: "restaurant",
 };
 
 // Called as (centre, radius, includedTypes); a test may answer by the types.
@@ -280,6 +282,36 @@ describe("tonight's distance and start (#220)", () => {
   });
 });
 
+describe("only restaurants, bars and cafés (#240)", () => {
+  it("never shows the model a studio that merely lists a café among its types", async () => {
+    runMatchingAgent.mockRejectedValue(new Error("stop here"));
+    searchNeighbourhoodCached.mockResolvedValue([
+      NEXT_DOOR,
+      {
+        ...NEXT_DOOR,
+        placeId: "yoga",
+        name: "Studio Yoga",
+        types: ["yoga_studio", "cafe", "point_of_interest"],
+        primaryType: "yoga_studio",
+      },
+      {
+        ...NEXT_DOOR,
+        placeId: "trattoria",
+        name: "Trattoria",
+        types: ["italian_restaurant", "restaurant", "food"],
+        primaryType: "italian_restaurant",
+      },
+    ]);
+
+    await runCycle("m1", NOW, FREE);
+
+    const [input] = runMatchingAgent.mock.calls[0];
+    expect(
+      input.candidates.map((c: { placeId: string }) => c.placeId).sort()
+    ).toEqual(["p1", "trattoria"]);
+  });
+});
+
 describe("what people asked for (#221)", () => {
   const venue = (placeId: string, types: string[], east = 0) => ({
     placeId,
@@ -288,6 +320,7 @@ describe("what people asked for (#221)", () => {
     location: { lat: HOME.lat, lng: HOME.lng + east },
     neighbourhood: null,
     types,
+    primaryType: types[0],
   });
   const BAR = venue("bar", ["bar"], 0.001);
   const ANOTHER_BAR = venue("another-bar", ["pub", "bar"], 0.002);
@@ -573,6 +606,7 @@ describe("a venue the initiator named (#212)", () => {
     location: { lat: HOME.lat + north, lng: HOME.lng },
     neighbourhood: null,
     types: ["bar"],
+    primaryType: "bar",
   });
 
   function named(text: string | null) {
@@ -656,6 +690,30 @@ describe("a venue the initiator named (#212)", () => {
       kind: "unmet_pinned_venue",
       venue: "Bar Ha'Ir",
       reason: "not_found",
+    };
+    expect(unverifiedWritten()).toEqual([[fact], [fact]]);
+  });
+
+  it("says a name that resolves to something other than a venue is not one (#240)", async () => {
+    named("Bar Ha'Ir");
+    findPlaceByText.mockResolvedValue({
+      ...place("a-gym"),
+      types: ["gym", "bar"],
+      primaryType: "gym",
+    });
+    modelAnswers();
+
+    await runCycle("m1", NOW, FREE);
+
+    const [input] = runMatchingAgent.mock.calls[0];
+    expect(input.candidates.map((c: { placeId: string }) => c.placeId)).toEqual(
+      ["p1"]
+    );
+    expect(input.pinnedVenue).toBeUndefined();
+    const fact = {
+      kind: "unmet_pinned_venue",
+      venue: "Bar Ha'Ir",
+      reason: "not_a_venue",
     };
     expect(unverifiedWritten()).toEqual([[fact], [fact]]);
   });
@@ -758,6 +816,7 @@ describe("venues the group was lately offered (#213)", () => {
       location: { lat: HOME.lat + 0.001, lng: HOME.lng },
       neighbourhood: null,
       types: ["bar"],
+      primaryType: "bar",
     });
 
     const input = await inputSent();

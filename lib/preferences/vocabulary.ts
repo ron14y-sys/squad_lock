@@ -124,6 +124,36 @@ export const VENUE_KIND_GOOGLE_TYPES: Record<VenueKind, string[]> = {
   restaurant: ["restaurant"],
 };
 
+/** #240: somewhere to meet that is not a restaurant, bar or café. */
+export const EXTRA_VENUE_PRIMARY_TYPES = ["bakery", "ice_cream_shop"];
+
+/**
+ * #240: is a place, by its Google `primaryType`, a restaurant, a bar or a
+ * café — the only places this app proposes? Read from the primary type
+ * alone: `includedTypes` matches any of a place's types, so a yoga studio
+ * with a juice corner comes back from a search for cafés, listing `cafe`
+ * beside `yoga_studio`. Every type the two tables below name counts, and so
+ * does any `…_restaurant` (Google has dozens; a cuisine nobody asked for is
+ * still a restaurant), and the few places agreed on #240 that are none of
+ * the three but still somewhere to meet (`EXTRA_VENUE_PRIMARY_TYPES`). No
+ * primary type is not a venue.
+ */
+export function isVenuePrimaryType(
+  primaryType: string | null | undefined
+): boolean {
+  if (!primaryType) return false;
+  return (
+    primaryType.endsWith("_restaurant") ||
+    EXTRA_VENUE_PRIMARY_TYPES.includes(primaryType) ||
+    Object.values(VENUE_KIND_GOOGLE_TYPES).some((types) =>
+      types.includes(primaryType)
+    ) ||
+    Object.values(CUISINE_GOOGLE_TYPES).some((types) =>
+      types.includes(primaryType)
+    )
+  );
+}
+
 /** The table approved on #217. */
 export const CUISINE_GOOGLE_TYPES: Record<Cuisine, string[]> = {
   italian: ["italian_restaurant"],

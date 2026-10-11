@@ -108,6 +108,12 @@ model GroupMember {
   groupId  String
   userId   String
   joinedAt DateTime @default(now())
+  /// #240: names this member typed as a new meeting's venue that Google
+  /// found nothing for, or found something other than a restaurant, bar or
+  /// café. At 3 the venue field is locked and no more lookups are made; back
+  /// to 0 when they open a meeting in this group. Kept here rather than in
+  /// the form so a reload cannot buy more lookups.
+  failedVenueLookups Int @default(0)
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)

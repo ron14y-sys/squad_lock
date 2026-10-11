@@ -58,7 +58,8 @@ const DETAILS_ENDPOINT = "https://places.googleapis.com/v1/places";
  * would push the call into a paid-per-request tier. `primaryTypeDisplayName`
  * ("Italian restaurant") is Pro too, so it costs nothing extra (#163), and
  * so is `types` — the machine-readable list a venue's kind and cuisine are
- * read from (#219).
+ * read from (#219) — and `primaryType`, what decides whether the place is a
+ * venue at all (#240).
  */
 const SEARCH_FIELD_MASK = [
   "places.id",
@@ -67,6 +68,7 @@ const SEARCH_FIELD_MASK = [
   "places.location",
   "places.businessStatus",
   "places.primaryTypeDisplayName",
+  "places.primaryType",
   "places.types",
 ].join(",");
 
@@ -131,6 +133,7 @@ type RawPlace = {
   location?: RawLocation;
   businessStatus?: string;
   primaryTypeDisplayName?: { text: string };
+  primaryType?: string;
   types?: string[];
 };
 
@@ -250,6 +253,9 @@ function parseSearchResult(raw: RawPlace): Candidate | null {
     // Always a list, even an empty one: the cache reads a candidate with no
     // `types` key at all as written before #219, and fetches again.
     types: raw.types ?? [],
+    // `null` rather than absent when Google names none, for the same reason:
+    // absent means cached before #240.
+    primaryType: raw.primaryType ?? null,
     // Neighbourhood is not a Places field — whoever calls this already knows
     // which neighbourhood query produced the result and can attach it.
     neighbourhood: null,

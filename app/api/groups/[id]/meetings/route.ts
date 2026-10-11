@@ -13,6 +13,7 @@ import { initiateMeeting, OpenMeetingCapReachedError } from "@/lib/db/meetings";
 import { GroupTooSmallError } from "@/lib/db/groups";
 import { listMeetingCardsForGroup } from "@/lib/db/meeting-cards";
 import { initiateMeetingSchema } from "@/lib/meetings/schema";
+import { checkNamedVenue } from "@/lib/meetings/venue-check";
 
 // The Hobby plan's ceiling, and the reason it is here: the matching run A8
 // starts from this route's `after()` callback runs inside this route's budget,
@@ -104,6 +105,23 @@ export async function POST(
   });
   if (!membership) {
     return Response.json({ error: "Group not found." }, { status: 404 });
+  }
+
+  // #240: a named venue Google cannot find, or finds as something other than
+  // a restaurant, bar or café, goes back to the form to be corrected — at
+  // most three times, counted on the member's row.
+  if (parsed.data.venue) {
+    const check = await checkNamedVenue(groupId, userId, parsed.data.venue);
+    if (!check.ok) {
+      return Response.json(
+        {
+          error: check.error,
+          venue: parsed.data.venue,
+          attemptsLeft: check.attemptsLeft,
+        },
+        { status: check.error === "venue_lookup_blocked" ? 409 : 422 }
+      );
+    }
   }
 
   try {

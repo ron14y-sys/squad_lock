@@ -199,3 +199,109 @@ test("shows a not-found message for a group the user isn't in", async () => {
     await screen.findByText("הקבוצה הזו לא נמצאה, או שאתה לא חבר בה.")
   ).toBeInTheDocument();
 });
+
+// #240: the server checks a typed venue and counts the misses.
+test("says a typed place is not a restaurant, keeps the field to correct it, and says how many tries are left", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(() =>
+    Promise.resolve(
+      jsonResponse(
+        { error: "venue_not_a_venue", venue: "סטודיו יוגה", attemptsLeft: 2 },
+        422
+      )
+    )
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<NewMeeting groupId="group-1" />);
+  await user.type(screen.getByLabelText("מקום"), "סטודיו יוגה");
+  await user.click(screen.getByRole("button", { name: "פתח פגישה" }));
+
+  expect(
+    await screen.findByText(
+      "״סטודיו יוגה״ הוא לא מסעדה, בר או בית קפה. יכול להיות שהתבלבלת? אפשר לתקן עוד 2 פעמים."
+    )
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("מקום")).toBeEnabled();
+  expect(screen.getByLabelText("מקום")).toHaveValue("סטודיו יוגה");
+  expect(pushMock).not.toHaveBeenCalled();
+});
+
+test("says a typed place was not found, with one try left", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          { error: "venue_not_found", venue: "ברר הים", attemptsLeft: 1 },
+          422
+        )
+      )
+    )
+  );
+
+  render(<NewMeeting groupId="group-1" />);
+  await user.type(screen.getByLabelText("מקום"), "ברר הים");
+  await user.click(screen.getByRole("button", { name: "פתח פגישה" }));
+
+  expect(
+    await screen.findByText(
+      "לא מצאנו מקום בשם ״ברר הים״. אולי יש טעות בשם? אפשר לתקן עוד פעם אחת."
+    )
+  ).toBeInTheDocument();
+});
+
+test("locks the field on the last miss, and opens the meeting without a place", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      jsonResponse(
+        { error: "venue_not_found", venue: "ברר", attemptsLeft: 0 },
+        422
+      )
+    )
+    .mockResolvedValueOnce(jsonResponse({}, 201));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<NewMeeting groupId="group-1" />);
+  await user.type(screen.getByLabelText("מקום"), "ברר");
+  await user.click(screen.getByRole("button", { name: "פתח פגישה" }));
+
+  expect(
+    await screen.findByText(/לא הצלחנו לזהות את המקום/)
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("מקום")).toBeDisabled();
+
+  await user.click(screen.getByRole("button", { name: "פתח פגישה" }));
+  const [, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+  expect(JSON.parse(init.body as string)).toEqual({});
+  expect(pushMock).toHaveBeenCalledWith("/groups/group-1");
+});
+
+test("locks the field when the server says lookups are already used up", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          { error: "venue_lookup_blocked", venue: "בר", attemptsLeft: 0 },
+          409
+        )
+      )
+    )
+  );
+
+  render(<NewMeeting groupId="group-1" />);
+  await user.type(screen.getByLabelText("מקום"), "בר");
+  await user.click(screen.getByRole("button", { name: "פתח פגישה" }));
+
+  expect(
+    await screen.findByText(
+      "לא הצלחנו לזהות את המקום. אפשר לפתוח את הפגישה בלי מקום מסוים, והסוכן יבחר."
+    )
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("מקום")).toBeDisabled();
+});

@@ -4,6 +4,7 @@ import {
   CUISINES,
   CUISINE_GOOGLE_TYPES,
   cuisinesOfTypes,
+  isVenuePrimaryType,
   softPreferencesFromJson,
   venueKindsOfTypes,
 } from "./vocabulary";
@@ -60,5 +61,36 @@ describe("cuisinesOfTypes", () => {
     for (const cuisine of CUISINES) {
       expect(CUISINE_GOOGLE_TYPES[cuisine].length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("isVenuePrimaryType (#240)", () => {
+  it.each([
+    "restaurant",
+    "italian_restaurant",
+    "brunch_restaurant",
+    "steak_house",
+    "bar",
+    "pub",
+    "wine_bar",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "bakery",
+    "ice_cream_shop",
+  ])("counts %s as a venue", (type) => {
+    expect(isVenuePrimaryType(type)).toBe(true);
+  });
+
+  it.each(["yoga_studio", "gym", "spa", "book_store", "food", "night_club"])(
+    "does not count %s, whatever else the place lists",
+    (type) => {
+      expect(isVenuePrimaryType(type)).toBe(false);
+    }
+  );
+
+  it("does not count a place Google gives no primary type", () => {
+    expect(isVenuePrimaryType(null)).toBe(false);
+    expect(isVenuePrimaryType(undefined)).toBe(false);
   });
 });
