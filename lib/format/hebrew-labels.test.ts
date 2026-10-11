@@ -98,6 +98,18 @@ describe("unmetRequestNote (#221)", () => {
 });
 
 describe("unmetPinnedVenueNote (#212)", () => {
+  it("says the named place is not a restaurant, bar or café (#240)", () => {
+    expect(
+      unmetPinnedVenueNote([
+        {
+          kind: "unmet_pinned_venue",
+          venue: "סטודיו יוגה",
+          reason: "not_a_venue",
+        },
+      ])
+    ).toBe("״סטודיו יוגה״ הוא לא מסעדה, בר או בית קפה, אז הצענו משהו אחר.");
+  });
+
   it("says no place of that name was found", () => {
     expect(
       unmetPinnedVenueNote([

@@ -65,7 +65,7 @@ describe("searchNeighbourhood", () => {
     expect(init.method).toBe("POST");
     expect(init.headers["X-Goog-Api-Key"]).toBe("test-key");
     expect(init.headers["X-Goog-FieldMask"]).toBe(
-      "places.id,places.displayName,places.formattedAddress,places.location,places.businessStatus,places.primaryTypeDisplayName,places.types"
+      "places.id,places.displayName,places.formattedAddress,places.location,places.businessStatus,places.primaryTypeDisplayName,places.primaryType,places.types"
     );
     // No Enterprise field anywhere in this mask — that is the whole point.
     expect(init.headers["X-Goog-FieldMask"]).not.toMatch(/rating|OpeningHours/);
@@ -119,6 +119,7 @@ describe("searchNeighbourhood", () => {
         location: { lat: 32.05, lng: 34.77 },
         neighbourhood: null,
         types: [],
+        primaryType: null,
       },
     ]);
     expect(candidates[0]).not.toHaveProperty("rating");
@@ -159,6 +160,25 @@ describe("searchNeighbourhood", () => {
     const [candidate] = await searchNeighbourhood(CENTER, 1500);
 
     expect(candidate.types).toEqual(["bar", "restaurant", "food"]);
+  });
+
+  it("keeps Google's primary type, which decides whether it is a venue at all (#240)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      fakeResponse(true, {
+        places: [
+          {
+            id: "place-1",
+            location: { latitude: 32.05, longitude: 34.77 },
+            primaryType: "yoga_studio",
+            types: ["yoga_studio", "cafe"],
+          },
+        ],
+      })
+    );
+
+    const [candidate] = await searchNeighbourhood(CENTER, 1500);
+
+    expect(candidate.primaryType).toBe("yoga_studio");
   });
 
   it("is empty when the response has no places at all", async () => {
@@ -324,7 +344,7 @@ describe("findPlaceByText (#212)", () => {
     // The same Essentials + Pro mask as the neighbourhood search: naming a
     // venue must not buy an Enterprise field (spec §6.3 rule 2).
     expect(init.headers["X-Goog-FieldMask"]).toBe(
-      "places.id,places.displayName,places.formattedAddress,places.location,places.businessStatus,places.primaryTypeDisplayName,places.types"
+      "places.id,places.displayName,places.formattedAddress,places.location,places.businessStatus,places.primaryTypeDisplayName,places.primaryType,places.types"
     );
     expect(init.headers["X-Goog-FieldMask"]).not.toMatch(/rating|OpeningHours/);
 

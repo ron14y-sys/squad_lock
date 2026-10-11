@@ -103,7 +103,7 @@ export function isFresh(fetchedAt: Date, ttlMs: number, now: Date): boolean {
 /**
  * The cached search for `(center, radiusMeters)`, or `null` on a miss —
  * no row, one older than `SEARCH_CACHE_TTL_MS`, or one written before
- * candidates carried `types` (#219). A stale row is
+ * candidates carried `types` (#219) or `primaryType` (#240). A stale row is
  * left in place rather than deleted: the next `saveCachedSearch` overwrites
  * it, and there is no cost to a row nobody is reading.
  */
@@ -133,7 +133,14 @@ export async function getCachedSearch(
   // Written before #219 asked for `types`: without them no venue's kind or
   // cuisine is known, for as long as the row lives (30 days). One fresh
   // search, at the same Pro tier, is cheaper than a month of not knowing.
-  if (results.some((candidate) => candidate.types === undefined)) {
+  // Likewise before #240 asked for `primaryType`, without which a yoga studio
+  // that lists `cafe` cannot be told from a café.
+  if (
+    results.some(
+      (candidate) =>
+        candidate.types === undefined || candidate.primaryType === undefined
+    )
+  ) {
     return null;
   }
   return results;

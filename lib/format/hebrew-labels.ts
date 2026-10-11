@@ -173,6 +173,8 @@ export function unmetPinnedVenueNote(
   switch (fact.reason) {
     case "not_found":
       return `לא מצאנו מקום בשם ״${fact.venue}״, אז הצענו משהו אחר.`;
+    case "not_a_venue":
+      return `״${fact.venue}״ הוא לא מסעדה, בר או בית קפה, אז הצענו משהו אחר.`;
     case "too_far":
       return `המקום שביקשתם (${fact.venue}) רחוק מדי עבור חלק מהחברים, אז הצענו משהו אחר.`;
     case "unavailable":

@@ -134,6 +134,12 @@ export async function initiateMeeting(
       throw new GroupTooSmallError(groupId, members.length);
     }
 
+    // #240: opening a meeting gives this member their venue lookups back.
+    await tx.groupMember.update({
+      where: { groupId_userId: { groupId, userId: initiatorId } },
+      data: { failedVenueLookups: 0 },
+    });
+
     return tx.meeting.create({
       data: {
         groupId,

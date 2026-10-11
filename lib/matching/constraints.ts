@@ -308,7 +308,12 @@ export type UnverifiedFact =
  * something else — shut at every shared hour, a calendar, a dietary need, or
  * an earlier rejection of that exact evening.
  */
-export type PinnedVenueReason = "not_found" | "too_far" | "unavailable";
+export type PinnedVenueReason =
+  | "not_found"
+  // #240: Google found it, and it is not a restaurant, bar or café.
+  | "not_a_venue"
+  | "too_far"
+  | "unavailable";
 
 export type PairCheck = {
   candidatePlaceId: string;
