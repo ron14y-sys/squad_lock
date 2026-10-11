@@ -1,0 +1,96 @@
+{
+  "id": "tonight-request-bar",
+  "trap": "tonight-request",
+  "description": "A kind of place asked for tonight is a request: it must beat a slightly fairer, better-rated venue of another kind, and the justification must say it answers the request — to the person who asked, and to nobody else.",
+  "participants": [
+    {
+      "name": "Shani",
+      "neighborhood": "Florentin",
+      "coordinates": {
+        "lat": 32.0566,
+        "lng": 34.769
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4,
+      "tonight": {
+        "softPreferences": {
+          "venueKinds": ["bar"]
+        },
+        "words": "הייתי מעדיפה בר הערב"
+      }
+    },
+    {
+      "name": "Yoav",
+      "neighborhood": "Neve Tzedek",
+      "coordinates": {
+        "lat": 32.0606,
+        "lng": 34.7652
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4
+    },
+    {
+      "name": "Noa",
+      "neighborhood": "Rothschild",
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4
+    }
+  ],
+  "availability": [
+    {
+      "day": "Thursday",
+      "date": "2026-09-10",
+      "start": "19:00",
+      "end": "23:00"
+    }
+  ],
+  "candidateVenues": [
+    {
+      "placeId": "place-10-mitbach-leah",
+      "name": "Mitbach Leah",
+      "neighborhood": "Neve Tzedek",
+      "coordinates": {
+        "lat": 32.0605,
+        "lng": 34.77
+      },
+      "soft": {
+        "venueKinds": ["restaurant"]
+      },
+      "openingHours": {
+        "Thursday": ["12:00-23:30"]
+      },
+      "rating": 4.5
+    },
+    {
+      "placeId": "place-10-bar-shesh",
+      "name": "Bar Shesh",
+      "neighborhood": "Rothschild",
+      "coordinates": {
+        "lat": 32.0628,
+        "lng": 34.7738
+      },
+      "soft": {
+        "venueKinds": ["bar"]
+      },
+      "openingHours": {
+        "Thursday": ["18:00-02:00"]
+      },
+      "rating": 4.3
+    }
+  ],
+  "expected": {
+    "venue": "Bar Shesh",
+    "justificationMentions": {
+      "Shani": ["כמו שביקשת"]
+    },
+    "justificationMustNotMention": {
+      "Yoav": ["כמו שביקשת"],
+      "Noa": ["כמו שביקשת"]
+    },
+    "reasoning": "Both venues are open the whole window and close to everyone. Mitbach Leah leads on fairness (worst burden 0.17: Noa 0.66 km of 4) and on rating (4.5), so a model following the list alone picks it. Bar Shesh costs little more (worst 0.21: Shani 0.82 km, Yoav 0.85 km) and is the only bar, which is what Shani asked for tonight. A request outranks that small fairness cost (#224), so Bar Shesh. The venue Shani rejected is not a candidate: a soft rejection blocks it in the real run (blockedByRejections). Only Shani asked, so only her justification may say \"כמו שביקשת\"."
+  }
+}

@@ -162,6 +162,8 @@ export type JudgeableRun = {
     venue: { placeId: string | null; name: string };
     proposedDatetime: Date;
     proposedEnd: Date;
+    /** By participant id, which in an eval is the person's name. */
+    participantJustifications?: Record<string, string>;
   }[];
 };
 
@@ -177,17 +179,52 @@ export function judge(scenario: Scenario, draft: JudgeableRun): Verdict {
   }
 
   const want = scenario.expected.time;
-  if (!want) return { pass: true };
-
-  const start = CLOCK.format(option.proposedDatetime);
-  const end = CLOCK.format(option.proposedEnd);
-  if (start !== want.start || end !== want.end) {
-    return {
-      pass: false,
-      reason: `right venue at ${start}–${end}, expected ${want.start}–${want.end}`,
-    };
+  if (want) {
+    const start = CLOCK.format(option.proposedDatetime);
+    const end = CLOCK.format(option.proposedEnd);
+    if (start !== want.start || end !== want.end) {
+      return {
+        pass: false,
+        reason: `right venue at ${start}–${end}, expected ${want.start}–${want.end}`,
+      };
+    }
   }
 
+  return judgeJustifications(scenario, option.participantJustifications ?? {});
+}
+
+/**
+ * Rank 1's justifications against `justificationMentions` and
+ * `justificationMustNotMention` (#225). A plain substring test: Hebrew
+ * inflects, so a fixture names the stem it needs ("איטלק"), and a missing
+ * justification counts as one that says nothing.
+ */
+export function judgeJustifications(
+  scenario: Scenario,
+  justifications: Record<string, string>
+): Verdict {
+  const { justificationMentions = {}, justificationMustNotMention = {} } =
+    scenario.expected;
+  for (const [person, words] of Object.entries(justificationMentions)) {
+    const said = justifications[person] ?? "";
+    const missing = words.filter((word) => !said.includes(word));
+    if (missing.length > 0) {
+      return {
+        pass: false,
+        reason: `right venue, but ${person}'s justification lacks "${missing.join('", "')}": ${said}`,
+      };
+    }
+  }
+  for (const [person, words] of Object.entries(justificationMustNotMention)) {
+    const said = justifications[person] ?? "";
+    const found = words.filter((word) => said.includes(word));
+    if (found.length > 0) {
+      return {
+        pass: false,
+        reason: `right venue, but ${person}'s justification says "${found.join('", "')}": ${said}`,
+      };
+    }
+  }
   return { pass: true };
 }
 

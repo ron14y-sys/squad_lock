@@ -68,6 +68,8 @@ The burden formula is defined on a straight line with a detour factor. **The sys
 
 `expected.time` is required for mobility-window scenarios and wherever the venue's opening hours trim the group's window; it is omitted only when the whole window survives.
 
+A participant may carry `tonight` — what a rejection or "המצב שלי הערב שונה" set for this meeting: `softPreferences` (a tonight correction), `words` (what they wrote, shown to A4 as their own), `toleranceKm`, `earliestStart`, `latestStart`, `note`. `expected` may add `justificationMentions` and `justificationMustNotMention`, per person: words rank 1's justification must, or must not, contain. Hebrew inflects, so name the stem ("איטלק").
+
 `rejection-loop` scenarios add `initialProposal`, `rejection` (who, free text), and `expectedConstraint` (the structured constraint the Constraint Updater should extract) alongside `expected` (the follow-up proposal).
 
 **`rejections.json` is the second half of A7's measurement.** `08` keeps its
@@ -117,6 +119,10 @@ And the things that **were** wrong, fixed in [#86](https://github.com/ron14y-sys
 | 6   | `06-no-perfect-solution-dispersed-group.json` | no-perfect-solution | Every candidate leaves someone over their tolerance, and leximin picks the lower-rated venue anyway.                                                              |
 | 7   | `08-rejection-loop-budget.json`               | rejection-loop      | A rejection about cost must produce a visibly cheaper follow-up.                                                                                                  |
 | 8   | `09-six-profiles-outlier.json`                | six-profiles        | Six people, five close together; the fair answer is the lowest-rated venue, chosen for the one who lives far away. Added by A10.                                  |
+| 9   | `10-tonight-request-bar.json`                 | tonight-request     | A bar asked for tonight beats a slightly fairer, better-rated restaurant, and only the person who asked is told "כמו שביקשת". Added by #225.                      |
+| 10  | `11-soft-cuisine-preference.json`             | soft-preference     | A profile cuisine decides between two venues nearly tied on fairness, and is named without being called a request. Added by #225.                                 |
+| 11  | `12-tonight-tolerance.json`                   | tonight-tolerance   | Tonight's 2 km replaces the profile's 8 and flips the fairest venue; the justification says "להערב". Added by #225.                                               |
+| 12  | `13-tonight-start-window.json`                | tonight-start       | "Not after 20:00" removes the fairest venue, which opens at 20:30. Added by #225.                                                                                 |
 
 8 of 8–12 required, all agreed by the team.
 
