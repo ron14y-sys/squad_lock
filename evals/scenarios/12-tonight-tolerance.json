@@ -1,0 +1,94 @@
+{
+  "id": "tonight-tolerance",
+  "trap": "tonight-tolerance",
+  "description": "A distance someone set for tonight replaces their profile's: it turns the fairest venue into one beyond their range, and the justification says the range is tonight's.",
+  "participants": [
+    {
+      "name": "Dana",
+      "neighborhood": "Jaffa",
+      "coordinates": {
+        "lat": 32.05,
+        "lng": 34.756
+      },
+      "hardConstraints": [],
+      "toleranceKm": 8,
+      "tonight": {
+        "toleranceKm": 2,
+        "words": "רחוק לי מדי הערב"
+      }
+    },
+    {
+      "name": "Eyal",
+      "neighborhood": "Lev Ha'ir",
+      "coordinates": {
+        "lat": 32.07,
+        "lng": 34.776
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4
+    },
+    {
+      "name": "Lior",
+      "neighborhood": "Rothschild",
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4
+    }
+  ],
+  "availability": [
+    {
+      "day": "Thursday",
+      "date": "2026-09-10",
+      "start": "19:00",
+      "end": "23:00"
+    }
+  ],
+  "candidateVenues": [
+    {
+      "placeId": "place-12-port-said",
+      "name": "Port Sa'id",
+      "neighborhood": "Lev Ha'ir",
+      "coordinates": {
+        "lat": 32.069,
+        "lng": 34.774
+      },
+      "soft": {
+        "venueKinds": ["bar"]
+      },
+      "openingHours": {
+        "Thursday": ["18:00-02:00"]
+      },
+      "rating": 4.4
+    },
+    {
+      "placeId": "place-12-shaffa",
+      "name": "Shaffa Bar",
+      "neighborhood": "Jaffa",
+      "coordinates": {
+        "lat": 32.056,
+        "lng": 34.764
+      },
+      "soft": {
+        "venueKinds": ["bar"]
+      },
+      "openingHours": {
+        "Thursday": ["18:00-02:00"]
+      },
+      "rating": 4.3
+    }
+  ],
+  "expected": {
+    "venue": "Shaffa Bar",
+    "justificationMentions": {
+      "Dana": ["להערב"]
+    },
+    "justificationMustNotMention": {
+      "Eyal": ["להערב"],
+      "Lior": ["להערב"]
+    },
+    "reasoning": "With Dana's profile range of 8 km, Port Sa'id is fairest (worst burden 0.34: Dana 2.71 km of 8) and better rated. Tonight Dana said 2 km, which makes the same trip 1.35 — beyond her range — while Shaffa Bar's worst is 0.50 (Dana 1.01 km of 2, Eyal 1.92 km of 4). Leximin on tonight's range puts Shaffa Bar first, so the answer is mechanical once the range is applied; what this measures is that it is applied, and that Dana's justification says the range is the one she gave for tonight (\"בטווח שציינת להערב\"). Eyal and Lior set nothing for tonight, so theirs must not."
+  }
+}

@@ -45,6 +45,7 @@ import { APP_TIME_ZONE } from "@/lib/types";
 import type {
   Candidate,
   LatLng,
+  LocalTimeOfDay,
   LocalWeekday,
   LocalWindow,
   MobilityWindow,
@@ -52,6 +53,7 @@ import type {
   PreferenceProfile,
   SoftPreferences,
   TimeSlot,
+  TonightCorrection,
   VenueSoftFacts,
 } from "@/lib/types";
 
@@ -71,6 +73,20 @@ export type Scenario = {
     toleranceKm: number;
     mobilityWindows?: MobilityWindow[];
     softPreferences?: SoftPreferences;
+    /**
+     * What this person set for this meeting (#225) — the fields a rejection
+     * (A7) or "המצב שלי הערב שונה" writes on their `ParticipantMeetingContext`
+     * row. `words` is what they wrote when rejecting, which A4 reads as
+     * `in_their_own_words`.
+     */
+    tonight?: {
+      softPreferences?: TonightCorrection;
+      words?: string;
+      toleranceKm?: number;
+      earliestStart?: LocalTimeOfDay;
+      latestStart?: LocalTimeOfDay;
+      note?: string;
+    };
   }[];
   candidateVenues: {
     placeId: string;
@@ -86,6 +102,14 @@ export type Scenario = {
   expected: {
     venue: string;
     time?: { start: string; end: string };
+    /**
+     * Words rank 1's justification must, or must not, contain — per person,
+     * by name (#225). How "בר, כמו שביקשת" is measured: the venue can be right
+     * while the sentence never says it answers the request, or says so to
+     * someone who asked for nothing.
+     */
+    justificationMentions?: Record<string, string[]>;
+    justificationMustNotMention?: Record<string, string[]>;
     reasoning: string;
   };
   initialProposal?: { venue: string };
@@ -251,7 +275,9 @@ function participantsOf(scenario: Scenario): Participant[] {
       softPreferences: person.softPreferences ?? {},
       home: person.coordinates,
       homeNeighbourhood: person.neighborhood ?? null,
-      toleranceKm: person.toleranceKm,
+      // Tonight's distance outranks the profile's, applied once here as
+      // `assembleRun` does, so the burdens, the gate and A4 all read it.
+      toleranceKm: person.tonight?.toleranceKm ?? person.toleranceKm,
       recurringMobilityRules: [],
       createdAt: new Date(0),
       updatedAt: new Date(0),
@@ -266,26 +292,26 @@ function participantsOf(scenario: Scenario): Participant[] {
       // A scenario's mobility windows are about *this evening*, so they belong
       // on the per-meeting context, which is what outranks the profile's
       // recurring rules (spec §5.7, A2 `availableModes`).
-      context: person.mobilityWindows
-        ? {
-            id: `context-${person.name}`,
-            meetingId: scenario.id,
-            userId: person.name,
-            origin: null,
-            originLabel: null,
-            mobilityWindows: person.mobilityWindows,
-            // A scenario's mobility windows say nothing about preferences.
-            // `null` is "no correction", which is not the same as `{}`.
-            softPreferences: null,
-            toleranceKm: null,
-            earliestStart: null,
-            latestStart: null,
-            untranslated: null,
-            note: null,
-            createdAt: new Date(0),
-            updatedAt: new Date(0),
-          }
-        : null,
+      context:
+        person.mobilityWindows || person.tonight
+          ? {
+              id: `context-${person.name}`,
+              meetingId: scenario.id,
+              userId: person.name,
+              origin: null,
+              originLabel: null,
+              mobilityWindows: person.mobilityWindows ?? [],
+              // `null` is "no correction", which is not the same as `{}`.
+              softPreferences: person.tonight?.softPreferences ?? null,
+              toleranceKm: person.tonight?.toleranceKm ?? null,
+              earliestStart: person.tonight?.earliestStart ?? null,
+              latestStart: person.tonight?.latestStart ?? null,
+              untranslated: null,
+              note: person.tonight?.note ?? null,
+              createdAt: new Date(0),
+              updatedAt: new Date(0),
+            }
+          : null,
       origin: person.coordinates,
       // No scenario carries a calendar: availability is stated directly as the
       // window the group is already free in.
@@ -320,6 +346,19 @@ export function scenarioSlots(scenario: Scenario): TimeSlot[] {
     // "00:00" or anything at or before the start is the following midnight.
     end: instantOf(window.date, window.end, window.end <= window.start ? 1 : 0),
   }));
+}
+
+/**
+ * What each person wrote when rejecting, keyed by id (the name here) — absent
+ * when nobody did, as `assembleRun` leaves it.
+ */
+function rejectionsOf(scenario: Scenario): Pick<MatchAgentInput, "rejections"> {
+  const rejections = Object.fromEntries(
+    scenario.participants.flatMap((person) =>
+      person.tonight?.words ? [[person.name, [person.tonight.words]]] : []
+    )
+  );
+  return Object.keys(rejections).length > 0 ? { rejections } : {};
 }
 
 /** Both kinds of venue fact travel beside a candidate, keyed by `placeId`. */
@@ -386,6 +425,7 @@ export function scenarioAgentInput(
     ranked: rankViable(filtered, candidates, participants),
     venueFacts,
     venueSoftFacts: venueSoftFactsOf(scenario),
+    ...rejectionsOf(scenario),
     ...overrides,
   };
 }

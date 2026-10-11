@@ -6,6 +6,7 @@ import {
   loadScenarios,
   openingWindows,
   rejectionCases,
+  scenarioAgentInput,
   type Scenario,
 } from "@/evals/adapter";
 
@@ -738,5 +739,93 @@ describe("the rejections A7 is measured on", () => {
     expect(new Set(cases.map((one) => one.expected.objection))).toEqual(
       new Set(["soft", "distance", "time", "venue_identity", "none"])
     );
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * #225: tonight's requests and preferences — each trap has to hold
+ * ---------------------------------------------------------------------- */
+
+/** The placeIds A4 would be shown first and at all, from the real pipeline. */
+function pipeline(scenario: Scenario) {
+  const input = scenarioAgentInput(scenario);
+  return {
+    fairest: input.ranked[0]?.candidate.placeId,
+    viable: input.viable.map((pair) => pair.candidatePlaceId),
+  };
+}
+
+const placeIdOf = (scenario: Scenario, name: string) =>
+  scenario.candidateVenues.find((venue) => venue.name === name)!.placeId;
+
+/** The same scenario as if nobody had set anything for tonight. */
+const withoutTonight = (scenario: Scenario): Scenario => ({
+  ...scenario,
+  participants: scenario.participants.map((person) => ({
+    ...person,
+    tonight: undefined,
+  })),
+});
+
+describe("tonight's fields speak the engine's vocabulary (#225)", () => {
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s: every tonight correction reads back unchanged",
+    (_id, scenario) => {
+      for (const person of scenario.participants) {
+        const correction = person.tonight?.softPreferences;
+        if (correction) {
+          expect(tonightCorrectionFromJson(correction)).toEqual(correction);
+        }
+      }
+    }
+  );
+
+  it.each(scenarios.map((s) => [s.id, s] as const))(
+    "%s: every justification check names someone in the meeting",
+    (_id, scenario) => {
+      const names = scenario.participants.map((person) => person.name);
+      for (const person of [
+        ...Object.keys(scenario.expected.justificationMentions ?? {}),
+        ...Object.keys(scenario.expected.justificationMustNotMention ?? {}),
+      ]) {
+        expect(names).toContain(person);
+      }
+    }
+  );
+});
+
+describe("the traps #225 sets", () => {
+  // A request or a preference only measures something when it is what
+  // separates the answer from the venue fairness alone would pick.
+  it.each(["tonight-request-bar", "soft-cuisine-preference"])(
+    "%s: the answer is allowed but is not the fairest venue",
+    (id) => {
+      const scenario = loadScenario(id);
+      const expected = placeIdOf(scenario, scenario.expected.venue);
+      const { fairest, viable } = pipeline(scenario);
+      expect(viable).toContain(expected);
+      expect(fairest).not.toBe(expected);
+    }
+  );
+
+  it("tonight-tolerance: tonight's range, and only tonight's, makes the answer the fairest", () => {
+    const scenario = loadScenario("tonight-tolerance");
+    const expected = placeIdOf(scenario, scenario.expected.venue);
+    expect(pipeline(scenario).fairest).toBe(expected);
+    expect(pipeline(withoutTonight(scenario)).fairest).not.toBe(expected);
+  });
+
+  it("tonight-start-window: tonight's latest start, and only it, removes the fairest venue", () => {
+    const scenario = loadScenario("tonight-start-window");
+    const expected = placeIdOf(scenario, scenario.expected.venue);
+    expect(new Set(pipeline(scenario).viable)).toEqual(new Set([expected]));
+    expect(pipeline(withoutTonight(scenario)).fairest).not.toBe(expected);
+  });
+
+  it("tonight-request-bar: the rejection's words reach A4 as the person's own", () => {
+    const input = scenarioAgentInput(loadScenario("tonight-request-bar"));
+    expect(input.rejections).toEqual({ Shani: ["הייתי מעדיפה בר הערב"] });
+    const shani = input.participants.find((p) => p.name === "Shani")!;
+    expect(shani.context?.softPreferences).toEqual({ venueKinds: ["bar"] });
   });
 });

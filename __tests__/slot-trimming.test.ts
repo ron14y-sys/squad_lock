@@ -281,6 +281,8 @@ describe("the adapter now trims, so the pipeline offers the agreed hours", () =>
     expect(trimmed.map((s) => s.id)).toEqual([
       "mobility-window-trap",
       "no-perfect-solution-diet-conflict",
+      // #225: Bar 51 closes at 22:00, inside the group's 18:00–00:00.
+      "tonight-start-window",
     ]);
 
     for (const scenario of trimmed) {

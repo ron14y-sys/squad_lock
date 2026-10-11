@@ -1,0 +1,93 @@
+{
+  "id": "soft-cuisine-preference",
+  "trap": "soft-preference",
+  "description": "A cuisine in someone's profile is a preference: it decides between two venues that are nearly tied on fairness, and the justification names the cuisine without calling it a request.",
+  "participants": [
+    {
+      "name": "Tamar",
+      "neighborhood": "Kerem HaTeimanim",
+      "coordinates": {
+        "lat": 32.0685,
+        "lng": 34.7675
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4,
+      "softPreferences": {
+        "cuisines": ["italian"]
+      }
+    },
+    {
+      "name": "Itai",
+      "neighborhood": "Lev Ha'ir",
+      "coordinates": {
+        "lat": 32.07,
+        "lng": 34.776
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4
+    },
+    {
+      "name": "Maya",
+      "neighborhood": "Bograshov",
+      "coordinates": {
+        "lat": 32.078,
+        "lng": 34.77
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4
+    }
+  ],
+  "availability": [
+    {
+      "day": "Thursday",
+      "date": "2026-09-10",
+      "start": "19:00",
+      "end": "23:00"
+    }
+  ],
+  "candidateVenues": [
+    {
+      "placeId": "place-11-hamiznon",
+      "name": "HaMiznon",
+      "neighborhood": "Lev Ha'ir",
+      "coordinates": {
+        "lat": 32.0722,
+        "lng": 34.7715
+      },
+      "soft": {
+        "venueKinds": ["restaurant"]
+      },
+      "openingHours": {
+        "Thursday": ["12:00-23:30"]
+      },
+      "rating": 4.4
+    },
+    {
+      "placeId": "place-11-pronto",
+      "name": "Pronto",
+      "neighborhood": "Lev Ha'ir",
+      "coordinates": {
+        "lat": 32.0715,
+        "lng": 34.7725
+      },
+      "soft": {
+        "venueKinds": ["restaurant"],
+        "cuisines": ["italian"]
+      },
+      "openingHours": {
+        "Thursday": ["12:00-23:30"]
+      },
+      "rating": 4.4
+    }
+  ],
+  "expected": {
+    "venue": "Pronto",
+    "justificationMentions": {
+      "Tamar": ["איטלק"]
+    },
+    "justificationMustNotMention": {
+      "Tamar": ["כמו שביקשת"]
+    },
+    "reasoning": "Two restaurants a block apart with the same rating. HaMiznon leads on fairness by a hair (worst burden 0.17, Maya 0.66 km) over Pronto (0.19, Maya 0.76 km) — the two are comparable, which is exactly when a stated preference decides (#224). Tamar's profile lists Italian and only Pronto is Italian, so Pronto. Nobody else stated anything, and a silence is not a vote. Tamar's justification names the Italian food (\"איטלק\" covers איטלקי and איטלקית); it must not say \"כמו שביקשת\", because a profile preference is not something she asked for tonight."
+  }
+}

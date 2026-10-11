@@ -1,0 +1,98 @@
+{
+  "id": "tonight-start-window",
+  "trap": "tonight-start",
+  "description": "A latest start someone set for tonight removes a venue that only opens after it, and the justification says the start answers the request.",
+  "participants": [
+    {
+      "name": "Dana",
+      "neighborhood": "Florentin",
+      "coordinates": {
+        "lat": 32.0566,
+        "lng": 34.769
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4,
+      "tonight": {
+        "latestStart": "20:00",
+        "words": "מאוחר לי, לא אחרי שמונה"
+      }
+    },
+    {
+      "name": "Ori",
+      "neighborhood": "Neve Tzedek",
+      "coordinates": {
+        "lat": 32.0606,
+        "lng": 34.7652
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4
+    },
+    {
+      "name": "Gal",
+      "neighborhood": "Rothschild",
+      "coordinates": {
+        "lat": 32.0648,
+        "lng": 34.7749
+      },
+      "hardConstraints": [],
+      "toleranceKm": 4
+    }
+  ],
+  "availability": [
+    {
+      "day": "Thursday",
+      "date": "2026-09-10",
+      "start": "18:00",
+      "end": "00:00"
+    }
+  ],
+  "candidateVenues": [
+    {
+      "placeId": "place-13-kuli-alma",
+      "name": "Kuli Alma",
+      "neighborhood": "Rothschild",
+      "coordinates": {
+        "lat": 32.0612,
+        "lng": 34.7705
+      },
+      "soft": {
+        "venueKinds": ["bar"]
+      },
+      "openingHours": {
+        "Thursday": ["20:30-03:00"]
+      },
+      "rating": 4.5
+    },
+    {
+      "placeId": "place-13-bar-51",
+      "name": "Bar 51",
+      "neighborhood": "Neve Tzedek",
+      "coordinates": {
+        "lat": 32.064,
+        "lng": 34.768
+      },
+      "soft": {
+        "venueKinds": ["bar"]
+      },
+      "openingHours": {
+        "Thursday": ["17:00-22:00"]
+      },
+      "rating": 4.2
+    }
+  ],
+  "expected": {
+    "venue": "Bar 51",
+    "time": {
+      "start": "18:00",
+      "end": "22:00"
+    },
+    "justificationMentions": {
+      "Dana": ["כמו שביקשת"]
+    },
+    "justificationMustNotMention": {
+      "Ori": ["כמו שביקשת"],
+      "Gal": ["כמו שביקשת"]
+    },
+    "reasoning": "Without Dana's window, Kuli Alma is fairest (worst burden 0.14) and better rated, but it opens at 20:30, so its only evening is 20:30–00:00, which starts after the 20:00 Dana gave tonight; A2 drops it (\"Dana asked to start by 20:00\"). Bar 51 is left (worst burden 0.21, Dana 0.83 km), and its hours trim the group's 18:00–00:00 to 18:00–22:00, which starts before 20:00. Dana's justification says the start answers her request; nobody else asked for one."
+  }
+}

@@ -76,6 +76,12 @@ describe("classify", () => {
       "no-perfect-solution-dispersed-group": "scored",
       "rejection-loop-budget": "deferred",
       "six-profiles-outlier": "scored",
+      // #225: cycle-1 scenarios whose tonight's request is set on the
+      // context, not reached through a rejection loop — scored like any other.
+      "tonight-request-bar": "scored",
+      "soft-cuisine-preference": "scored",
+      "tonight-tolerance": "scored",
+      "tonight-start-window": "scored",
     });
   });
 });
@@ -168,6 +174,61 @@ describe("judge", () => {
       venue: { ...draft.options[0].venue, placeId: "place-01-container" },
     });
     expect(judge(venueOnly, draft).pass).toBe(false);
+  });
+});
+
+describe("judge, on what the justification says (#225)", () => {
+  const bar = loadScenario("tonight-request-bar");
+
+  function barDraft(justifications: Record<string, string>) {
+    const draft = draftOf(bar.id, "place-10-bar-shesh", {
+      date: "2026-09-10",
+      start: "19:00",
+      end: "23:00",
+    });
+    draft.options[0].participantJustifications = justifications;
+    return draft;
+  }
+
+  const RIGHT = {
+    Shani: "בר שש ברוטשילד, בר כמו שביקשת, בטווח שציינת כנוח לנסיעה.",
+    Yoav: "מנווה צדק, בטווח שציינת כנוח לנסיעה.",
+    Noa: "קרוב לרוטשילד, בטווח שציינת כנוח לנסיעה.",
+  };
+
+  it("passes the right venue when the person who asked is told it answers her", () => {
+    expect(judge(bar, barDraft(RIGHT))).toEqual({ pass: true });
+  });
+
+  it("fails the right venue when the request goes unmentioned", () => {
+    const verdict = judge(
+      bar,
+      barDraft({ ...RIGHT, Shani: "בר שש ברוטשילד, בטווח שציינת." })
+    );
+    expect(verdict.pass).toBe(false);
+    expect(verdict.reason).toContain("Shani");
+    expect(verdict.reason).toContain("כמו שביקשת");
+  });
+
+  it("fails it when someone who asked for nothing is told they asked", () => {
+    const verdict = judge(
+      bar,
+      barDraft({ ...RIGHT, Yoav: "בר, כמו שביקשת, מנווה צדק." })
+    );
+    expect(verdict.pass).toBe(false);
+    expect(verdict.reason).toContain("Yoav");
+  });
+
+  it("counts a missing justification as one that says nothing", () => {
+    const withoutShani: Record<string, string> = { ...RIGHT };
+    delete withoutShani.Shani;
+    expect(judge(bar, barDraft(withoutShani)).pass).toBe(false);
+  });
+
+  it("still fails the wrong venue first, whatever the words", () => {
+    const draft = barDraft(RIGHT);
+    draft.options[0].venue.placeId = "place-10-mitbach-leah";
+    expect(judge(bar, draft).reason).toContain("expected Bar Shesh");
   });
 });
 
