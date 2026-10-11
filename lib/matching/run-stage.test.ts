@@ -698,3 +698,71 @@ describe("a venue the initiator named (#212)", () => {
     expect(unverifiedWritten()).toEqual([[fact], [fact]]);
   });
 });
+
+describe("venues the group was lately offered (#213)", () => {
+  const daysAgo = (days: number) => new Date(NOW.getTime() - days * 86_400_000);
+  const pastRun = (days: number, placeId: string | null, name: string) => ({
+    createdAt: daysAgo(days),
+    options: [{ venuePlaceId: placeId, venueName: name }],
+  });
+
+  /** The group's other meetings, as `assembleRun` reads them. */
+  function groupHistory(...runs: ReturnType<typeof pastRun>[]) {
+    meetingRow = {
+      ...MEETING,
+      group: { meetings: [{ matchRuns: runs }] },
+    } as unknown as typeof MEETING;
+  }
+
+  async function inputSent() {
+    runMatchingAgent.mockRejectedValue(new Error("stop here"));
+    await runCycle("m1", NOW, FREE);
+    return runMatchingAgent.mock.calls[0][0];
+  }
+
+  it("hands the model the lately-offered venue it could pick", async () => {
+    groupHistory(pastRun(5, "p1", "Next door"));
+
+    const input = await inputSent();
+
+    expect(input.recentVenues).toEqual([{ placeId: "p1", name: "Next door" }]);
+  });
+
+  it("says nothing for a group with no history, so a first meeting is weighed as before", async () => {
+    const input = await inputSent();
+
+    expect(input).not.toHaveProperty("recentVenues");
+  });
+
+  it("leaves out a venue that is not in the pool, and one older than a month", async () => {
+    groupHistory(
+      pastRun(5, "somewhere-else", "Somewhere else"),
+      pastRun(40, "p1", "Next door")
+    );
+
+    const input = await inputSent();
+
+    expect(input).not.toHaveProperty("recentVenues");
+  });
+
+  it("never calls the named venue something to avoid", async () => {
+    groupHistory(pastRun(5, "pinned", "Bar Ha'Ir"));
+    meetingRow = {
+      ...meetingRow,
+      pinnedVenue: "Bar Ha'Ir",
+    } as unknown as typeof MEETING;
+    findPlaceByText.mockResolvedValue({
+      placeId: "pinned",
+      name: "Bar Ha'Ir",
+      address: null,
+      location: { lat: HOME.lat + 0.001, lng: HOME.lng },
+      neighbourhood: null,
+      types: ["bar"],
+    });
+
+    const input = await inputSent();
+
+    expect(input.pinnedVenue).toEqual({ placeId: "pinned", name: "Bar Ha'Ir" });
+    expect(input).not.toHaveProperty("recentVenues");
+  });
+});

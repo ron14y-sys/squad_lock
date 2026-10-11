@@ -185,6 +185,15 @@ export type MatchAgentInput = {
    * model, which would otherwise be handed a rule it cannot satisfy.
    */
   pinnedVenue?: { placeId: string; name: string };
+  /**
+   * #213: venues that were the top proposal of another meeting of this group
+   * in the last month, **only those among `candidates`** — newest first. The
+   * model is asked to prefer a different place unless one of these is clearly
+   * the better fit. Advice, never a rule: nothing here is removed from the
+   * pool and `validateOptions` does not check it. Absent when the group has
+   * no history, so a first meeting is weighed exactly as before.
+   */
+  recentVenues?: { placeId: string; name: string }[];
   /** Streams the answer as it arrives — the progress C5/C6 render (§4.1e). */
   onText?: (chunk: string, soFar: string) => void;
 };
