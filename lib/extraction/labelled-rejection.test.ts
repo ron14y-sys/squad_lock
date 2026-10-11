@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   constraintUpdateFromLabels,
   hasLabels,
+  reasonTextOf,
   sentenceFromLabels,
 } from "./labelled-rejection";
 
@@ -132,5 +133,21 @@ describe("sentenceFromLabels", () => {
     ).toBe(
       "לא מתאים לי: סגנון המקום (בר); סוג האוכל (פיצה); רחוק לי מדי; השעה לא מתאימה, מתאים לי 21:00; יקר לי מדי"
     );
+  });
+});
+
+describe("reasonTextOf", () => {
+  it("is the ticked sentence, then the person's own words", () => {
+    expect(reasonTextOf({ tooFar: true }, "מחוץ לאשדוד")).toBe(
+      "לא מתאים לי: רחוק לי מדי · מחוץ לאשדוד"
+    );
+  });
+
+  it("is just whichever of the two there is", () => {
+    expect(reasonTextOf({ tooExpensive: true }, undefined)).toBe(
+      "לא מתאים לי: יקר לי מדי"
+    );
+    expect(reasonTextOf(undefined, "סתם")).toBe("סתם");
+    expect(reasonTextOf({}, undefined)).toBe("");
   });
 });

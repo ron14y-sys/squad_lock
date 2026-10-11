@@ -14,36 +14,9 @@
  */
 
 import { objectionOf, type ConstraintUpdate } from "./constraint-updater";
+import { type RejectionLabels } from "./rejection-labels";
 import { localTimeOf } from "./tonight-bounds";
-import {
-  CUISINE_LABELS,
-  VENUE_KIND_LABELS,
-  type Cuisine,
-  type VenueKind,
-} from "@/lib/preferences/vocabulary";
 import type { TonightCorrection } from "@/lib/types";
-
-export type RejectionLabels = {
-  /** "The style of place doesn't suit me" — bar, café, restaurant. */
-  venueKinds?: VenueKind[];
-  /** "The kind of food doesn't suit me". */
-  cuisines?: Cuisine[];
-  tooFar?: boolean;
-  /** "The hour doesn't suit me", and the local `HH:MM` that would. */
-  suitableStart?: string;
-  tooExpensive?: boolean;
-};
-
-/** Whether a rejection carries anything at all — an empty one corrects nothing. */
-export function hasLabels(labels: RejectionLabels): boolean {
-  return (
-    (labels.venueKinds?.length ?? 0) > 0 ||
-    (labels.cuisines?.length ?? 0) > 0 ||
-    labels.tooFar === true ||
-    labels.suitableStart !== undefined ||
-    labels.tooExpensive === true
-  );
-}
 
 function minutesOf(time: string): number {
   const [hours, minutes] = time.split(":").map(Number);
@@ -93,27 +66,9 @@ export function constraintUpdateFromLabels(
   return { ...update, objection: objectionOf(update) };
 }
 
-/**
- * The labels as one Hebrew sentence. It is stored as the rejection's own
- * words, so the timeline shows something and the next weighing reads it like
- * any other.
- */
-export function sentenceFromLabels(labels: RejectionLabels): string {
-  const parts: string[] = [];
-  if (labels.venueKinds?.length) {
-    parts.push(
-      `סגנון המקום (${labels.venueKinds.map((kind) => VENUE_KIND_LABELS[kind]).join(", ")})`
-    );
-  }
-  if (labels.cuisines?.length) {
-    parts.push(
-      `סוג האוכל (${labels.cuisines.map((cuisine) => CUISINE_LABELS[cuisine]).join(", ")})`
-    );
-  }
-  if (labels.tooFar) parts.push("רחוק לי מדי");
-  if (labels.suitableStart !== undefined) {
-    parts.push(`השעה לא מתאימה, מתאים לי ${labels.suitableStart}`);
-  }
-  if (labels.tooExpensive) parts.push("יקר לי מדי");
-  return parts.length > 0 ? `לא מתאים לי: ${parts.join("; ")}` : "";
-}
+export {
+  hasLabels,
+  reasonTextOf,
+  sentenceFromLabels,
+  type RejectionLabels,
+} from "./rejection-labels";

@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { hasLabels } from "@/lib/extraction/rejection-labels";
+import { CUISINES, VENUE_KINDS } from "@/lib/preferences/vocabulary";
+
 /**
  * POST /api/groups/[id]/meetings request body — initiating a meeting
  * (spec §3, §3.1, §5.3, issue #25).
@@ -94,6 +97,22 @@ const amendmentSchema = z
   })
   .strict();
 
+/**
+ * A rejection made by ticking what was wrong (`lib/extraction/labelled-rejection`).
+ * Only what the engine can act on: an unknown cuisine or an extra key is an
+ * error, not something to ignore, so a label can never be accepted and then
+ * do nothing.
+ */
+export const rejectionLabelsSchema = z
+  .object({
+    venueKinds: z.array(z.enum(VENUE_KINDS)).optional(),
+    cuisines: z.array(z.enum(CUISINES)).optional(),
+    tooFar: z.boolean().optional(),
+    suitableStart: localTimeOfDaySchema.optional(),
+    tooExpensive: z.boolean().optional(),
+  })
+  .strict();
+
 export const respondToMeetingSchema = z
   .discriminatedUnion("kind", [
     z.object({ kind: z.literal("approve") }).strict(),
@@ -101,11 +120,23 @@ export const respondToMeetingSchema = z
     z
       .object({
         kind: z.literal("doesnt_suit"),
-        reasonText: z.string().trim().min(1),
+        // Either of the two is enough: ticked reasons, or the person's words.
+        reasonText: z.string().trim().min(1).optional(),
+        reasons: rejectionLabelsSchema.optional(),
       })
       .strict(),
     amendmentSchema,
   ])
+  .refine(
+    (data) =>
+      data.kind !== "doesnt_suit" ||
+      data.reasonText !== undefined ||
+      (data.reasons !== undefined && hasLabels(data.reasons)),
+    {
+      message: "A rejection needs a reason: tick one or write it.",
+      path: ["reasonText"],
+    }
+  )
   .refine(
     (data) =>
       data.kind !== "amendment" ||
