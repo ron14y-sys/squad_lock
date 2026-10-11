@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { hasLabels } from "@/lib/extraction/rejection-labels";
+import {
+  MAX_AVOIDED_CUISINES,
+  MAX_AVOIDED_VENUE_KINDS,
+  hasLabels,
+} from "@/lib/extraction/rejection-labels";
 import { CUISINES, VENUE_KINDS } from "@/lib/preferences/vocabulary";
 
 /**
@@ -105,8 +109,11 @@ const amendmentSchema = z
  */
 export const rejectionLabelsSchema = z
   .object({
-    venueKinds: z.array(z.enum(VENUE_KINDS)).optional(),
-    cuisines: z.array(z.enum(CUISINES)).optional(),
+    venueKinds: z
+      .array(z.enum(VENUE_KINDS))
+      .max(MAX_AVOIDED_VENUE_KINDS)
+      .optional(),
+    cuisines: z.array(z.enum(CUISINES)).max(MAX_AVOIDED_CUISINES).optional(),
     tooFar: z.boolean().optional(),
     suitableStart: localTimeOfDaySchema.optional(),
     tooExpensive: z.boolean().optional(),

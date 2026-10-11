@@ -158,6 +158,58 @@ describe("respondToMeetingSchema", () => {
       ).toBe(false);
     });
 
+    it("never lets every style of place or every cuisine be ruled out", () => {
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: { venueKinds: ["bar", "cafe"] },
+        }).success
+      ).toBe(true);
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: { venueKinds: ["bar", "cafe", "restaurant"] },
+        }).success
+      ).toBe(false);
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: {
+            cuisines: [
+              "italian",
+              "pizza",
+              "burger",
+              "meat",
+              "asian",
+              "sushi",
+              "middle_eastern",
+              "seafood",
+              "mexican",
+            ],
+          },
+        }).success
+      ).toBe(true);
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: {
+            cuisines: [
+              "italian",
+              "pizza",
+              "burger",
+              "meat",
+              "asian",
+              "sushi",
+              "middle_eastern",
+              "seafood",
+              "mexican",
+              "indian",
+            ],
+          },
+        }).success
+      ).toBe(false);
+    });
+
     it("rejects a start that is not HH:MM, and a label that does not exist", () => {
       expect(
         parse({ kind: "doesnt_suit", reasons: { suitableStart: "9pm" } })

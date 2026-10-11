@@ -65,7 +65,7 @@ test("can't-make-it posts kind: cant_make_it", async () => {
   expect(JSON.parse(init.body as string)).toEqual({ kind: "cant_make_it" });
 });
 
-test("something doesn't work shows the remaining cycle count and requires text", async () => {
+test("something doesn't work shows the remaining cycle count and requires a reason", async () => {
   const user = userEvent.setup();
   const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({})));
   vi.stubGlobal("fetch", fetchMock);
@@ -89,6 +89,9 @@ test("something doesn't work shows the remaining cycle count and requires text",
   const sendButton = screen.getByRole("button", { name: "שלח" });
   expect(sendButton).toBeDisabled();
 
+  // The box for one's own words sits behind "other".
+  expect(screen.queryByPlaceholderText("מה לא מתאים?")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "אחר" }));
   await user.type(screen.getByPlaceholderText("מה לא מתאים?"), "רועש מדי");
   expect(sendButton).not.toBeDisabled();
   await user.click(sendButton);
@@ -98,6 +101,184 @@ test("something doesn't work shows the remaining cycle count and requires text",
     kind: "doesnt_suit",
     reasonText: "רועש מדי",
   });
+});
+
+function openRejection(
+  fetchMock = vi.fn(() => Promise.resolve(jsonResponse({})))
+) {
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <ResponseControls
+      meetingId="meeting-1"
+      myStatus="pending"
+      remainingCycles={3}
+      amendmentIsFree={true}
+      disabled={false}
+      onResponded={vi.fn()}
+    />
+  );
+  return fetchMock;
+}
+
+function sentBody(fetchMock: ReturnType<typeof vi.fn>) {
+  const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  return JSON.parse(init.body as string);
+}
+
+test("a ticked reason with nothing to say yet does not enable sending", async () => {
+  const user = userEvent.setup();
+  openRejection();
+  await user.click(
+    screen.getByRole("button", { name: "משהו כאן לא מתאים לי" })
+  );
+  const send = screen.getByRole("button", { name: "שלח" });
+  expect(send).toBeDisabled();
+
+  // A style or a cuisine ticked but none picked, an hour ticked but not set:
+  // each is half a reason, so nothing can be sent yet.
+  await user.click(screen.getByRole("button", { name: "סגנון המקום" }));
+  await user.click(screen.getByRole("button", { name: "סוג האוכל" }));
+  await user.click(screen.getByRole("button", { name: "השעה לא מתאימה" }));
+  await user.click(screen.getByRole("button", { name: "אחר" }));
+  expect(send).toBeDisabled();
+
+  await user.click(screen.getByRole("button", { name: "בר" }));
+  expect(send).not.toBeDisabled();
+});
+
+test("one tick is a whole reason for 'too far' and 'too expensive'", async () => {
+  const user = userEvent.setup();
+  const fetchMock = openRejection();
+  await user.click(
+    screen.getByRole("button", { name: "משהו כאן לא מתאים לי" })
+  );
+  await user.click(screen.getByRole("button", { name: "רחוק לי מדי" }));
+  await user.click(screen.getByRole("button", { name: "יקר לי מדי" }));
+  await user.click(screen.getByRole("button", { name: "שלח" }));
+
+  expect(sentBody(fetchMock)).toEqual({
+    kind: "doesnt_suit",
+    reasons: { tooFar: true, tooExpensive: true },
+  });
+});
+
+test("styles, cuisines, an hour and own words travel together", async () => {
+  const user = userEvent.setup();
+  const fetchMock = openRejection();
+  await user.click(
+    screen.getByRole("button", { name: "משהו כאן לא מתאים לי" })
+  );
+
+  await user.click(screen.getByRole("button", { name: "סגנון המקום" }));
+  await user.click(screen.getByRole("button", { name: "בר" }));
+  await user.click(screen.getByRole("button", { name: "בית קפה" }));
+
+  await user.click(screen.getByRole("button", { name: "סוג האוכל" }));
+  await user.click(screen.getByRole("button", { name: "פיצה" }));
+
+  await user.click(screen.getByRole("button", { name: "השעה לא מתאימה" }));
+  await user.type(screen.getByLabelText("שעה מתאימה"), "21:30");
+
+  await user.click(screen.getByRole("button", { name: "אחר" }));
+  await user.type(screen.getByPlaceholderText("מה לא מתאים?"), "  רועש  ");
+
+  await user.click(screen.getByRole("button", { name: "שלח" }));
+
+  expect(sentBody(fetchMock)).toEqual({
+    kind: "doesnt_suit",
+    reasons: {
+      venueKinds: ["bar", "cafe"],
+      cuisines: ["pizza"],
+      suitableStart: "21:30",
+    },
+    reasonText: "רועש",
+  });
+});
+
+test("un-ticking a reason takes it out of the request", async () => {
+  const user = userEvent.setup();
+  const fetchMock = openRejection();
+  await user.click(
+    screen.getByRole("button", { name: "משהו כאן לא מתאים לי" })
+  );
+
+  await user.click(screen.getByRole("button", { name: "סוג האוכל" }));
+  await user.click(screen.getByRole("button", { name: "פיצה" }));
+  await user.click(screen.getByRole("button", { name: "סוג האוכל" }));
+  await user.click(screen.getByRole("button", { name: "יקר לי מדי" }));
+  await user.click(screen.getByRole("button", { name: "שלח" }));
+
+  expect(sentBody(fetchMock)).toEqual({
+    kind: "doesnt_suit",
+    reasons: { tooExpensive: true },
+  });
+});
+
+test("not every style of place can be ruled out", async () => {
+  const user = userEvent.setup();
+  openRejection();
+  await user.click(
+    screen.getByRole("button", { name: "משהו כאן לא מתאים לי" })
+  );
+  await user.click(screen.getByRole("button", { name: "סגנון המקום" }));
+
+  await user.click(screen.getByRole("button", { name: "בר" }));
+  await user.click(screen.getByRole("button", { name: "בית קפה" }));
+
+  // Two of three are out; the last one stays available.
+  expect(screen.getByRole("button", { name: "מסעדה" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "בר" })).not.toBeDisabled();
+
+  await user.click(screen.getByRole("button", { name: "בר" }));
+  expect(screen.getByRole("button", { name: "מסעדה" })).not.toBeDisabled();
+});
+
+test("not every cuisine can be ruled out", async () => {
+  const user = userEvent.setup();
+  openRejection();
+  await user.click(
+    screen.getByRole("button", { name: "משהו כאן לא מתאים לי" })
+  );
+  await user.click(screen.getByRole("button", { name: "סוג האוכל" }));
+
+  const labels = [
+    "איטלקי",
+    "פיצה",
+    "המבורגר",
+    "בשרים / גריל",
+    "אסייתי",
+    "סושי / יפני",
+    "ים-תיכוני / מזרחי",
+    "דגים ופירות ים",
+    "מקסיקני",
+  ];
+  for (const label of labels) {
+    await user.click(screen.getByRole("button", { name: label }));
+  }
+
+  // Nine of ten are out; the tenth can no longer be picked.
+  expect(screen.getByRole("button", { name: "הודי" })).toBeDisabled();
+});
+
+test("a failed rejection keeps the form open and shows the error", async () => {
+  const user = userEvent.setup();
+  openRejection(
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({ error: "This meeting is no longer open." }, 409)
+      )
+    )
+  );
+  await user.click(
+    screen.getByRole("button", { name: "משהו כאן לא מתאים לי" })
+  );
+  await user.click(screen.getByRole("button", { name: "רחוק לי מדי" }));
+  await user.click(screen.getByRole("button", { name: "שלח" }));
+
+  expect(
+    await screen.findByText("הפגישה הזו כבר לא פתוחה לתגובות.")
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "שלח" })).toBeInTheDocument();
 });
 
 test("an amendment sends only the fields that were filled in, meeting-scoped", async () => {

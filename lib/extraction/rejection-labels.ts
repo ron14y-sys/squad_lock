@@ -6,11 +6,21 @@
  */
 
 import {
+  CUISINES,
   CUISINE_LABELS,
+  VENUE_KINDS,
   VENUE_KIND_LABELS,
   type Cuisine,
   type VenueKind,
 } from "@/lib/preferences/vocabulary";
+
+/**
+ * Not every option can be ruled out: a person who dismisses every style of
+ * place, or every cuisine, leaves the search nothing to offer. One is always
+ * left standing. The form enforces it and the request schema repeats it.
+ */
+export const MAX_AVOIDED_VENUE_KINDS = VENUE_KINDS.length - 1;
+export const MAX_AVOIDED_CUISINES = CUISINES.length - 1;
 
 export type RejectionLabels = {
   /** "The style of place doesn't suit me" — bar, café, restaurant. */
