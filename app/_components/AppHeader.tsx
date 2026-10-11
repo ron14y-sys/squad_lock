@@ -26,11 +26,11 @@ export async function AppHeader() {
 
   return (
     <header className="safe-top sticky top-0 z-10 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-xl items-center justify-between gap-2 px-4 lg:max-w-[680px]">
+      <div className="mx-auto flex min-h-14 w-full max-w-xl flex-wrap items-center justify-between gap-x-2 gap-y-1 px-4 py-1.5 sm:py-0 lg:max-w-[680px]">
         <Logo3D href={session?.user ? "/groups" : undefined} />
         <ThemeToggle />
         {session?.user ? (
-          <div className="flex items-center gap-3">
+          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-start">
             <Link href="/groups" className="sl-navlink">
               קבוצות
             </Link>
