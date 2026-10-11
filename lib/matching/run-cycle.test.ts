@@ -128,11 +128,23 @@ describe("blockedByRejections", () => {
     expect(blocked.venues.has(asian.placeId!)).toBe(true);
   });
 
-  it("blocks only the pair when nothing was understood", () => {
+  // The rejection was read and held nothing about the hour — "סתם". Blocking
+  // only the pair let the same venue come straight back at another time with
+  // nothing changed.
+  it("blocks the whole venue when the rejection said nothing the engine could use", () => {
+    const blocked = blockedByRejections(
+      [asian],
+      [rejection("2026-09-24T15:30:00.000Z", "none")]
+    );
+
+    expect(blocked.venues.has(asian.placeId!)).toBe(true);
+  });
+
+  it("blocks only the pair when nothing could be read", () => {
     for (const outcome of [
-      "none",
       "failed_quota",
       "failed_call",
+      "failed_invalid",
       null,
     ] as const) {
       const blocked = blockedByRejections(

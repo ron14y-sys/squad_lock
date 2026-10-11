@@ -93,8 +93,9 @@ async function recordUpdate(
 /**
  * A rejection made by ticking labels. It reads no model and, like the
  * sentence path, never throws: by now the rejection is committed and the
- * cycle spent. If recording fails the sentence is still kept, as a rejection
- * nothing understood (`none`), so the next weighing at least has the words.
+ * cycle spent. If recording fails the sentence is still kept, as a failed
+ * call, so the next weighing at least has the words and no venue is blocked
+ * on the strength of a row that never said what it was about.
  */
 export async function applyLabelledRejection(
   meetingId: string,
@@ -114,7 +115,13 @@ export async function applyLabelledRejection(
       error
     );
     try {
-      await recordRejectionOutcome(meetingId, userId, "none", null, sentence);
+      await recordRejectionOutcome(
+        meetingId,
+        userId,
+        "failed_call",
+        null,
+        sentence
+      );
     } catch (writeError) {
       console.error(`[a7] could not record the failure`, writeError);
     }

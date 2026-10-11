@@ -104,7 +104,7 @@ describe("applyLabelledRejection", () => {
     expect(recordRejectionOutcome).not.toHaveBeenCalled();
   });
 
-  it("never throws, and keeps the sentence as a rejection nothing understood", async () => {
+  it("never throws, and keeps the sentence as a failed call, which blocks no venue", async () => {
     recordRejectionOutcome
       .mockRejectedValueOnce(new Error("db down"))
       .mockResolvedValueOnce(undefined);
@@ -116,7 +116,7 @@ describe("applyLabelledRejection", () => {
     expect(recordRejectionOutcome).toHaveBeenCalledTimes(2);
     const [, , outcome, correction, text] =
       recordRejectionOutcome.mock.calls[1];
-    expect(outcome).toBe("none");
+    expect(outcome).toBe("failed_call");
     expect(correction).toBeNull();
     expect(text).toBe("לא מתאים לי: יקר לי מדי");
   });
