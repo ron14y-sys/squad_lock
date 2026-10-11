@@ -81,6 +81,7 @@ import {
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
 import type { TonightCorrection } from "@/lib/types/profile";
 import { buildShortlist } from "./funnel";
+import { recentSince, recentVenuesOf } from "./recent";
 import {
   answersRequest,
   googleTypesFor,
@@ -485,6 +486,28 @@ export async function assembleRun(
         orderBy: { cycleNumber: "asc" },
         include: { options: { where: { rank: 1 } } },
       },
+      // #213: the top proposal of every run of the group's *other* meetings
+      // in the last month — what it has lately been shown, as opposed to the
+      // rank 1s above, which are what this one meeting may not repeat.
+      group: {
+        select: {
+          meetings: {
+            where: { id: { not: meetingId } },
+            select: {
+              matchRuns: {
+                where: { createdAt: { gte: recentSince(now) } },
+                select: {
+                  createdAt: true,
+                  options: {
+                    where: { rank: 1 },
+                    select: { venuePlaceId: true, venueName: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
   if (!meeting) throw new Error(`a8: no meeting ${meetingId}`);
@@ -747,6 +770,18 @@ export async function assembleRun(
     }
   }
 
+  // #213: lately-offered venues the model could actually pick. One it cannot
+  // pick is noise, and the named venue is the exception to variety — it was
+  // asked for, so it is never described as something to avoid.
+  const pickable = new Set(ranked.map((score) => score.candidate.placeId));
+  const recentVenues = recentVenuesOf(
+    meeting.group?.meetings ?? [],
+    now
+  ).filter(
+    (venue) =>
+      pickable.has(venue.placeId) && venue.placeId !== pinnedVenue?.placeId
+  );
+
   // Which run this is, counted from the runs themselves. It cannot come from
   // `Meeting.cycleCount`, which counts something else — see `runCycle`.
   const cycleNumber =
@@ -769,6 +804,7 @@ export async function assembleRun(
       ...(venueFacts ? { venueFacts } : {}),
       ...(venueSoftFacts ? { venueSoftFacts } : {}),
       ...(pinnedVenue ? { pinnedVenue } : {}),
+      ...(recentVenues.length > 0 ? { recentVenues } : {}),
     },
     contextIds: meeting.participantContexts.map((row) => row.id),
     uncheckedCalendars: calendars.unread,

@@ -57,6 +57,7 @@ import {
   type ViablePair,
 } from "./constraints";
 import type { CandidateScore } from "./distance";
+import { RECENT_VENUE_DAYS } from "./recent";
 import {
   MATCH_RESULT_JSON_SCHEMA,
   MAX_OPTIONS,
@@ -185,6 +186,15 @@ export type MatchAgentInput = {
    * model, which would otherwise be handed a rule it cannot satisfy.
    */
   pinnedVenue?: { placeId: string; name: string };
+  /**
+   * #213: venues that were the top proposal of another meeting of this group
+   * in the last month, **only those among `candidates`** — newest first. The
+   * model is asked to prefer a different place unless one of these is clearly
+   * the better fit. Advice, never a rule: nothing here is removed from the
+   * pool and `validateOptions` does not check it. Absent when the group has
+   * no history, so a first meeting is weighed exactly as before.
+   */
+  recentVenues?: { placeId: string; name: string }[];
   /** Streams the answer as it arrives — the progress C5/C6 render (§4.1e). */
   onText?: (chunk: string, soFar: string) => void;
 };
@@ -241,6 +251,7 @@ HOW TO CHOOSE
 - "tonight_start" is the earliest ("not_before") and latest ("not_after") start that person accepts for this evening; the pairs already respect it. "tonight_note" is something they wrote about their situation tonight: read it like their own words.
 - "in_their_own_words" is everything that person has said when rejecting a proposal for this evening, oldest first. Not every objection reduces to a field, so read the sentences themselves and answer all of them where the pairs allow it — an earlier one is still true unless a later one takes it back.
 - When the payload names a pinned venue, the person who opened the meeting asked for it by name. Rank 1 MUST be a pair at that venue, at the best of its slots. Ranks 2 and 3 are alternatives, and the fairness advice above applies to them, not to rank 1. In "traded_away" for rank 1, say that it is the requested place.
+- When the payload lists recently offered venues, each was the top proposal for an earlier meeting of this same group. For rank 1, prefer a pair at a venue that is not on that list, and choose one that is on it only when it is clearly the better fit for this group. This is a mild preference: it never outweighs a pinned venue, what someone said about tonight, or the fairness of the journeys. Do not mention it in any justification, and never describe a venue as worse because it was offered before.
 - Your three options must be three different (venue, slot) pairs.
 
 HOW TO WRITE THE JUSTIFICATIONS
@@ -391,6 +402,13 @@ export function buildPayload(input: MatchAgentInput): string {
     ...(input.pinnedVenue
       ? [
           `Pinned venue: "${input.pinnedVenue.name}" (venue_id ${input.pinnedVenue.placeId}) — the person who opened the meeting asked for it. Rank 1 must be a pair at this venue.`,
+        ]
+      : []),
+    ...(input.recentVenues?.length
+      ? [
+          `Recently offered to this group (last ${RECENT_VENUE_DAYS} days, newest first): ${input.recentVenues
+            .map((venue) => `"${venue.name}" (venue_id ${venue.placeId})`)
+            .join(", ")}.`,
         ]
       : []),
     "",
