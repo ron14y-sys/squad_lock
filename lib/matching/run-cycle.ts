@@ -375,7 +375,8 @@ export type Blocked = {
  * | `soft` | the venue | too loud, too expensive — a property of the place, and 19:00 does not fix it |
  * | `time` | the pair | the same venue three hours earlier is the right answer, not a worse one |
  * | `distance` | the venue | it is as far at every hour; blocking only the pair let the same venue come straight back at the next hour ([#211](https://github.com/ron14y-sys/squad_lock/issues/211)). The "no car after 21:00" case (#89) is a mobility amendment, not a rejection |
- * | `none`, `failed_*` | the pair | nothing was understood, so block the minimum #17 requires and let the sentence do the rest |
+ * | `none` | the venue | the rejection was read and said nothing about the hour, so the only thing known is that this place was turned down. Blocking the pair let the same venue come back three hours later with nothing changed |
+| `failed_*` | the pair | nothing was read at all, so block the minimum #17 requires and let the sentence do the rest |
  *
  * Which venue a rejection was *about* is the one that was on screen when it
  * was written — the latest proposal at or before it. That is why the outcome
@@ -401,7 +402,8 @@ export function blockedByRejections(
     if (
       rejection.outcome !== "soft" &&
       rejection.outcome !== "venue_identity" &&
-      rejection.outcome !== "distance"
+      rejection.outcome !== "distance" &&
+      rejection.outcome !== "none"
     ) {
       continue;
     }

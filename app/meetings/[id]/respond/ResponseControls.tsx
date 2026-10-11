@@ -8,12 +8,42 @@ import {
   findNeighbourhoodById,
 } from "@/lib/geo/neighbourhoods";
 import { TOLERANCE_OPTIONS } from "@/lib/preferences/tolerance";
+import {
+  CUISINES,
+  CUISINE_LABELS,
+  VENUE_KINDS,
+  VENUE_KIND_LABELS,
+  type Cuisine,
+  type VenueKind,
+} from "@/lib/preferences/vocabulary";
+import {
+  MAX_AVOIDED_CUISINES,
+  MAX_AVOIDED_VENUE_KINDS,
+  hasLabels,
+  type RejectionLabels,
+} from "@/lib/extraction/rejection-labels";
 
 type ResponseStatus = "pending" | "approved" | "cant_make_it" | "doesnt_suit";
 
 type Mode = "car" | "transit" | "walk";
 
 type Open = "none" | "doesnt_suit" | "amendment";
+
+/** The ways "something doesn't suit me" can be ticked, in the order shown. */
+type ReasonKey = "style" | "cuisine" | "far" | "time" | "price" | "other";
+
+const REASON_ROWS: { key: ReasonKey; label: string }[] = [
+  { key: "style", label: "סגנון המקום" },
+  { key: "cuisine", label: "סוג האוכל" },
+  { key: "far", label: "רחוק לי מדי" },
+  { key: "time", label: "השעה לא מתאימה" },
+  { key: "price", label: "יקר לי מדי" },
+  { key: "other", label: "אחר" },
+];
+
+function toggled<T>(list: T[], item: T): T[] {
+  return list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
+}
 
 const MODE_LABELS: Record<Mode, string> = {
   car: "רכב",
@@ -78,6 +108,10 @@ export function ResponseControls({
   aboveApprove?: ReactNode;
 }) {
   const [open, setOpen] = useState<Open>("none");
+  const [ticked, setTicked] = useState<ReasonKey[]>([]);
+  const [avoidedKinds, setAvoidedKinds] = useState<VenueKind[]>([]);
+  const [avoidedCuisines, setAvoidedCuisines] = useState<Cuisine[]>([]);
+  const [suitableStart, setSuitableStart] = useState("");
   const [reasonText, setReasonText] = useState("");
   const [originId, setOriginId] = useState("");
   const [toleranceKm, setToleranceKm] = useState<Kilometres | "">("");
@@ -105,6 +139,10 @@ export function ResponseControls({
         return;
       }
       setOpen("none");
+      setTicked([]);
+      setAvoidedKinds([]);
+      setAvoidedCuisines([]);
+      setSuitableStart("");
       setReasonText("");
       setOriginId("");
       setToleranceKm("");
@@ -118,6 +156,31 @@ export function ResponseControls({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // Only what is ticked counts: a style picked and then un-ticked is gone
+  // from the request, though the pick is kept in case it is ticked again.
+  const reasons: RejectionLabels = {};
+  if (ticked.includes("style") && avoidedKinds.length > 0) {
+    reasons.venueKinds = avoidedKinds;
+  }
+  if (ticked.includes("cuisine") && avoidedCuisines.length > 0) {
+    reasons.cuisines = avoidedCuisines;
+  }
+  if (ticked.includes("far")) reasons.tooFar = true;
+  if (ticked.includes("time") && suitableStart) {
+    reasons.suitableStart = suitableStart;
+  }
+  if (ticked.includes("price")) reasons.tooExpensive = true;
+  const ownWords = ticked.includes("other") ? reasonText.trim() : "";
+  const rejectionReady = hasLabels(reasons) || ownWords !== "";
+
+  function submitRejection() {
+    send({
+      kind: "doesnt_suit",
+      ...(hasLabels(reasons) && { reasons }),
+      ...(ownWords && { reasonText: ownWords }),
+    });
   }
 
   function submitAmendment() {
@@ -206,18 +269,114 @@ export function ResponseControls({
           <p className="sl-sub">
             נותרו {remainingCycles} ניסיונות למצוא הצעה חלופית.
           </p>
-          <textarea
-            value={reasonText}
-            onChange={(e) => setReasonText(e.target.value)}
-            placeholder="מה לא מתאים?"
-            className="sl-field"
-          />
+          <p className="sl-sub">מה לא מתאים? אפשר לסמן כמה דברים.</p>
+          <div className="flex flex-wrap gap-2">
+            {REASON_ROWS.map((row) => {
+              const active = ticked.includes(row.key);
+              return (
+                <button
+                  key={row.key}
+                  type="button"
+                  onClick={() => setTicked(toggled(ticked, row.key))}
+                  aria-pressed={active}
+                  className={active ? "sl-chip on" : "sl-chip"}
+                >
+                  {row.label}
+                </button>
+              );
+            })}
+          </div>
+          {ticked.includes("style") && (
+            <div className="flex flex-col gap-1">
+              <span className="sl-sub">איזה סגנון לא מתאים לך?</span>
+              <div className="flex flex-wrap gap-2">
+                {VENUE_KINDS.map((kind) => {
+                  const active = avoidedKinds.includes(kind);
+                  return (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() =>
+                        setAvoidedKinds(toggled(avoidedKinds, kind))
+                      }
+                      aria-pressed={active}
+                      disabled={
+                        !active &&
+                        avoidedKinds.length >= MAX_AVOIDED_VENUE_KINDS
+                      }
+                      className={`${active ? "sl-chip on line-through" : "sl-chip"} disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      {VENUE_KIND_LABELS[kind]}
+                    </button>
+                  );
+                })}
+              </div>
+              {avoidedKinds.length >= MAX_AVOIDED_VENUE_KINDS && (
+                <span className="sl-sub">
+                  אי אפשר להוציא את כל הסגנונות. נשאר לפחות אחד.
+                </span>
+              )}
+            </div>
+          )}
+          {ticked.includes("cuisine") && (
+            <div className="flex flex-col gap-1">
+              <span className="sl-sub">איזה סוג אוכל לא מתאים לך?</span>
+              <div className="flex flex-wrap gap-2">
+                {CUISINES.map((cuisine) => {
+                  const active = avoidedCuisines.includes(cuisine);
+                  return (
+                    <button
+                      key={cuisine}
+                      type="button"
+                      onClick={() =>
+                        setAvoidedCuisines(toggled(avoidedCuisines, cuisine))
+                      }
+                      aria-pressed={active}
+                      disabled={
+                        !active &&
+                        avoidedCuisines.length >= MAX_AVOIDED_CUISINES
+                      }
+                      className={`${active ? "sl-chip on line-through" : "sl-chip"} disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      {CUISINE_LABELS[cuisine]}
+                    </button>
+                  );
+                })}
+              </div>
+              {avoidedCuisines.length >= MAX_AVOIDED_CUISINES && (
+                <span className="sl-sub">
+                  אי אפשר להוציא את כל סוגי האוכל. נשאר לפחות אחד.
+                </span>
+              )}
+            </div>
+          )}
+          {ticked.includes("time") && (
+            <label className="flex flex-col gap-1">
+              <span className="sl-sub">איזו שעה כן מתאימה לך?</span>
+              <input
+                type="time"
+                value={suitableStart}
+                onChange={(e) => setSuitableStart(e.target.value)}
+                aria-label="שעה מתאימה"
+                className="sl-field w-auto self-start"
+              />
+            </label>
+          )}
+          {ticked.includes("other") && (
+            <>
+              <textarea
+                value={reasonText}
+                onChange={(e) => setReasonText(e.target.value)}
+                placeholder="מה לא מתאים?"
+                className="sl-field"
+              />
+              <span className="sl-sub">חיפוש מחוץ לאזור עדיין לא נתמך.</span>
+            </>
+          )}
           <button
             type="button"
-            disabled={submitting || !reasonText.trim()}
-            onClick={() =>
-              send({ kind: "doesnt_suit", reasonText: reasonText.trim() })
-            }
+            disabled={submitting || !rejectionReady}
+            onClick={submitRejection}
             className="sl-btn go self-start"
           >
             שלח

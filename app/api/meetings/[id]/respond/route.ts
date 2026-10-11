@@ -17,7 +17,11 @@ import {
   respondToMeeting,
 } from "@/lib/db/meetings";
 import { respondToMeetingSchema } from "@/lib/meetings/schema";
-import { applyRejection } from "@/lib/extraction/apply-rejection";
+import {
+  applyLabelledRejection,
+  applyRejection,
+} from "@/lib/extraction/apply-rejection";
+import { hasLabels } from "@/lib/extraction/rejection-labels";
 import {
   notifyConflictReweigh,
   notifyMeetingConfirmed,
@@ -61,8 +65,18 @@ export async function POST(
     // inside it would hold a database connection for up to a minute — and it
     // never throws, so a failed extraction cannot fail a response that has
     // already been recorded (tasks/a7-plan.md, decisions 4 and 5).
+    //
+    // Ticked reasons need no model (`applyLabelledRejection`); only what the
+    // person wrote in their own words is sent to A7. Both can come in one
+    // rejection, and each is recorded as its own row.
     if (parsed.data.kind === "doesnt_suit") {
-      await applyRejection(meetingId, userId, parsed.data.reasonText);
+      const { reasons, reasonText } = parsed.data;
+      if (reasons && hasLabels(reasons)) {
+        await applyLabelledRejection(meetingId, userId, reasons);
+      }
+      if (reasonText) {
+        await applyRejection(meetingId, userId, reasonText);
+      }
     }
 
     // B8 part two — spec §5.5's binding rule again: none of this can affect

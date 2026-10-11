@@ -25,14 +25,108 @@
  * holds no prompts. This file is the only place the two meet.
  */
 
-import { failureOutcome, runConstraintUpdater } from "./constraint-updater";
+import {
+  failureOutcome,
+  runConstraintUpdater,
+  type ConstraintUpdate,
+} from "./constraint-updater";
+import { constraintUpdateFromLabels } from "./labelled-rejection";
+import { sentenceFromLabels, type RejectionLabels } from "./rejection-labels";
 import { startBoundsFor, toleranceFor } from "./tonight-bounds";
 import {
   findRejectedOption,
   findTonightReach,
   recordRejectionOutcome,
+  type RejectedOption,
 } from "@/lib/db/meetings";
 import { straightLineKm } from "@/lib/matching/distance";
+
+/**
+ * Turns an update — read from a sentence or from ticked labels — into this
+ * meeting's numbers and writes the row. One path for both, so a label and a
+ * sentence that mean the same thing are recorded the same way.
+ *
+ * #220: "too far" and "too late" become this meeting's numbers here,
+ * measured against what was rejected — neither the model nor the form picks
+ * them.
+ */
+async function recordUpdate(
+  meetingId: string,
+  userId: string,
+  update: ConstraintUpdate,
+  reasonText: string,
+  rejected: RejectedOption
+): Promise<void> {
+  const reach = update.distance
+    ? await findTonightReach(meetingId, userId)
+    : null;
+  const toleranceKm = toleranceFor(update.distance, {
+    distanceKm:
+      reach?.origin && rejected.location
+        ? straightLineKm(reach.origin, rejected.location)
+        : null,
+    currentKm: reach?.toleranceKm ?? 0,
+  });
+  const { earliestStart, latestStart } = startBoundsFor(
+    update.start,
+    rejected.slot.start
+  );
+
+  const hasCorrection = Object.keys(update.softPreferences).length > 0;
+  await recordRejectionOutcome(
+    meetingId,
+    userId,
+    update.objection,
+    // The row is written either way, because the sentence has to survive
+    // this person's next rejection overwriting `Response.reasonText` (A8).
+    hasCorrection ? update.softPreferences : null,
+    reasonText,
+    {
+      toleranceKm,
+      earliestStart,
+      latestStart,
+      untranslated: update.untranslated,
+    }
+  );
+}
+
+/**
+ * A rejection made by ticking labels. It reads no model and, like the
+ * sentence path, never throws: by now the rejection is committed and the
+ * cycle spent. If recording fails the sentence is still kept, as a failed
+ * call, so the next weighing at least has the words and no venue is blocked
+ * on the strength of a row that never said what it was about.
+ */
+export async function applyLabelledRejection(
+  meetingId: string,
+  userId: string,
+  labels: RejectionLabels
+): Promise<void> {
+  const sentence = sentenceFromLabels(labels);
+  try {
+    const rejected = await findRejectedOption(meetingId);
+    if (!rejected) return;
+
+    const update = constraintUpdateFromLabels(labels, rejected.slot.start);
+    await recordUpdate(meetingId, userId, update, sentence, rejected);
+  } catch (error) {
+    console.error(
+      `[a7] labelled rejection failed meeting=${meetingId} user=${userId}`,
+      error
+    );
+    try {
+      await recordRejectionOutcome(
+        meetingId,
+        userId,
+        "failed_call",
+        null,
+        sentence
+      );
+    } catch (writeError) {
+      console.error(`[a7] could not record the failure`, writeError);
+    }
+  }
+}
 
 export async function applyRejection(
   meetingId: string,
@@ -58,39 +152,7 @@ export async function applyRejection(
       },
     });
 
-    // #220: "too far" and "too late" become this meeting's numbers here,
-    // measured against what was rejected — the model never picks them.
-    const reach = update.distance
-      ? await findTonightReach(meetingId, userId)
-      : null;
-    const toleranceKm = toleranceFor(update.distance, {
-      distanceKm:
-        reach?.origin && rejected.location
-          ? straightLineKm(reach.origin, rejected.location)
-          : null,
-      currentKm: reach?.toleranceKm ?? 0,
-    });
-    const { earliestStart, latestStart } = startBoundsFor(
-      update.start,
-      rejected.slot.start
-    );
-
-    const hasCorrection = Object.keys(update.softPreferences).length > 0;
-    await recordRejectionOutcome(
-      meetingId,
-      userId,
-      update.objection,
-      // The row is written either way, because the sentence has to survive
-      // this person's next rejection overwriting `Response.reasonText` (A8).
-      hasCorrection ? update.softPreferences : null,
-      reasonText,
-      {
-        toleranceKm,
-        earliestStart,
-        latestStart,
-        untranslated: update.untranslated,
-      }
-    );
+    await recordUpdate(meetingId, userId, update, reasonText, rejected);
   } catch (error) {
     // One line, greppable, in the shape A1's cost log already uses.
     console.error(

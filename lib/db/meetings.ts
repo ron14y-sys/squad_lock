@@ -17,6 +17,7 @@ import {
 } from "@/lib/types/participant-meeting-context-from-row";
 
 import { canonicalMeetingPair, meetingsConflict } from "./conflict-dismissal";
+import { reasonTextOf } from "@/lib/extraction/rejection-labels";
 import { GROUP_SIZE_FLOOR, GroupTooSmallError } from "./groups";
 import { getPrisma } from "./client";
 
@@ -456,7 +457,7 @@ export async function respondToMeeting(
           where: { id: existingResponse.id },
           data: {
             status: ResponseStatus.doesnt_suit,
-            reasonText: input.reasonText,
+            reasonText: reasonTextOf(input.reasons, input.reasonText),
             respondedAt: new Date(),
           },
         });

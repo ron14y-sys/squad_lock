@@ -49,7 +49,8 @@ const LOCAL_TIME = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 
-function localTimeOf(instant: Date): LocalTimeOfDay {
+/** A moment as local `HH:MM`, the unit a start bound is written in. */
+export function localTimeOf(instant: Date): LocalTimeOfDay {
   return LOCAL_TIME.format(instant) as LocalTimeOfDay;
 }
 

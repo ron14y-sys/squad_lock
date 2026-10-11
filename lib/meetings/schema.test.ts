@@ -110,6 +110,118 @@ describe("respondToMeetingSchema", () => {
     ).toBe(false);
   });
 
+  describe("a rejection made by ticking reasons", () => {
+    const parse = (body: unknown) => respondToMeetingSchema.safeParse(body);
+
+    it("accepts ticked reasons with no text", () => {
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: {
+            venueKinds: ["bar"],
+            cuisines: ["pizza"],
+            tooFar: true,
+            suitableStart: "21:00",
+            tooExpensive: true,
+          },
+        }).success
+      ).toBe(true);
+    });
+
+    it("accepts ticked reasons together with the person's own words", () => {
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: { tooFar: true },
+          reasonText: "אני רוצה משהו מחוץ לאשדוד",
+        }).success
+      ).toBe(true);
+    });
+
+    it("rejects reasons with nothing ticked and no text", () => {
+      expect(parse({ kind: "doesnt_suit", reasons: {} }).success).toBe(false);
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: { venueKinds: [], cuisines: [], tooFar: false },
+        }).success
+      ).toBe(false);
+    });
+
+    it("rejects a cuisine or kind outside the closed lists", () => {
+      expect(
+        parse({ kind: "doesnt_suit", reasons: { cuisines: ["kebab"] } }).success
+      ).toBe(false);
+      expect(
+        parse({ kind: "doesnt_suit", reasons: { venueKinds: ["club"] } })
+          .success
+      ).toBe(false);
+    });
+
+    it("never lets every style of place or every cuisine be ruled out", () => {
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: { venueKinds: ["bar", "cafe"] },
+        }).success
+      ).toBe(true);
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: { venueKinds: ["bar", "cafe", "restaurant"] },
+        }).success
+      ).toBe(false);
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: {
+            cuisines: [
+              "italian",
+              "pizza",
+              "burger",
+              "meat",
+              "asian",
+              "sushi",
+              "middle_eastern",
+              "seafood",
+              "mexican",
+            ],
+          },
+        }).success
+      ).toBe(true);
+      expect(
+        parse({
+          kind: "doesnt_suit",
+          reasons: {
+            cuisines: [
+              "italian",
+              "pizza",
+              "burger",
+              "meat",
+              "asian",
+              "sushi",
+              "middle_eastern",
+              "seafood",
+              "mexican",
+              "indian",
+            ],
+          },
+        }).success
+      ).toBe(false);
+    });
+
+    it("rejects a start that is not HH:MM, and a label that does not exist", () => {
+      expect(
+        parse({ kind: "doesnt_suit", reasons: { suitableStart: "9pm" } })
+          .success
+      ).toBe(false);
+      expect(
+        parse({ kind: "doesnt_suit", reasons: { outsideTheCity: true } })
+          .success
+      ).toBe(false);
+    });
+  });
+
   it("accepts an amendment with just a note", () => {
     const result = respondToMeetingSchema.safeParse({
       kind: "amendment",
