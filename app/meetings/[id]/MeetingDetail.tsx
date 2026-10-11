@@ -119,6 +119,19 @@ const TIME_FMT = new Intl.DateTimeFormat("he-IL", {
   hourCycle: "h23",
 });
 
+/**
+ * Short day/month for the timeline (#spec review, QA 8.7): entries can span
+ * several calendar days — a late-night rejection and the next morning's
+ * reweigh both show only an hour without this — so each line needs the date,
+ * not just the time. `DATE_TIME_FMT` is too long for a timeline line (it
+ * carries the weekday too); this is the compact form.
+ */
+const TIMELINE_DATE_FMT = new Intl.DateTimeFormat("he-IL", {
+  timeZone: APP_TIME_ZONE,
+  day: "2-digit",
+  month: "2-digit",
+});
+
 function formatRange(startIso: string, endIso: string): string {
   const start = new Date(startIso);
   const end = new Date(endIso);
@@ -322,6 +335,7 @@ function TimelineBlock({ timeline }: { timeline: TimelineEvent[] }) {
           <li key={i}>
             {timelineLine(event)}
             <small className="sl-sub block">
+              {TIMELINE_DATE_FMT.format(new Date(event.at))} ·{" "}
               {TIME_FMT.format(new Date(event.at))}
             </small>
           </li>
