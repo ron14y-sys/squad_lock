@@ -8,6 +8,7 @@ import { MeetingStatus } from "@/lib/generated/prisma/client";
 import { canonicalMeetingPair } from "./conflict-dismissal";
 import { MeetingNotOpenError, NotAMeetingParticipantError } from "./meetings";
 import { getPrisma } from "./client";
+import { rescheduleForConflict } from "@/lib/matching/reschedule";
 
 /** A meeting cannot clash with itself. */
 export class NotAConflictError extends Error {
@@ -50,12 +51,17 @@ export async function dismissConflict(
 }
 
 /**
- * "One of these needs to change" — sends the chosen meeting back to
- * `weighing` (spec §5.7). Its current time is void, so `currentDatetime` is
- * cleared too: the conflict query only looks at meetings that have one, which
- * is what lets the warning go away instead of nagging about a proposal
- * that is already being replaced. The re-run itself is B11's job, exactly as
- * it is after B5c's cancellation.
+ * "One of these needs to change" (spec §5.7). #251: the meeting moves at once
+ * to another time — or day — at the venue it already has
+ * (`rescheduleForConflict`); it is weighed in full only when that venue has
+ * no other evening for the group. It used to be sent back to `weighing` and
+ * left for B11, which never ran it: B11 only answers a rejection or an
+ * amendment.
+ *
+ * When something somebody said is already waiting to be answered, that
+ * weighing will avoid the clash by itself, so the meeting is only marked as
+ * no longer holding its time: `currentDatetime` is cleared, which is what
+ * lets the warning go away.
  *
  * Only a meeting still awaiting answers, or already weighing, can be sent
  * back — a `stuck` one has spent its cycles, and re-opening it here would be
@@ -78,8 +84,11 @@ export async function sendMeetingBackToWeighing(
     throw new MeetingNotOpenError(meetingId);
   }
 
-  await prisma.meeting.update({
-    where: { id: meetingId },
-    data: { status: MeetingStatus.weighing, currentDatetime: null },
-  });
+  const outcome = await rescheduleForConflict(meetingId);
+  if (outcome === "skipped") {
+    await prisma.meeting.update({
+      where: { id: meetingId },
+      data: { status: MeetingStatus.weighing, currentDatetime: null },
+    });
+  }
 }

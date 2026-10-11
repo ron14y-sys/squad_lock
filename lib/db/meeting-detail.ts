@@ -451,7 +451,11 @@ export async function getMeetingDetail(
     previousSeen = seenNow;
 
     let reweighedBecause: string | null = null;
-    if (run.cycleNumber > 1 && newContextIds.length > 0) {
+    if (run.cycleNumber > 1 && run.model === null) {
+      // #251: the only runs no model wrote — a conflict moved the meeting to
+      // another time at the same venue.
+      reweighedBecause = "השעה שונתה בגלל התנגשות";
+    } else if (run.cycleNumber > 1 && newContextIds.length > 0) {
       const context = await prisma.participantMeetingContext.findUnique({
         where: { id: newContextIds[0] },
       });

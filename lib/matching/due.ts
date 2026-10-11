@@ -109,10 +109,18 @@ export function nextRunAt(meeting: DueInput): Date | null {
   // initiation; reaching here means that run failed, so this is the retry.
   if (!meeting.lastRunAt) return new Date(at);
 
-  // A proposal is out and the meeting is in `weighing`, which only a
-  // rejection or an amendment does. Nothing unanswered means neither has
-  // been written down yet.
-  if (!meeting.firstUnseenContextAt) return null;
+  // A proposal is out and the meeting is in `weighing` with nothing anyone
+  // said waiting to be answered. A rejection writes its row inside its own
+  // request, well within the cooldown, so this is not that. It is a meeting
+  // put back by something that writes no row — a conflict (#251), whose own
+  // path moves it to another evening and leaves it here only when that
+  // fails — or a row that was never written. Either way it is weighed once
+  // the proposal has had its time on screen, never left waiting forever.
+  if (!meeting.firstUnseenContextAt) {
+    return new Date(
+      Math.max(at, meeting.lastRunAt.getTime() + MIN_PROPOSAL_LIFETIME_MS)
+    );
+  }
 
   return new Date(
     Math.max(

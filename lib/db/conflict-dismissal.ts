@@ -20,7 +20,7 @@ import type { MeetingModel } from "@/lib/generated/prisma/models";
 import type { Meeting } from "@/lib/types/meeting";
 
 /** spec §5.7: "on the same calendar day, less than 4 hours apart." Tunable. */
-const CONFLICT_WINDOW_MS = 4 * 60 * 60 * 1000;
+export const CONFLICT_WINDOW_MS = 4 * 60 * 60 * 1000;
 
 /** Built once. `Intl.DateTimeFormat` is expensive to construct, cheap to reuse. */
 const LOCAL_DATE_PARTS = new Intl.DateTimeFormat("en-US", {

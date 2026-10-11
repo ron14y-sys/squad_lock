@@ -61,7 +61,12 @@ import {
 } from "@/lib/places/search-area";
 import { persistMatchRun } from "@/lib/db/match-run";
 import { resetResponsesForNewProposal } from "@/lib/db/meetings";
-import { MeetingStatus, type RunStage } from "@/lib/generated/prisma/enums";
+import {
+  MeetingStatus,
+  ResponseStatus,
+  type RunStage,
+} from "@/lib/generated/prisma/enums";
+import { CONFLICT_WINDOW_MS } from "@/lib/db/conflict-dismissal";
 import { commonFreeWindows } from "./availability";
 import { runMatchingAgent } from "./agent";
 import { isDue } from "./due";
@@ -564,64 +569,14 @@ export async function assembleRun(
 
   const window = searchWindow(meeting.pinnedDate, now);
   await reportStage("calendars");
-  const calendars = await busyFor(
-    attending.map((response) => response.userId),
-    window
+  const { participants, slots, unread } = await participantsAndSlots(
+    meetingId,
+    attending,
+    contextRows,
+    window,
+    part,
+    busyFor
   );
-  // B10: a refused token will never work again — clear it and tell its
-  // owner. The run itself goes on, with that person's calendar unread.
-  await Promise.all(calendars.rejected.map(handleCalendarAuthFailure));
-
-  const participants: Participant[] = attending.map((response) => {
-    const profileRow = response.user.preferenceProfile;
-    if (!profileRow) {
-      throw new Error(`a8: ${response.userId} has no preference profile`);
-    }
-
-    const stored = preferenceProfileFromRow(profileRow);
-    const context = mergeContexts(contextRows.get(response.userId) ?? []);
-    // #220: how far this person will go for *this* meeting outranks the
-    // profile's, on the same precedence as the origin below. Applied here,
-    // once, so the burden, the gate and A4's "within your range" all read it.
-    const profile = context?.toleranceKm
-      ? { ...stored, toleranceKm: context.toleranceKm }
-      : stored;
-
-    return {
-      userId: response.userId,
-      name: response.user.name,
-      profile,
-      context,
-      // Spec §5.7's precedence, and the only place it is applied: tonight's
-      // amendment outranks home. The recurring rules sit between the two and
-      // are A12's to resolve; until then home is the fallback.
-      origin: context?.origin ?? profile.home,
-      // No calendar read: free, apart from the hours they set by hand
-      // (`hardConstraints.unavailable`, which A2 applies regardless).
-      busy: [
-        ...(calendars.busy.get(response.userId) ?? []),
-        // #220: before the earliest start this person accepts tonight is
-        // busy, so a free evening is moved later rather than dropped.
-        ...(context?.earliestStart
-          ? beforeEarliestStart(window, context.earliestStart)
-          : []),
-      ],
-    };
-  });
-
-  // `commonFreeWindows` already returns several free slots out of one
-  // window (busy blocks split it up) — concatenating its output across
-  // several *narrowed* windows needs no change downstream of this line.
-  const slots = part
-    ? partOfDayWindows(window, part).flatMap((dayWindow) =>
-        commonFreeWindows(participants, dayWindow)
-      )
-    : commonFreeWindows(participants, window);
-  if (slots.length === 0) {
-    throw new NoSolutionError(
-      `no window ${meetingId}'s group shares in the search period`
-    );
-  }
 
   // `originOf` throws for anyone with no home location, and that is its own
   // deliberate decision — leximin compares vectors position by position, so
@@ -821,10 +776,170 @@ export async function assembleRun(
       ...(recentVenues.length > 0 ? { recentVenues } : {}),
     },
     contextIds: meeting.participantContexts.map((row) => row.id),
-    uncheckedCalendars: calendars.unread,
+    uncheckedCalendars: unread,
     unmetRequest: unmet ? unmetRequestOf(requests) : null,
     unmetPinnedVenue,
   };
+}
+
+/** A response as `assembleRun` reads it: who, and their profile. */
+type AttendingResponse = {
+  userId: string;
+  user: {
+    name: string;
+    preferenceProfile: Parameters<typeof preferenceProfileFromRow>[0] | null;
+  };
+};
+
+/**
+ * Who is coming, as the weighing sees them, and the windows they share.
+ * Split out of `assembleRun` (#251) so a conflict can move a meeting to
+ * another evening at the same venue (`reschedule.ts`) on exactly the same
+ * terms a full weighing uses.
+ *
+ * Busy is the calendar, tonight's earliest start, and — #251 — every other
+ * meeting of theirs that has a time (`otherMeetingsBusy`), so no proposal
+ * lands on a clash with another of their evenings.
+ */
+export async function participantsAndSlots(
+  meetingId: string,
+  attending: AttendingResponse[],
+  contextRows: Map<string, ParticipantMeetingContext[]>,
+  window: TimeSlot,
+  part: TimeOfDayPart | null,
+  busyFor: BusyLookup
+): Promise<{
+  participants: Participant[];
+  slots: TimeSlot[];
+  unread: string[];
+}> {
+  const otherMeetings = await otherMeetingsBusy(
+    meetingId,
+    attending.map((response) => response.userId)
+  );
+  const calendars = await busyFor(
+    attending.map((response) => response.userId),
+    window
+  );
+  // B10: a refused token will never work again — clear it and tell its
+  // owner. The run itself goes on, with that person's calendar unread.
+  await Promise.all(calendars.rejected.map(handleCalendarAuthFailure));
+
+  const participants: Participant[] = attending.map((response) => {
+    const profileRow = response.user.preferenceProfile;
+    if (!profileRow) {
+      throw new Error(`a8: ${response.userId} has no preference profile`);
+    }
+
+    const stored = preferenceProfileFromRow(profileRow);
+    const context = mergeContexts(contextRows.get(response.userId) ?? []);
+    // #220: how far this person will go for *this* meeting outranks the
+    // profile's, on the same precedence as the origin below. Applied here,
+    // once, so the burden, the gate and A4's "within your range" all read it.
+    const profile = context?.toleranceKm
+      ? { ...stored, toleranceKm: context.toleranceKm }
+      : stored;
+
+    return {
+      userId: response.userId,
+      name: response.user.name,
+      profile,
+      context,
+      // Spec §5.7's precedence, and the only place it is applied: tonight's
+      // amendment outranks home. The recurring rules sit between the two and
+      // are A12's to resolve; until then home is the fallback.
+      origin: context?.origin ?? profile.home,
+      // No calendar read: free, apart from the hours they set by hand
+      // (`hardConstraints.unavailable`, which A2 applies regardless).
+      busy: [
+        ...(calendars.busy.get(response.userId) ?? []),
+        ...(otherMeetings.get(response.userId) ?? []),
+        // #220: before the earliest start this person accepts tonight is
+        // busy, so a free evening is moved later rather than dropped.
+        ...(context?.earliestStart
+          ? beforeEarliestStart(window, context.earliestStart)
+          : []),
+      ],
+    };
+  });
+
+  // `commonFreeWindows` already returns several free slots out of one
+  // window (busy blocks split it up) — concatenating its output across
+  // several *narrowed* windows needs no change downstream of this line.
+  const slots = part
+    ? partOfDayWindows(window, part).flatMap((dayWindow) =>
+        commonFreeWindows(participants, dayWindow)
+      )
+    : commonFreeWindows(participants, window);
+  if (slots.length === 0) {
+    throw new NoSolutionError(
+      `no window ${meetingId}'s group shares in the search period`
+    );
+  }
+
+  return { participants, slots, unread: calendars.unread };
+}
+
+/**
+ * #251: each person's other meetings that have a time — confirmed, or
+ * proposed and awaiting answers — as busy blocks, keyed by user. A block
+ * spans the conflict rule's whole reach (`meetingsConflict`: the same day,
+ * under four hours apart) on either side of that meeting's start, so a new
+ * time is never one the conflict warning would flag again. A pair the person
+ * already said to keep both of (`ConflictDismissal`) blocks nothing, and
+ * neither does a meeting they have dropped out of.
+ */
+export async function otherMeetingsBusy(
+  meetingId: string,
+  userIds: string[]
+): Promise<Map<string, TimeSlot[]>> {
+  const prisma = getPrisma();
+  const [responses, dismissals] = await Promise.all([
+    prisma.response.findMany({
+      where: {
+        userId: { in: userIds },
+        meetingId: { not: meetingId },
+        status: { not: ResponseStatus.cant_make_it },
+        meeting: {
+          status: { in: [MeetingStatus.awaiting, MeetingStatus.closed] },
+          currentDatetime: { not: null },
+        },
+      },
+      select: {
+        userId: true,
+        meetingId: true,
+        meeting: { select: { currentDatetime: true } },
+      },
+    }),
+    prisma.conflictDismissal.findMany({
+      where: {
+        userId: { in: userIds },
+        OR: [{ meetingAId: meetingId }, { meetingBId: meetingId }],
+      },
+      select: { userId: true, meetingAId: true, meetingBId: true },
+    }),
+  ]);
+  const dismissed = new Set(
+    dismissals.map(
+      (d) =>
+        `${d.userId}|${d.meetingAId === meetingId ? d.meetingBId : d.meetingAId}`
+    )
+  );
+
+  const busy = new Map<string, TimeSlot[]>();
+  for (const response of responses) {
+    const start = response.meeting.currentDatetime;
+    if (!start || dismissed.has(`${response.userId}|${response.meetingId}`)) {
+      continue;
+    }
+    const blocks = busy.get(response.userId) ?? [];
+    blocks.push({
+      start: new Date(start.getTime() - CONFLICT_WINDOW_MS),
+      end: new Date(start.getTime() + CONFLICT_WINDOW_MS),
+    });
+    busy.set(response.userId, blocks);
+  }
+  return busy;
 }
 
 /** The middle of a group's origins — where a typed venue name is looked for first. */
@@ -1312,6 +1427,13 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
 
     const landedOnAwaiting = unanswered === 0;
 
+    // #251: a conflict that moved the meeting to another time at the same
+    // venue wrote a run of its own (`reschedule.ts`), with no model call —
+    // the only runs with no `model`. It is not a rematch, so it is not counted.
+    const reschedules = await tx.matchRun.count({
+      where: { meetingId, model: null, cycleNumber: { gt: 1 } },
+    });
+
     // Every answer was to the proposal this run just replaced (#176) —
     // including one given while the run was in flight.
     await resetResponsesForNewProposal(tx, meetingId);
@@ -1336,7 +1458,7 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
         // (Spec §6.3's aside that "cycles 2 and 3 of a meeting are pure cache
         // hits" is a remark about caching written against the other reading.
         // With this it is cycles 2, 3 and 4. §3.1 defines the cap.)
-        cycleCount: draft.cycleNumber - 1,
+        cycleCount: draft.cycleNumber - 1 - reschedules,
         currentDatetime: top.proposedDatetime,
         // The run is over, in the same write that says what it produced.
         runStage: null,

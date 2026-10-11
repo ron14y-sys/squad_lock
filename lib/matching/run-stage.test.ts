@@ -15,11 +15,16 @@ import { runCycle, runDueMeetings, type BusyLookup } from "./run-cycle";
 const updateMany = vi.fn();
 const userUpdateMany = vi.fn();
 const findMany = vi.fn();
+// #251: the participants' other meetings, and the pairs they kept both of.
+const otherResponses = vi.fn();
+const dismissals = vi.fn();
 
 vi.mock("@/lib/db/client", () => ({
   getPrisma: () => ({
     meeting: { findUnique: async () => meetingRow, updateMany, findMany },
     user: { updateMany: userUpdateMany },
+    response: { findMany: otherResponses },
+    conflictDismissal: { findMany: dismissals },
     $transaction: async (fn: (tx: unknown) => unknown) => fn({}),
   }),
 }));
@@ -159,6 +164,8 @@ beforeEach(() => {
   notifyCalendarReconnect.mockReset();
   runMatchingAgent.mockReset();
   searchNeighbourhoodCached.mockReset().mockResolvedValue([NEXT_DOOR]);
+  otherResponses.mockReset().mockResolvedValue([]);
+  dismissals.mockReset().mockResolvedValue([]);
   findPlaceByText.mockReset().mockResolvedValue(null);
   persistMatchRun.mockReset().mockRejectedValue(new Error("not under test"));
   meetingRow = MEETING;
@@ -279,6 +286,64 @@ describe("tonight's distance and start (#220)", () => {
         block.end.toISOString().endsWith("T17:00:00.000Z")
       )
     ).toBe(true);
+  });
+});
+
+describe("another meeting of theirs (#251)", () => {
+  // Dana's other meeting, Wednesday 1 Oct at 19:00 local (16:00Z).
+  const OTHER_START = new Date("2026-10-01T16:00:00.000Z");
+
+  async function danaBusy() {
+    runMatchingAgent.mockRejectedValue(new Error("stop here"));
+    await runCycle("m1", NOW, FREE);
+    const [input] = runMatchingAgent.mock.calls[0];
+    return input.participants[0].busy.map(
+      (block: { start: Date; end: Date }) => [
+        block.start.toISOString(),
+        block.end.toISOString(),
+      ]
+    );
+  }
+
+  it("is busy for the conflict rule's reach either side of its start", async () => {
+    otherResponses.mockResolvedValue([
+      {
+        userId: "u1",
+        meetingId: "other",
+        meeting: { currentDatetime: OTHER_START },
+      },
+    ]);
+
+    expect(await danaBusy()).toEqual([
+      ["2026-10-01T12:00:00.000Z", "2026-10-01T20:00:00.000Z"],
+    ]);
+    // Only meetings with a time, that are confirmed or awaiting answers, and
+    // that this person has not dropped out of.
+    const [{ where }] = otherResponses.mock.calls[0];
+    expect(where).toMatchObject({
+      userId: { in: ["u1"] },
+      meetingId: { not: "m1" },
+      status: { not: "cant_make_it" },
+      meeting: {
+        status: { in: ["awaiting", "closed"] },
+        currentDatetime: { not: null },
+      },
+    });
+  });
+
+  it("blocks nothing for a pair they already said to keep both of", async () => {
+    otherResponses.mockResolvedValue([
+      {
+        userId: "u1",
+        meetingId: "other",
+        meeting: { currentDatetime: OTHER_START },
+      },
+    ]);
+    dismissals.mockResolvedValue([
+      { userId: "u1", meetingAId: "m1", meetingBId: "other" },
+    ]);
+
+    expect(await danaBusy()).toEqual([]);
   });
 });
 
