@@ -5,6 +5,7 @@ import type { LatLng } from "@/lib/types";
 import {
   budgetFromPriceLevel,
   fetchPlaceDetails,
+  findPlaceByText,
   searchNeighbourhood,
 } from "./client";
 
@@ -298,6 +299,96 @@ describe("B9 part four: rate limits", () => {
 
     expect(error).not.toBeInstanceOf(ExternalRateLimitError);
     expect(error).toBeInstanceOf(Error);
+  });
+});
+
+describe("findPlaceByText (#212)", () => {
+  const BAR = {
+    id: "place-bar",
+    displayName: { text: "Bar Ha'Ir" },
+    formattedAddress: "5 Allenby St, Tel Aviv",
+    location: { latitude: 32.07, longitude: 34.77 },
+    businessStatus: "OPERATIONAL",
+  };
+
+  it("asks Text Search for the words, biased (not restricted) to the group's centre", async () => {
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, { places: [] }));
+
+    await findPlaceByText("Bar Ha'Ir", CENTER);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://places.googleapis.com/v1/places:searchText");
+    expect(init.method).toBe("POST");
+    expect(init.headers["X-Goog-Api-Key"]).toBe("test-key");
+    // The same Essentials + Pro mask as the neighbourhood search: naming a
+    // venue must not buy an Enterprise field (spec §6.3 rule 2).
+    expect(init.headers["X-Goog-FieldMask"]).toBe(
+      "places.id,places.displayName,places.formattedAddress,places.location,places.businessStatus,places.primaryTypeDisplayName,places.types"
+    );
+    expect(init.headers["X-Goog-FieldMask"]).not.toMatch(/rating|OpeningHours/);
+
+    const body = JSON.parse(init.body as string);
+    expect(body.textQuery).toBe("Bar Ha'Ir");
+    expect(body.languageCode).toBe("he");
+    // A bias: a venue named in another city is still found.
+    expect(body).not.toHaveProperty("locationRestriction");
+    expect(body.locationBias.circle.center).toEqual({
+      latitude: 32.08,
+      longitude: 34.78,
+    });
+    expect(body.locationBias.circle.radius).toBe(5000);
+  });
+
+  it("returns the first result as a Candidate", async () => {
+    fetchMock.mockResolvedValueOnce(
+      fakeResponse(true, {
+        places: [
+          BAR,
+          { ...BAR, id: "place-other", displayName: { text: "x" } },
+        ],
+      })
+    );
+
+    const found = await findPlaceByText("Bar Ha'Ir", CENTER);
+
+    expect(found).toMatchObject({
+      placeId: "place-bar",
+      name: "Bar Ha'Ir",
+      location: { lat: 32.07, lng: 34.77 },
+    });
+  });
+
+  it("is null when Google knows no such place", async () => {
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, {}));
+
+    expect(await findPlaceByText("nowhere at all", CENTER)).toBeNull();
+  });
+
+  it("is null when the place it found has closed for good", async () => {
+    fetchMock.mockResolvedValueOnce(
+      fakeResponse(true, {
+        places: [{ ...BAR, businessStatus: "CLOSED_PERMANENTLY" }],
+      })
+    );
+
+    expect(await findPlaceByText("Bar Ha'Ir", CENTER)).toBeNull();
+  });
+
+  it("is an ExternalRateLimitError on a 429, like the other Places calls", async () => {
+    fetchMock.mockResolvedValueOnce(failedResponse(429, "quota", "60"));
+
+    await expect(findPlaceByText("Bar Ha'Ir", CENTER)).rejects.toBeInstanceOf(
+      ExternalRateLimitError
+    );
+  });
+
+  it("throws on any other failure", async () => {
+    fetchMock.mockResolvedValueOnce(failedResponse(400, "bad request"));
+
+    await expect(findPlaceByText("Bar Ha'Ir", CENTER)).rejects.toThrow(
+      /searchText failed \(400\)/
+    );
   });
 });
 

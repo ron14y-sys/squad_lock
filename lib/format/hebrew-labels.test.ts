@@ -4,6 +4,7 @@ import {
   meetingStatusLabel,
   membersLabel,
   uncheckedCalendarNote,
+  unmetPinnedVenueNote,
   unmetRequestNote,
   unverifiedNote,
 } from "./hebrew-labels";
@@ -91,6 +92,48 @@ describe("unmetRequestNote (#221)", () => {
     expect(
       unverifiedNote([
         { kind: "unmet_request", venueKinds: ["bar"], cuisines: [] },
+      ])
+    ).toBeNull();
+  });
+});
+
+describe("unmetPinnedVenueNote (#212)", () => {
+  it("says no place of that name was found", () => {
+    expect(
+      unmetPinnedVenueNote([
+        { kind: "unmet_pinned_venue", venue: "בר הים", reason: "not_found" },
+      ])
+    ).toBe("לא מצאנו מקום בשם ״בר הים״, אז הצענו משהו אחר.");
+  });
+
+  it("says it is too far for some of the group, naming no one", () => {
+    expect(
+      unmetPinnedVenueNote([
+        { kind: "unmet_pinned_venue", venue: "בר הים", reason: "too_far" },
+      ])
+    ).toBe(
+      "המקום שביקשתם (בר הים) רחוק מדי עבור חלק מהחברים, אז הצענו משהו אחר."
+    );
+  });
+
+  it("says no shared time fits it when it fails anything else", () => {
+    expect(
+      unmetPinnedVenueNote([
+        { kind: "unmet_pinned_venue", venue: "בר הים", reason: "unavailable" },
+      ])
+    ).toBe(
+      "לא מצאנו זמן שמתאים לכולם והמקום שביקשתם פתוח בו (בר הים), אז הצענו משהו אחר."
+    );
+  });
+
+  it("is nothing when the venue was offered", () => {
+    expect(unmetPinnedVenueNote([{ kind: "opening_hours" }])).toBeNull();
+  });
+
+  it("is not read as something about the venue's hours or diet", () => {
+    expect(
+      unverifiedNote([
+        { kind: "unmet_pinned_venue", venue: "בר הים", reason: "too_far" },
       ])
     ).toBeNull();
   });

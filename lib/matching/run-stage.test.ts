@@ -46,10 +46,23 @@ const searchNeighbourhoodCached = vi.fn();
 vi.mock("@/lib/db/places-cache", () => ({
   searchNeighbourhoodCached: (...args: unknown[]) =>
     searchNeighbourhoodCached(...args),
-  fetchPlaceDetailsCached: async () => ({
-    openingHours: [{ weekdays: [], from: "18:00", to: "23:00" }],
+  // Open every evening, bar the one a test names as shut (#212): two hours
+  // in the early morning, which is less than a meeting needs.
+  fetchPlaceDetailsCached: async (placeId: string) => ({
+    openingHours:
+      placeId === "pinned-shut"
+        ? [{ weekdays: [], from: "06:00", to: "08:00" }]
+        : [{ weekdays: [], from: "18:00", to: "23:00" }],
     servesVegetarianFood: true,
   }),
+}));
+
+// #212: resolving the words an initiator typed into a place. Everything else
+// in the client stays real.
+const findPlaceByText = vi.fn();
+vi.mock("@/lib/places/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/places/client")>()),
+  findPlaceByText: (...args: unknown[]) => findPlaceByText(...args),
 }));
 
 const runMatchingAgent = vi.fn();
@@ -144,6 +157,7 @@ beforeEach(() => {
   notifyCalendarReconnect.mockReset();
   runMatchingAgent.mockReset();
   searchNeighbourhoodCached.mockReset().mockResolvedValue([NEXT_DOOR]);
+  findPlaceByText.mockReset().mockResolvedValue(null);
   persistMatchRun.mockReset().mockRejectedValue(new Error("not under test"));
   meetingRow = MEETING;
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -548,5 +562,139 @@ describe("runStageOf", () => {
     ] as const) {
       expect(runStageOf({ status, runStage: "model" })).toBeNull();
     }
+  });
+});
+
+describe("a venue the initiator named (#212)", () => {
+  const place = (placeId: string, north = 0.001) => ({
+    placeId,
+    name: "Bar Ha'Ir",
+    address: null,
+    location: { lat: HOME.lat + north, lng: HOME.lng },
+    neighbourhood: null,
+    types: ["bar"],
+  });
+
+  function named(text: string | null) {
+    meetingRow = { ...MEETING, pinnedVenue: text } as unknown as typeof MEETING;
+  }
+
+  /** What the model would answer, so a run reaches the write. */
+  function modelAnswers() {
+    runMatchingAgent.mockResolvedValue({
+      draft: {
+        options: [
+          { rank: 1, unverified: [] },
+          { rank: 2, unverified: [] },
+        ],
+      },
+      call: {},
+    });
+  }
+
+  function unverifiedWritten() {
+    const [draft] = persistMatchRun.mock.calls[0];
+    return draft.options.map((o: { unverified: unknown[] }) => o.unverified);
+  }
+
+  it("looks the typed name up near the group, and weighs it though the neighbourhood search never returned it", async () => {
+    named("Bar Ha'Ir");
+    findPlaceByText.mockResolvedValue(place("pinned"));
+    runMatchingAgent.mockRejectedValue(new Error("stop here"));
+
+    await runCycle("m1", NOW, FREE);
+
+    expect(findPlaceByText).toHaveBeenCalledWith("Bar Ha'Ir", {
+      lat: HOME.lat,
+      lng: HOME.lng,
+    });
+    const [input] = runMatchingAgent.mock.calls[0];
+    expect(
+      input.candidates.map((c: { placeId: string }) => c.placeId).sort()
+    ).toEqual(["p1", "pinned"]);
+  });
+
+  it("tells the model to rank it first, and says nothing was missed on the proposal", async () => {
+    named("Bar Ha'Ir");
+    findPlaceByText.mockResolvedValue(place("pinned"));
+    modelAnswers();
+
+    await runCycle("m1", NOW, FREE);
+
+    const [input] = runMatchingAgent.mock.calls[0];
+    expect(input.pinnedVenue).toEqual({
+      placeId: "pinned",
+      name: "Bar Ha'Ir",
+    });
+    expect(unverifiedWritten()).toEqual([[], []]);
+  });
+
+  it("does not look anything up when no venue was named, or only spaces", async () => {
+    runMatchingAgent.mockRejectedValue(new Error("stop here"));
+
+    for (const text of [null, "   "]) {
+      named(text);
+      await runCycle("m1", NOW, FREE);
+    }
+
+    expect(findPlaceByText).not.toHaveBeenCalled();
+    for (const [input] of runMatchingAgent.mock.calls) {
+      expect(input.pinnedVenue).toBeUndefined();
+    }
+  });
+
+  it("says no such place was found, in the words that were typed, on every option", async () => {
+    named("Bar Ha'Ir");
+    findPlaceByText.mockResolvedValue(null);
+    modelAnswers();
+
+    await runCycle("m1", NOW, FREE);
+
+    const [input] = runMatchingAgent.mock.calls[0];
+    expect(input.pinnedVenue).toBeUndefined();
+    const fact = {
+      kind: "unmet_pinned_venue",
+      venue: "Bar Ha'Ir",
+      reason: "not_found",
+    };
+    expect(unverifiedWritten()).toEqual([[fact], [fact]]);
+  });
+
+  it("says it is too far when the group's travel rule cut it", async () => {
+    named("Bar Ha'Ir");
+    // About 22 km north of a person who will go 5.
+    findPlaceByText.mockResolvedValue(place("pinned-far", 0.2));
+    modelAnswers();
+
+    await runCycle("m1", NOW, FREE);
+
+    const [input] = runMatchingAgent.mock.calls[0];
+    expect(input.pinnedVenue).toBeUndefined();
+    expect(input.candidates.map((c: { placeId: string }) => c.placeId)).toEqual(
+      ["p1"]
+    );
+    const fact = {
+      kind: "unmet_pinned_venue",
+      venue: "Bar Ha'Ir",
+      reason: "too_far",
+    };
+    expect(unverifiedWritten()).toEqual([[fact], [fact]]);
+  });
+
+  it("says it is unavailable when it is shut for every evening the group shares", async () => {
+    named("Bar Ha'Ir");
+    findPlaceByText.mockResolvedValue(place("pinned-shut"));
+    modelAnswers();
+
+    await runCycle("m1", NOW, FREE);
+
+    const [input] = runMatchingAgent.mock.calls[0];
+    expect(input.pinnedVenue).toBeUndefined();
+    const fact = {
+      kind: "unmet_pinned_venue",
+      venue: "Bar Ha'Ir",
+      reason: "unavailable",
+    };
+    expect(unverifiedWritten()).toEqual([[fact], [fact]]);
   });
 });

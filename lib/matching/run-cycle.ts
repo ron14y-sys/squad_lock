@@ -34,6 +34,7 @@
 import {
   APP_TIME_ZONE,
   type Candidate,
+  type LatLng,
   type Participant,
   type ParticipantMeetingContext,
   type TimeOfDayPart,
@@ -63,11 +64,16 @@ import { resetResponsesForNewProposal } from "@/lib/db/meetings";
 import { MeetingStatus, type RunStage } from "@/lib/generated/prisma/enums";
 import { commonFreeWindows } from "./availability";
 import { runMatchingAgent } from "./agent";
+import { isDue } from "./due";
 import { ExternalRateLimitError } from "@/lib/external/rate-limit";
 import { LlmCallError, retryDelayMs } from "@/lib/llm/client";
-import { originOf } from "./distance";
+import { originOf, type CandidateScore } from "./distance";
 import { pairId } from "./schemas";
-import type { UnverifiedFact, VenueDietaryFacts } from "./constraints";
+import type {
+  PinnedVenueReason,
+  UnverifiedFact,
+  VenueDietaryFacts,
+} from "./constraints";
 import {
   cuisinesOfTypes,
   venueKindsOfTypes,
@@ -81,7 +87,7 @@ import {
   isRequest,
   matchesAnyPreference,
 } from "./requests";
-import { DEFAULT_INCLUDED_TYPES } from "@/lib/places/client";
+import { DEFAULT_INCLUDED_TYPES, findPlaceByText } from "@/lib/places/client";
 import {
   notifyCalendarReconnect,
   notifyProposalWaiting,
@@ -187,8 +193,9 @@ function zoneOffsetMs(instant: Date): number {
  * proposable for the evening, and one that is entirely over leaves an empty
  * window, which `commonFreeWindows` refuses — a "no solution", not a fault.
  *
- * `pinnedTime` and `pinnedVenue` are still unread. They narrow rather than
- * select, and the narrowing belongs with them as one piece of work.
+ * Only the day is decided here. `pinnedTime` narrows it to a part of the day
+ * (`partOfDayWindows`) and `pinnedVenue` adds a place to the pool
+ * (`assembleRun`, #212) — neither changes which days are searched.
  */
 export function searchWindow(pinnedDate: Date | null, now: Date): TimeSlot {
   if (!pinnedDate) {
@@ -428,6 +435,11 @@ export type AssembledRun = {
   uncheckedCalendars: string[];
   /** #221: set when tonight's requests were answered by no venue that could be offered. */
   unmetRequest: Extract<UnverifiedFact, { kind: "unmet_request" }> | null;
+  /** #212: set when the venue the initiator named was not the proposal, and why. */
+  unmetPinnedVenue: Extract<
+    UnverifiedFact,
+    { kind: "unmet_pinned_venue" }
+  > | null;
 };
 
 /**
@@ -594,6 +606,22 @@ export async function assembleRun(
   const origins = participants.map(originOf);
 
   await reportStage("places");
+  // #212: the venue the initiator typed, resolved to a place, and added to the
+  // pool below — the neighbourhood search only finds it if it happens to be
+  // among Google's twenty most popular. One already offered and turned down
+  // (`blocked.venues`) is not asked for again: the group has answered it.
+  const pinnedName = meeting.pinnedVenue?.trim() || null;
+  const pinnedFound = pinnedName
+    ? await findPlaceByText(pinnedName, meanOf(origins))
+    : null;
+  const pinned =
+    pinnedFound && !blocked.venues.has(pinnedFound.placeId)
+      ? pinnedFound
+      : null;
+  const withPinned = (pool: Candidate[]): Candidate[] =>
+    pinned && !pool.some((candidate) => candidate.placeId === pinned.placeId)
+      ? [...pool, pinned]
+      : pool;
   // #168: the chosen part sets which kinds of venue the search itself asks
   // for — filtering afterwards left almost nothing for a scarce kind (see
   // TIME_OF_DAY_VENUE_KINDS's own comment). `undefined` keeps today's
@@ -636,7 +664,7 @@ export async function assembleRun(
   const found = pools
     .flat()
     .filter((candidate) => !blocked.venues.has(candidate.placeId));
-  if (found.length === 0) {
+  if (withPinned(found).length === 0) {
     throw new NoSolutionError(
       `no venue near ${meetingId}'s group is still on the table`
     );
@@ -649,20 +677,26 @@ export async function assembleRun(
       )
       .map((candidate) => candidate.placeId)
   );
+  // The named venue is guaranteed a place on the shortlist, as a stated
+  // preference is: the funnel's score would otherwise cut it for being far.
+  if (pinned) preferred.add(pinned.placeId);
 
   await reportStage("venue_details");
   // #221: a request narrows the pool to the venues that answer everyone who
   // made one. When none of them can be offered — too far for someone, shut,
   // already rejected — the whole pool is weighed instead and the proposal
   // says so (`unmetRequest`), rather than ending a meeting over a bar.
-  const answering =
+  // The named venue stays in whatever the request narrows to: it was asked
+  // for by name, which is a stronger request than a kind of place.
+  const answering = withPinned(
     requests.length > 0
       ? found.filter((candidate) =>
           requests.every((request) =>
             answersRequest(candidate.types ?? [], request)
           )
         )
-      : found;
+      : found
+  );
   let weighed = await weighPool(
     answering,
     participants,
@@ -672,7 +706,13 @@ export async function assembleRun(
   );
   const unmet = requests.length > 0 && weighed.ranked.length === 0;
   if (unmet) {
-    weighed = await weighPool(found, participants, slots, preferred, blocked);
+    weighed = await weighPool(
+      withPinned(found),
+      participants,
+      slots,
+      preferred,
+      blocked
+    );
   }
   const { ranked, viable, shortlisted, venueFacts, venueSoftFacts } = weighed;
 
@@ -680,6 +720,31 @@ export async function assembleRun(
     throw new NoSolutionError(
       `nothing survived the filter for ${meetingId} — ${shortlisted.droppedPairs.length} pairs dropped, ${shortlisted.gatedOut.length} gated out, ${blocked.venues.size} venues and ${blocked.pairs.size} pairs already rejected`
     );
+  }
+
+  // #212: was the named venue offered, and if not, why. Offered means it
+  // is among what A4 may choose; the model is then told to rank it first.
+  // Otherwise code says why on the proposal, and the model is not given a
+  // rule it cannot satisfy.
+  let pinnedVenue: MatchAgentInput["pinnedVenue"];
+  let unmetPinnedVenue: AssembledRun["unmetPinnedVenue"] = null;
+  if (pinnedName && !pinnedFound) {
+    unmetPinnedVenue = {
+      kind: "unmet_pinned_venue",
+      venue: pinnedName,
+      reason: "not_found",
+    };
+  } else if (pinned) {
+    const reason = pinnedVenueReason(pinned.placeId, ranked, weighed.gated);
+    if (reason === null) {
+      pinnedVenue = { placeId: pinned.placeId, name: pinned.name };
+    } else {
+      unmetPinnedVenue = {
+        kind: "unmet_pinned_venue",
+        venue: pinned.name,
+        reason,
+      };
+    }
   }
 
   // Which run this is, counted from the runs themselves. It cannot come from
@@ -703,11 +768,44 @@ export async function assembleRun(
       // `findRejectedOption` follows, #139).
       ...(venueFacts ? { venueFacts } : {}),
       ...(venueSoftFacts ? { venueSoftFacts } : {}),
+      ...(pinnedVenue ? { pinnedVenue } : {}),
     },
     contextIds: meeting.participantContexts.map((row) => row.id),
     uncheckedCalendars: calendars.unread,
     unmetRequest: unmet ? unmetRequestOf(requests) : null,
+    unmetPinnedVenue,
   };
+}
+
+/** The middle of a group's origins — where a typed venue name is looked for first. */
+function meanOf(points: LatLng[]): LatLng {
+  const sum = points.reduce(
+    (total, point) => ({
+      lat: total.lat + point.lat,
+      lng: total.lng + point.lng,
+    }),
+    { lat: 0, lng: 0 }
+  );
+  return { lat: sum.lat / points.length, lng: sum.lng / points.length };
+}
+
+/**
+ * #212: why the venue the initiator named is not among what may be proposed,
+ * or `null` when it is.
+ *
+ * `too_far` is the burden gate (`BURDEN_GATE_T`) — the same fairness rule as
+ * for any venue, so a named place is not exempt from it, and the group is
+ * told that is what stopped it. Everything else that can take a venue out —
+ * shut at every shared hour, a calendar, a dietary need, an earlier
+ * rejection of that exact evening — is `unavailable`.
+ */
+export function pinnedVenueReason(
+  placeId: string,
+  ranked: readonly CandidateScore[],
+  gated: ReadonlySet<string>
+): PinnedVenueReason | null {
+  if (ranked.some((score) => score.candidate.placeId === placeId)) return null;
+  return gated.has(placeId) ? "too_far" : "unavailable";
 }
 
 /**
@@ -779,7 +877,14 @@ async function weighPool(
   const ranked = shortlisted.shortlist.filter((score) =>
     offerable.has(score.candidate.placeId)
   );
-  return { ranked, viable, shortlisted, venueFacts, venueSoftFacts };
+  // Everything the burden gate cut, in either pass: a venue gated in the
+  // first never reaches the second (#212 reads this to say "too far").
+  const gated = new Set(
+    [...provisional.gatedOut, ...shortlisted.gatedOut].map(
+      (score) => score.candidate.placeId
+    )
+  );
+  return { ranked, viable, shortlisted, venueFacts, venueSoftFacts, gated };
 }
 
 /** What was asked for and not found, across everyone who asked (#221). */
@@ -1088,8 +1193,13 @@ async function clearStageAndSetRetry(
 
 async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
   const reportStage = stageWriter(meetingId);
-  const { input, contextIds, uncheckedCalendars, unmetRequest } =
-    await assembleRun(meetingId, now, busyFor, reportStage);
+  const {
+    input,
+    contextIds,
+    uncheckedCalendars,
+    unmetRequest,
+    unmetPinnedVenue,
+  } = await assembleRun(meetingId, now, busyFor, reportStage);
   await reportStage("model");
   const { draft, call } = await runMatchingAgent(input);
   await reportStage("saving");
@@ -1107,6 +1217,8 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
       })),
       // #221: "we found no bar", on every option, since none of them is one.
       ...(unmetRequest ? [unmetRequest] : []),
+      // #212: "we could not offer the bar you named", on every option.
+      ...(unmetPinnedVenue ? [unmetPinnedVenue] : []),
     ];
   }
 
@@ -1203,62 +1315,20 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
   return run;
 }
 
+// The timers and `isDue` live in `./due` (#215); re-exported so every
+// existing import from here keeps working.
+export {
+  CONTEXT_BATCH_MS,
+  MIN_PROPOSAL_LIFETIME_MS,
+  RUN_ATTEMPT_COOLDOWN_MS,
+  isDue,
+  nextRunAt,
+  type DueInput,
+} from "./due";
+
 /* -------------------------------------------------------------------------
  * The trigger — which meetings are due, and one poll at a time
  * ---------------------------------------------------------------------- */
-
-/**
- * How long new ParticipantMeetingContext rows -- rejections or amendments --
- * are collected before they are answered with one run.
- *
- * B11: this was rejection-only until amendments needed the identical thing
- * (spec §3.2: "an amendment opens a ~90-second window; further amendments
- * reset it; when it closes, one run covers all of them") -- the same
- * reasoning A8 already had for rejections clustering (below), so one window
- * now serves both rather than two copies of the same idea.
- *
- * Measured from the **first** unanswered row since the last run, not the
- * latest: a fixed window is a thing that can be explained to somebody, and
- * one that reset on every row could keep sliding while objections or
- * amendments trickle in.
- *
- * This is what makes the cap mean anything for a rejection. "A cycle is a
- * proposal" (#125) bounds nothing on its own, because every run produces
- * something new to reject — three rejections twenty seconds apart would
- * otherwise reach the cap in under a minute, with three proposals nobody
- * read. An amendment has no such cap concern (the first is free, spec
- * §3.1), but clusters the same way: several people open the same proposal
- * within the same couple of minutes, and firing one run per amendment would
- * replace it before anyone finished reading it either.
- */
-export const CONTEXT_BATCH_MS = 90_000;
-
-/**
- * Every proposal gets this long on screen before it can be replaced.
- *
- * The other half of bounding the cap, and the more useful half: the wait is
- * longest exactly when the proposal is newest, which is when the rest of the
- * group is most likely still to join the same batch. A proposal two hours old
- * that somebody rejects waits only `CONTEXT_BATCH_MS`, because there is
- * nobody left to wait for.
- */
-export const MIN_PROPOSAL_LIFETIME_MS = 5 * 60_000;
-
-/**
- * How long a meeting is left alone after somebody last touched it.
- *
- * Not a product rule — a guard against the feed's own polling. C5 polls every
- * three seconds while a meeting on screen is `weighing`, and a run takes 6-23
- * seconds, so without this roughly five polls would each start their own run
- * of the same cycle. `MatchRun` is unique on `(meetingId, cycleNumber)` so
- * only one could ever be written, but all five would pay: five calls out of
- * Gemini's twenty a day, and five times the Places quota.
- *
- * It doubles as the retry interval. A fault leaves the meeting in `weighing`
- * for the next poll (step 5), and without a cooldown "the next poll" is three
- * seconds later, forever.
- */
-export const RUN_ATTEMPT_COOLDOWN_MS = 90_000;
 
 /**
  * B9 part two — how long to wait before retrying a meeting whose fault was
@@ -1279,67 +1349,6 @@ export const RATE_LIMIT_RETRY_COOLDOWN_MS = 60 * 60_000;
  * against them, so being wrong in either direction is cheap.
  */
 export const EXTERNAL_RATE_LIMIT_COOLDOWN_MS = 10 * 60_000;
-
-export type DueInput = {
-  /** Last time anything wrote to the meeting — including a claim. */
-  updatedAt: Date;
-  /** When the current proposal was made, or null if there is none yet. */
-  lastRunAt: Date | null;
-  /**
-   * The earliest ParticipantMeetingContext row **no run has seen yet**, if
-   * any -- a rejection or an amendment, whichever is older (B11: this used
-   * to be rejections only; see `CONTEXT_BATCH_MS`'s own comment for why one
-   * field now covers both).
-   *
-   * Not "since the last run": a `MatchRun` is stamped when it is written, so
-   * a row written while a run was in flight is older than the run that
-   * never saw it. `MatchRunSeenContext` records what each run read, which
-   * answers the question exactly instead of approximately.
-   */
-  firstUnseenContextAt: Date | null;
-  /**
-   * B9 part two — set only after a rate-limited fault (`faultRetryNotBefore`),
-   * `null` otherwise. When set, no attempt is due before it, however long
-   * ago `updatedAt` was — see `Meeting.retryNotBefore`'s own comment.
-   */
-  retryNotBefore: Date | null;
-};
-
-/**
- * Is this meeting waiting for a run right now?
- *
- * Pure, so the timers above can be tested without a database, a clock or a
- * model. The caller has already narrowed to `status === "weighing"` —
- * `awaiting` means a proposal is out and nobody has objected or amended, and
- * `stuck`, `closed` and `cancelled` are not weighed again.
- */
-export function isDue(meeting: DueInput, now: Date): boolean {
-  if (now.getTime() - meeting.updatedAt.getTime() < RUN_ATTEMPT_COOLDOWN_MS) {
-    return false;
-  }
-
-  if (
-    meeting.retryNotBefore !== null &&
-    now.getTime() < meeting.retryNotBefore.getTime()
-  ) {
-    return false;
-  }
-
-  // Nothing has ever been proposed. Normally step 7 runs the first cycle at
-  // initiation; reaching here means that run failed, so this is the retry.
-  if (!meeting.lastRunAt) return true;
-
-  // A proposal is out and the meeting is in `weighing`, which only a
-  // rejection or an amendment does. Nothing unanswered means neither has
-  // been written down yet.
-  if (!meeting.firstUnseenContextAt) return false;
-
-  return (
-    now.getTime() >=
-      meeting.firstUnseenContextAt.getTime() + CONTEXT_BATCH_MS &&
-    now.getTime() >= meeting.lastRunAt.getTime() + MIN_PROPOSAL_LIFETIME_MS
-  );
-}
 
 /**
  * Run whatever this group is waiting on, at most one attempt per meeting.

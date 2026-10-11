@@ -24,6 +24,7 @@ function detail(overrides: Record<string, unknown> = {}) {
     conflicts: [],
     missingHome: [],
     retryInMinutes: null,
+    nextRunInMinutes: null,
     initiatorName: "אלדד",
     pinnedVenue: null,
     occasion: null,
@@ -433,6 +434,38 @@ test("a proposal says when what was asked for tonight was not found (#221)", asy
   ).toBeInTheDocument();
 });
 
+test("a proposal says when the venue that was asked for could not be offered (#212)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            proposal: {
+              ...detail().proposal,
+              unverified: [
+                {
+                  kind: "unmet_pinned_venue",
+                  venue: "בר הים",
+                  reason: "too_far",
+                },
+              ],
+            },
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText(
+      "המקום שביקשתם (בר הים) רחוק מדי עבור חלק מהחברים, אז הצענו משהו אחר."
+    )
+  ).toBeInTheDocument();
+});
+
 test("a proposal names whose calendar it was not checked against", async () => {
   vi.stubGlobal(
     "fetch",
@@ -709,4 +742,97 @@ test("no topic, no empty heading", async () => {
 
   await screen.findByText("בית קפה נורדאו");
   expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+});
+
+test("after a rejection, says when the next proposal will come (#215)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(detail({ status: "reweighing", nextRunInMinutes: 3 }))
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText("ההצעה הבאה תהיה מוכנה בעוד כ-3 דקות.")
+  ).toBeInTheDocument();
+});
+
+test("says a minute, not '1 minutes', when it is that close (#215)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(detail({ status: "reweighing", nextRunInMinutes: 1 }))
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText("ההצעה הבאה תהיה מוכנה בעוד כדקה.")
+  ).toBeInTheDocument();
+});
+
+test("names the stage rather than a countdown once the run has started (#215)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            status: "reweighing",
+            runStage: "places",
+            nextRunInMinutes: 3,
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(await screen.findByText("מחפשים מקומות")).toBeInTheDocument();
+  expect(screen.queryByText(/ההצעה הבאה תהיה מוכנה/)).not.toBeInTheDocument();
+});
+
+test("says nothing about a wait once it is over and the run only needs starting (#215)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(detail({ status: "reweighing", nextRunInMinutes: null }))
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(await screen.findByText("מחפשים הצעה חדשה…")).toBeInTheDocument();
+});
+
+test("the opening search names no wait, since nothing guarantees its result (#215)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            status: "reweighing",
+            proposal: null,
+            nextRunInMinutes: 2,
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(await screen.findByText("מחפשים הצעה…")).toBeInTheDocument();
+  expect(screen.queryByText(/ההצעה הבאה תהיה מוכנה/)).not.toBeInTheDocument();
 });

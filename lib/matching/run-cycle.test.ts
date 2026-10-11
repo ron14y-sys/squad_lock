@@ -5,9 +5,11 @@ import {
   EXTERNAL_RATE_LIMIT_COOLDOWN_MS,
   faultRetryNotBefore,
   isDue,
+  nextRunAt,
   MIN_PROPOSAL_LIFETIME_MS,
   beforeEarliestStart,
   partOfDayWindows,
+  pinnedVenueReason,
   RATE_LIMIT_RETRY_COOLDOWN_MS,
   CONTEXT_BATCH_MS,
   RUN_ATTEMPT_COOLDOWN_MS,
@@ -23,6 +25,7 @@ import { checkPair } from "./constraints";
 import { ExternalRateLimitError } from "@/lib/external/rate-limit";
 import { LlmCallError } from "@/lib/llm/client";
 import { pairId } from "./schemas";
+import type { CandidateScore } from "./distance";
 
 /**
  * A8b's two rules, with no database and no clock.
@@ -622,5 +625,151 @@ describe("venueDietaryFactsFrom", () => {
         { kind: "dietary", tag: "צמחוני" },
       ]);
     });
+  });
+});
+
+describe("pinnedVenueReason (#212)", () => {
+  const scored = (...placeIds: string[]) =>
+    placeIds.map((placeId) => ({
+      candidate: { placeId },
+    })) as unknown as CandidateScore[];
+
+  it("is null when the venue is among what may be proposed", () => {
+    expect(pinnedVenueReason("a", scored("b", "a"), new Set())).toBeNull();
+  });
+
+  it("is too_far when the burden gate cut it, in either pass", () => {
+    expect(pinnedVenueReason("a", scored("b"), new Set(["a"]))).toBe("too_far");
+  });
+
+  it("is unavailable when anything else took it out", () => {
+    expect(pinnedVenueReason("a", scored("b"), new Set(["c"]))).toBe(
+      "unavailable"
+    );
+  });
+
+  it("trusts being offered over having been gated", () => {
+    expect(pinnedVenueReason("a", scored("a"), new Set(["a"]))).toBeNull();
+  });
+});
+
+/**
+ * #215: `nextRunAt` is what a screen is told, so it has to be exactly when
+ * `isDue` starts saying yes. Every case below is checked both ways: due at the
+ * instant, not due one millisecond before it.
+ */
+describe("nextRunAt (#215)", () => {
+  const T = at("2026-09-27T20:00:00.000Z");
+  const after = (ms: number) => new Date(T.getTime() + ms);
+  const before = (ms: number) => new Date(T.getTime() - ms);
+
+  const old = before(60 * 60_000);
+
+  function expectDueExactlyAt(meeting: DueInput, instant: Date) {
+    expect(nextRunAt(meeting)).toEqual(instant);
+    expect(isDue(meeting, instant)).toBe(true);
+    expect(isDue(meeting, new Date(instant.getTime() - 1))).toBe(false);
+  }
+
+  it("is the end of the batch window, when the proposal is already old", () => {
+    expectDueExactlyAt(
+      {
+        updatedAt: old,
+        lastRunAt: old,
+        firstUnseenContextAt: T,
+        retryNotBefore: null,
+      },
+      after(CONTEXT_BATCH_MS)
+    );
+  });
+
+  it("is the end of the proposal's minimum lifetime, when that is later", () => {
+    const lastRunAt = before(60_000);
+    expectDueExactlyAt(
+      {
+        updatedAt: old,
+        lastRunAt,
+        firstUnseenContextAt: before(10_000),
+        retryNotBefore: null,
+      },
+      new Date(lastRunAt.getTime() + MIN_PROPOSAL_LIFETIME_MS)
+    );
+  });
+
+  it("is the end of the cooldown when somebody touched the meeting last", () => {
+    expectDueExactlyAt(
+      {
+        updatedAt: T,
+        lastRunAt: old,
+        firstUnseenContextAt: old,
+        retryNotBefore: null,
+      },
+      after(RUN_ATTEMPT_COOLDOWN_MS)
+    );
+  });
+
+  it("is the end of a rate-limit wait, when that is the latest", () => {
+    const retryNotBefore = after(30 * 60_000);
+    expectDueExactlyAt(
+      {
+        updatedAt: old,
+        lastRunAt: old,
+        firstUnseenContextAt: old,
+        retryNotBefore,
+      },
+      retryNotBefore
+    );
+  });
+
+  it("is the end of the cooldown for a meeting that has never had a proposal", () => {
+    expectDueExactlyAt(
+      {
+        updatedAt: T,
+        lastRunAt: null,
+        firstUnseenContextAt: null,
+        retryNotBefore: null,
+      },
+      after(RUN_ATTEMPT_COOLDOWN_MS)
+    );
+  });
+
+  it("is null when a proposal is out and nobody has objected or amended", () => {
+    const meeting: DueInput = {
+      updatedAt: old,
+      lastRunAt: old,
+      firstUnseenContextAt: null,
+      retryNotBefore: null,
+    };
+    expect(nextRunAt(meeting)).toBeNull();
+    expect(isDue(meeting, after(24 * 60 * 60_000))).toBe(false);
+  });
+
+  it("agrees with isDue across every combination of the four inputs", () => {
+    const offsets = [-3_600_000, -300_000, -90_000, -1_000, 0, 60_000];
+    const choose = (offset: number | null) =>
+      offset === null ? null : new Date(T.getTime() + offset);
+
+    for (const u of offsets)
+      for (const r of [null, ...offsets])
+        for (const c of [null, ...offsets])
+          for (const n of [null, ...offsets]) {
+            const meeting: DueInput = {
+              updatedAt: choose(u)!,
+              lastRunAt: choose(r),
+              firstUnseenContextAt: choose(c),
+              retryNotBefore: choose(n),
+            };
+            const at = nextRunAt(meeting);
+            for (const probe of [-1, 0, 1]) {
+              const now = new Date(T.getTime() + probe * 30_000);
+              expect(isDue(meeting, now)).toBe(
+                at !== null && now.getTime() >= at.getTime()
+              );
+            }
+            if (at) {
+              expect(isDue(meeting, at)).toBe(true);
+              expect(isDue(meeting, new Date(at.getTime() - 1))).toBe(false);
+            }
+          }
   });
 });
