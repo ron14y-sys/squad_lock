@@ -29,6 +29,7 @@ import {
 } from "@/lib/email/notify";
 import { auth } from "@/auth";
 import { after } from "next/server";
+import { rescheduleForConflict } from "@/lib/matching/reschedule";
 
 export async function POST(
   request: Request,
@@ -90,10 +91,14 @@ export async function POST(
       if (result.justStuck) {
         notifications.push(notifyStuck(meetingId));
       }
-      for (const cancelled of result.cancelledConflicts) {
-        notifications.push(notifyConflictReweigh(cancelled.id));
-      }
       await Promise.all(notifications);
+      // #251: a meeting this approval clashed with moves to another time at
+      // its venue at once. Only one that had to be weighed in full again is
+      // told why; a new time is announced as any new proposal is.
+      for (const cancelled of result.cancelledConflicts) {
+        const outcome = await rescheduleForConflict(cancelled.id);
+        if (outcome === "reweighed") await notifyConflictReweigh(cancelled.id);
+      }
     });
 
     return Response.json(result);

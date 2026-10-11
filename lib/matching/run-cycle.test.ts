@@ -409,8 +409,20 @@ describe("isDue", () => {
     ).toBe(false);
   });
 
-  it("is not due when a proposal is out and nobody has objected", () => {
-    expect(isDue({ ...due, firstUnseenContextAt: null }, NOW)).toBe(false);
+  // #251: `weighing` with a proposal and nothing unanswered was a dead end —
+  // a meeting sent back from a conflict waited forever, with no error.
+  it("weighs a meeting put back with nothing unanswered, once the proposal has had its time", () => {
+    expect(isDue({ ...due, firstUnseenContextAt: null }, NOW)).toBe(true);
+    expect(
+      isDue(
+        {
+          ...due,
+          lastRunAt: ago(MIN_PROPOSAL_LIFETIME_MS - 1),
+          firstUnseenContextAt: null,
+        },
+        NOW
+      )
+    ).toBe(false);
   });
 
   // Normally step 7 runs the first cycle at initiation. Reaching here with no
@@ -745,15 +757,16 @@ describe("nextRunAt (#215)", () => {
     );
   });
 
-  it("is null when a proposal is out and nobody has objected or amended", () => {
-    const meeting: DueInput = {
-      updatedAt: old,
-      lastRunAt: old,
-      firstUnseenContextAt: null,
-      retryNotBefore: null,
-    };
-    expect(nextRunAt(meeting)).toBeNull();
-    expect(isDue(meeting, after(24 * 60 * 60_000))).toBe(false);
+  it("is never null for a meeting put back with nothing unanswered (#251)", () => {
+    expectDueExactlyAt(
+      {
+        updatedAt: T,
+        lastRunAt: T,
+        firstUnseenContextAt: null,
+        retryNotBefore: null,
+      },
+      after(MIN_PROPOSAL_LIFETIME_MS)
+    );
   });
 
   it("agrees with isDue across every combination of the four inputs", () => {
