@@ -117,7 +117,7 @@ export type PreferenceProfile = {
   hardConstraints: HardConstraints;
 
   /**
-   * Cuisine, budget, atmosphere, noise level — soft signal only (spec §5.1).
+   * Budget, kind of place, cuisine — soft signal only (spec §5.1).
    * Nothing deterministic branches on it; the model reads it as-is and A4's
    * JSON Schema is the real validation boundary. Typed here anyway so the
    * preference game (C2) and anything that renders a profile agree on a

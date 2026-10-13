@@ -56,7 +56,8 @@ model PreferenceProfile {
   /// left to the model (spec §4.1b).
   hardConstraints Json @default("{}")
 
-  /// Cuisine, budget, atmosphere, noise level — soft signal only.
+  /// Budget, kind of place, cuisine — soft signal only (#217; keys from the
+  /// old vocabulary are ignored when read).
   softPreferences Json @default("{}")
 
   /// Home location at neighbourhood granularity, never a street address
@@ -104,16 +105,16 @@ model Group {
 /// Resolves the many-to-many between User and Group — a user belongs to
 /// several groups at once, and a group has several members (spec §1.2).
 model GroupMember {
-  id       String   @id @default(cuid())
-  groupId  String
-  userId   String
-  joinedAt DateTime @default(now())
+  id                 String   @id @default(cuid())
+  groupId            String
+  userId             String
+  joinedAt           DateTime @default(now())
   /// #240: names this member typed as a new meeting's venue that Google
   /// found nothing for, or found something other than a restaurant, bar or
   /// café. At 3 the venue field is locked and no more lookups are made; back
   /// to 0 when they open a meeting in this group. Kept here rather than in
   /// the form so a reload cannot buy more lookups.
-  failedVenueLookups Int @default(0)
+  failedVenueLookups Int      @default(0)
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -426,9 +427,9 @@ enum ExtractionOutcome {
 }
 
 /// Sparse per-meeting correction — "no car tonight", "coming from work"
-/// (spec §6.2, §3.2, §5.7). A row exists only when someone amends, and each
-/// amendment appends a new row rather than overwriting the last one, so the
-/// timeline can show which amendment triggered which re-weighing (spec §5.6).
+/// (spec §6.2, §3.2, §5.7). Every amendment and every rejection appends a new
+/// row rather than overwriting the last one, so the timeline can show which
+/// one triggered which re-weighing (spec §5.6).
 model ParticipantMeetingContext {
   id        String @id @default(cuid())
   meetingId String
@@ -600,8 +601,8 @@ model PlaceDetailsCache {
 ///
 /// `meetingId` and `invitationId` are both nullable and independent: a
 /// notification is about at most one of them — an invitation email has no
-/// meeting, every meeting-state email has no invitation — never both and
-/// never neither.
+/// meeting, every meeting-state email has no invitation — never both, and
+/// neither only for `calendar_reconnect`, which is about the user alone.
 model NotificationLog {
   id                String             @id @default(cuid())
   kind              NotificationKind
@@ -660,9 +661,9 @@ model Notification {
   userId String
   kind   NotificationKind
 
-  /// Always set in practice (every kind this table is written for is
-  /// meeting-related) — nullable only because the shared enum still
-  /// includes `invitation`, which has none.
+  /// Set for every meeting-related kind. NULL for `calendar_reconnect`, which
+  /// is about the user's calendar, not a meeting (and for `invitation`, which
+  /// this table is never written for).
   meetingId String?
 
   /// NULL means unread. A timestamp rather than a boolean for the same

@@ -6,9 +6,10 @@ Reference for [`prisma/schema.prisma`](../prisma/schema.prisma). Built for
 disagree, the schema is the source of truth — update this file to match it,
 not the other way around.
 
-The schema has **15 tables**: 9 that carry product data, 2 pure join
-tables (`GroupMember`, `MatchRunSeenContext`) that resolve many-to-many
-relationships, 2 Places caches, an invitation table and a notification log.
+The schema has **16 tables**: 9 that carry product data, 2 join tables
+(`GroupMember`, `MatchRunSeenContext`) that resolve many-to-many
+relationships, 2 Places caches, an invitation table, a notification log and
+the in-app notifications.
 All primary keys are `String @default(cuid())` unless noted.
 
 ---
@@ -31,28 +32,29 @@ One person. Identity and Google tokens only — every preference lives in
 
 **Relations:** one `PreferenceProfile`; many `GroupMember`, `Meeting`
 (as initiator), `Response`, `ParticipantMeetingContext`,
-`ConflictDismissal`.
+`ConflictDismissal`, `Invitation` (as sender and as acceptor),
+`Notification`.
 
 ### `preference_profiles`
 
 Hard constraints, soft preferences, home location and travel tolerance
 (spec §5.1). One row per user, created once the onboarding flow finishes.
 
-| Column                   | Type       | Notes                                                                                                            |
-| ------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------- |
-| `id`                     | `String`   | PK                                                                                                               |
-| `userId`                 | `String`   | FK → `users.id`, unique (1:1)                                                                                    |
-| `hardConstraints`        | `Json`     | kosher, allergies, fixed unavailable hours — enforced in code (spec §4.1b), never left to the model              |
-| `softPreferences`        | `Json`     | cuisine, budget, atmosphere, noise — output of the this-or-that game                                             |
-| `homeLat`, `homeLng`     | `Float?`   | **neighbourhood granularity**, never a street address (spec §5.4)                                                |
-| `homeNeighbourhood`      | `String?`  | display label                                                                                                    |
-| `toleranceKm`            | `Float`    | default `5` — burden denominator (spec §5.4)                                                                     |
-| `recurringMobilityRules` | `Json`     | e.g. "no car on Fridays" — distinct from fixed unavailable hours: affects distance, not availability (spec §5.1) |
-| `createdAt`/`updatedAt`  | `DateTime` |                                                                                                                  |
+| Column                   | Type       | Notes                                                                                                                                                                                                                                                              |
+| ------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                     | `String`   | PK                                                                                                                                                                                                                                                                 |
+| `userId`                 | `String`   | FK → `users.id`, unique (1:1)                                                                                                                                                                                                                                      |
+| `hardConstraints`        | `Json`     | kosher, allergies, fixed unavailable hours — enforced in code (spec §4.1b), never left to the model                                                                                                                                                                |
+| `softPreferences`        | `Json`     | `budget` (`modest` / `splurge`), `venueKinds` (`bar` / `cafe` / `restaurant`), `cuisines` (10 values) — output of the preference game; vocabulary in `lib/preferences/vocabulary.ts`. Keys from the old vocabulary are ignored on read (`softPreferencesFromJson`) |
+| `homeLat`, `homeLng`     | `Float?`   | **neighbourhood granularity**, never a street address (spec §5.4)                                                                                                                                                                                                  |
+| `homeNeighbourhood`      | `String?`  | display label                                                                                                                                                                                                                                                      |
+| `toleranceKm`            | `Float`    | default `5` — burden denominator (spec §5.4)                                                                                                                                                                                                                       |
+| `recurringMobilityRules` | `Json`     | e.g. "no car on Fridays" — distinct from fixed unavailable hours: affects distance, not availability (spec §5.1)                                                                                                                                                   |
+| `createdAt`/`updatedAt`  | `DateTime` |                                                                                                                                                                                                                                                                    |
 
 **Why JSON for constraints/preferences:** the exact shape is still moving
-under Track A/C (the preference game and hard-constraints screen aren't
-built yet). Narrowing a JSON column to real columns later is a cheap,
+under Track A/C (the soft-preference vocabulary has already been replaced
+once, #217). Narrowing a JSON column to real columns later is a cheap,
 additive migration; guessing the shape wrong now and re-migrating a
 populated table is not.
 
@@ -74,19 +76,20 @@ anything that needs a human-run admin flow.
 | `name`                  | `String`   |       |
 | `createdAt`/`updatedAt` | `DateTime` |       |
 
-**Relations:** many `GroupMember`, `Meeting`.
+**Relations:** many `GroupMember`, `Meeting`, `Invitation`.
 
 ### `group_members` _(join table)_
 
 Resolves the many-to-many between `User` and `Group` — a user belongs to
 several groups at once, and a group has several members.
 
-| Column     | Type       | Notes                            |
-| ---------- | ---------- | -------------------------------- |
-| `id`       | `String`   | PK                               |
-| `groupId`  | `String`   | FK → `groups.id`, cascade delete |
-| `userId`   | `String`   | FK → `users.id`, cascade delete  |
-| `joinedAt` | `DateTime` |                                  |
+| Column               | Type       | Notes                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | `String`   | PK                                                                                                                                                                                                                                                                                                                                                                                              |
+| `groupId`            | `String`   | FK → `groups.id`, cascade delete                                                                                                                                                                                                                                                                                                                                                                |
+| `userId`             | `String`   | FK → `users.id`, cascade delete                                                                                                                                                                                                                                                                                                                                                                 |
+| `joinedAt`           | `DateTime` |                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `failedVenueLookups` | `Int`      | default `0` — venues this member typed for a new meeting that Google did not find, or found as something other than a restaurant, bar or café (#240). At 3 the venue field locks and no more Places lookups are made; reset to `0` when they open a meeting in this group (`lib/meetings/venue-check.ts`, `initiateMeeting`). Here rather than in the form, so a reload cannot buy more lookups |
 
 **Indexes:** unique on `(groupId, userId)`; index on `userId` (list a
 user's groups).
@@ -123,20 +126,21 @@ One get-together from initiation to close (spec §6.2). `conflicting` is
 deliberately **not** a stored status — spec §5.6 derives it at read time
 from the cross-group query plus `ConflictDismissal`.
 
-| Column                  | Type            | Notes                                                                                |
-| ----------------------- | --------------- | ------------------------------------------------------------------------------------ |
-| `id`                    | `String`        | PK                                                                                   |
-| `groupId`               | `String`        | FK → `groups.id`, cascade delete                                                     |
-| `initiatorId`           | `String`        | FK → `users.id`                                                                      |
-| `status`                | `MeetingStatus` | enum: `weighing` / `awaiting` / `closed` / `stuck` / `cancelled`; default `weighing` |
-| `cycleCount`            | `Int`           | default `0` — the reject-and-rematch counter (spec §3.1, cap 3)                      |
-| `pinnedDate`            | `Date?`         | optionally set at initiation                                                         |
-| `pinnedTime`            | `String?`       | optionally set at initiation                                                         |
-| `pinnedVenue`           | `String?`       | optionally set at initiation                                                         |
-| `occasion`              | `String?`       | free text, an input to the Context Resolver (spec §6.2)                              |
-| `currentDatetime`       | `DateTime?`     | **denormalized** — see below                                                         |
-| `runStage`              | `RunStage?`     | where the run is now (#155) — see below                                              |
-| `createdAt`/`updatedAt` | `DateTime`      |                                                                                      |
+| Column                  | Type            | Notes                                                                                                                                                |
+| ----------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                    | `String`        | PK                                                                                                                                                   |
+| `groupId`               | `String`        | FK → `groups.id`, cascade delete                                                                                                                     |
+| `initiatorId`           | `String`        | FK → `users.id`                                                                                                                                      |
+| `status`                | `MeetingStatus` | enum: `weighing` / `awaiting` / `closed` / `stuck` / `cancelled`; default `weighing`                                                                 |
+| `cycleCount`            | `Int`           | default `0` — the reject-and-rematch counter (spec §3.1, cap 3); a conflict reschedule (#251) is not counted                                         |
+| `pinnedDate`            | `Date?`         | optionally set at initiation                                                                                                                         |
+| `pinnedTime`            | `String?`       | optionally set at initiation                                                                                                                         |
+| `pinnedVenue`           | `String?`       | optionally set at initiation                                                                                                                         |
+| `occasion`              | `String?`       | free text, an input to the Context Resolver (spec §6.2)                                                                                              |
+| `currentDatetime`       | `DateTime?`     | **denormalized** — see below                                                                                                                         |
+| `runStage`              | `RunStage?`     | where the run is now (#155) — see below                                                                                                              |
+| `retryNotBefore`        | `DateTime?`     | B9 — no automatic retry before this instant; set after a rate-limited model call, cleared by any call that gets past it. `NULL` is "nothing special" |
+| `createdAt`/`updatedAt` | `DateTime`      |                                                                                                                                                      |
 
 **`currentDatetime` is not in spec §6.2 verbatim.** It mirrors the datetime
 of the current rank-1 `MatchOption` (or the pinned datetime, if given), kept
@@ -152,7 +156,8 @@ poll can show where a run is. A run killed mid-stage leaves its stage on the
 row until the retry overwrites it, so readers go through `runStageOf`, which
 returns it only while `status` is `weighing`.
 
-**Relations:** many `MatchRun`, `Response`, `ParticipantMeetingContext`; two
+**Relations:** many `MatchRun`, `Response`, `ParticipantMeetingContext`,
+`NotificationLog`, `Notification`; two
 named relations into `ConflictDismissal` (`MeetingA` / `MeetingB` — see
 below).
 
@@ -182,6 +187,11 @@ call has none of them.
 | `inputTokens`, `outputTokens`, `thoughtTokens`, `cachedTokens` | `Int?`           |                                                                                 |
 | `costUsd`                                                      | `Decimal(12,8)?` | `NULL`, never `0`, for a model missing from the price table (`lib/llm/cost.ts`) |
 | `costBasis`                                                    | `String?`        | `exact` / `approximate` / `unknown` — how far to trust `costUsd`                |
+
+**A run with `model` `NULL` and `cycleNumber` > 1 is a conflict reschedule**
+(#251), written by `lib/matching/reschedule.ts`: same venue, new time, no
+model call. It is not a rematch, so `weigh` (`lib/matching/run-cycle.ts`) subtracts such runs when it
+sets `meetings.cycleCount` from `cycleNumber`.
 
 **Relations:** many `MatchOption`; many `MatchRunSeenContext` (which
 `ParticipantMeetingContext` rows this run saw).
@@ -277,33 +287,42 @@ conflict-query join key).
 ### `participant_meeting_contexts`
 
 Sparse per-meeting correction — "no car tonight", "coming from work" (spec
-§3.2, §5.7). A row exists only when someone amends, and **each amendment
-appends a new row** rather than overwriting the last one, so the timeline
-can show which amendment triggered which re-weighing (spec §5.6).
+§3.2, §5.7). A row is written when someone amends and for every rejection
+(A8) — a rejection with ticked reasons and its own words writes one row for
+each (#244). **Each one appends a new row** rather than overwriting the last
+one, so the timeline can show which amendment or rejection triggered which
+re-weighing (spec §5.6).
 
-| Column                                  | Type                        | Notes                                                                                                                                                    |
-| --------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                                    | `String`                    | PK                                                                                                                                                       |
-| `meetingId`                             | `String`                    | FK → `meetings.id`, cascade delete                                                                                                                       |
-| `userId`                                | `String`                    | FK → `users.id`, cascade delete                                                                                                                          |
-| `originLat`, `originLng`, `originLabel` | `Float?`/`Float?`/`String?` | origin override for this one meeting                                                                                                                     |
-| `mobilityWindows`                       | `Json`                      | mode-tagged windows — `car` / `transit` / `walk` (spec §6.2)                                                                                             |
-| `softPreferences`                       | `Json?`                     | A7's correction. `NULL` is "no correction"; `{}` would read as "corrected to nothing"                                                                    |
-| `rejectionText`                         | `String?`                   | the objection in the person's own words (A8)                                                                                                             |
-| `rejectionOutcome`                      | `ExtractionOutcome?`        | what A7 made of **this** objection, kept per row because A8 blocks a venue wholesale for `soft`/`venue_identity` and only the hour for `time`/`distance` |
-| `note`                                  | `String?`                   | free text                                                                                                                                                |
-| `createdAt`                             | `DateTime`                  |                                                                                                                                                          |
+| Column                                  | Type                        | Notes                                                                                                                                                                                                                |
+| --------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                    | `String`                    | PK                                                                                                                                                                                                                   |
+| `meetingId`                             | `String`                    | FK → `meetings.id`, cascade delete                                                                                                                                                                                   |
+| `userId`                                | `String`                    | FK → `users.id`, cascade delete                                                                                                                                                                                      |
+| `originLat`, `originLng`, `originLabel` | `Float?`/`Float?`/`String?` | origin override for this one meeting                                                                                                                                                                                 |
+| `mobilityWindows`                       | `Json`                      | mode-tagged windows — `car` / `transit` / `walk` (spec §6.2)                                                                                                                                                         |
+| `softPreferences`                       | `Json?`                     | A7's correction, a `TonightCorrection`: soft preferences plus `avoidVenueKinds` / `avoidCuisines` (#220). `NULL` is "no correction"; `{}` would read as "corrected to nothing"                                       |
+| `rejectionText`                         | `String?`                   | the objection in the person's own words (A8)                                                                                                                                                                         |
+| `rejectionOutcome`                      | `ExtractionOutcome?`        | what A7 made of **this** objection, kept per row because A8 blocks the whole venue for `soft`/`venue_identity`/`distance`/`none` and only the exact (venue, hour) pair for `time`/`failed_*` (`blockedByRejections`) |
+| `toleranceKm`                           | `Float?`                    | travel tolerance for this meeting only (#222); replaces the profile's in the weighing. `NULL` is "the profile's"                                                                                                     |
+| `earliestStart`                         | `String?`                   | local `HH:MM` (#223); everything before it is treated as busy. `NULL` is "no bound"                                                                                                                                  |
+| `latestStart`                           | `String?`                   | local `HH:MM` (#223); a start after it is an A2 violation. `NULL` is "no bound"                                                                                                                                      |
+| `untranslated`                          | `String?`                   | what a rejection asked for that no lever can act on, in A7's words — kept so the missing levers can be counted (#220)                                                                                                |
+| `note`                                  | `String?`                   | free text                                                                                                                                                                                                            |
+| `createdAt`                             | `DateTime`                  |                                                                                                                                                                                                                      |
 
 **Three kinds of row, told apart by which columns are set** — and the one
 free amendment per participant (spec §3.1) is counted as rows with _neither_
 a correction nor a rejection, so adding a third kind here means revisiting
 that count in `respondToMeeting`:
 
-| Row                                                                     | `softPreferences` | `rejectionText` |
-| ----------------------------------------------------------------------- | ----------------- | --------------- |
-| an amendment                                                            | `NULL`            | `NULL`          |
-| a rejection A7 could turn into a correction                             | set               | set             |
-| a rejection it could not (`time`, `distance`, `venue_identity`, `none`) | `NULL`            | set             |
+| Row                                                                                 | `softPreferences` | `rejectionText` |
+| ----------------------------------------------------------------------------------- | ----------------- | --------------- |
+| an amendment                                                                        | `NULL`            | `NULL`          |
+| a rejection that became a correction (`soft`), from A7 or ticked reasons            | set               | set             |
+| a rejection that did not (`time`, `distance`, `venue_identity`, `none`, `failed_*`) | `NULL`            | set             |
+
+Any of the three may also carry `toleranceKm`, `earliestStart` or
+`latestStart`; only a rejection carries `untranslated`.
 
 **Relations:** many `MatchRunSeenContext` (which runs saw this row) — which is
 also how A8 tells an answered rejection from one written while a run was in
@@ -343,9 +362,8 @@ and every reload.
 Postgres unique constraints are ordered, so before every insert or lookup
 the application must sort the pair into a canonical order (e.g.
 `meetingAId < meetingBId` as strings) — otherwise `(X, Y)` and `(Y, X)`
-would be treated as two different dismissals. This helper does not exist
-yet; write it once (e.g. `lib/db/conflict-dismissal.ts`) and route every
-read/write through it.
+would be treated as two different dismissals. The helper is
+`canonicalMeetingPair` in `lib/db/conflict-dismissal.ts`.
 
 **Indexes:** unique on `(userId, meetingAId, meetingBId)`.
 
@@ -363,16 +381,17 @@ caller goes through it, never the raw client in `lib/places/client.ts`.
 Tier 1: the broad Nearby Search result (restaurants, bars and cafés, #165) for one neighbourhood-sized area.
 Kept 30 days.
 
-| Column         | Type       | Notes                                                                     |
-| -------------- | ---------- | ------------------------------------------------------------------------- |
-| `id`           | `String`   | PK                                                                        |
-| `latKey`       | `Float`    | rounded by `roundToNeighbourhood`, so nearby searches hit the same row    |
-| `lngKey`       | `Float`    | likewise                                                                  |
-| `radiusMeters` | `Int`      |                                                                           |
-| `results`      | `Json`     | `Candidate[]` — Essentials and Pro fields only; `rating`/hours are tier 2 |
-| `fetchedAt`    | `DateTime` |                                                                           |
+| Column          | Type       | Notes                                                                                                                                                                                                                           |
+| --------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | `String`   | PK                                                                                                                                                                                                                              |
+| `latKey`        | `Float`    | rounded by `roundToNeighbourhood`, so nearby searches hit the same row                                                                                                                                                          |
+| `lngKey`        | `Float`    | likewise                                                                                                                                                                                                                        |
+| `radiusMeters`  | `Int`      |                                                                                                                                                                                                                                 |
+| `includedTypes` | `String`   | the Nearby Search `includedTypes`, sorted and comma-joined (e.g. `bar,cafe,restaurant`) — keyed so a morning search (cafés only) never gets an evening's answer (#168)                                                          |
+| `results`       | `Json`     | `Candidate[]` — Essentials and Pro fields only; `rating`/hours are tier 2. Each candidate carries Google's `types` (#219) and `primaryType` (#240); a row whose candidates lack either is treated as a miss (`getCachedSearch`) |
+| `fetchedAt`     | `DateTime` |                                                                                                                                                                                                                                 |
 
-**Indexes:** unique on `(latKey, lngKey, radiusMeters)`.
+**Indexes:** unique on `(latKey, lngKey, radiusMeters, includedTypes)`.
 
 ### `place_details_cache`
 
@@ -380,14 +399,15 @@ Tier 2: the Enterprise-tier fields for one shortlisted place. Kept 24 hours
 — shorter on purpose, because opening hours are what decide whether a
 proposal is real.
 
-| Column         | Type       | Notes                                                                                              |
-| -------------- | ---------- | -------------------------------------------------------------------------------------------------- |
-| `placeId`      | `String`   | PK — the Google Places id, exact and stable, so no rounding                                        |
-| `rating`       | `Float?`   |                                                                                                    |
-| `openingHours` | `Json`     | `LocalWindow[]`, default `[]`. `[]` is "fetched, no hours"; a missing row is "never fetched"       |
-| `budget`       | `String?`  | `modest` / `splurge`, from Places `priceLevel` (#139). `NULL` is "not known", including `MODERATE` |
-| `summary`      | `String?`  | Places `editorialSummary`, in Hebrew where Google has it (#163). `NULL` when Google has none       |
-| `fetchedAt`    | `DateTime` |                                                                                                    |
+| Column                 | Type       | Notes                                                                                                     |
+| ---------------------- | ---------- | --------------------------------------------------------------------------------------------------------- |
+| `placeId`              | `String`   | PK — the Google Places id, exact and stable, so no rounding                                               |
+| `rating`               | `Float?`   |                                                                                                           |
+| `openingHours`         | `Json`     | `LocalWindow[]`, default `[]`. `[]` is "fetched, no hours"; a missing row is "never fetched"              |
+| `budget`               | `String?`  | `modest` / `splurge`, from Places `priceLevel` (#139). `NULL` is "not known", including `MODERATE`        |
+| `summary`              | `String?`  | Places `editorialSummary`, in Hebrew where Google has it (#163). `NULL` when Google has none              |
+| `servesVegetarianFood` | `Boolean?` | Places `servesVegetarianFood`. `NULL` is "not known" — Google did not say, or the row predates the column |
+| `fetchedAt`            | `DateTime` |                                                                                                           |
 
 ---
 
@@ -398,25 +418,48 @@ proposal is real.
 One row per transactional-email attempt (spec §5.5). A failed send is a row
 here, never a reason a meeting or invitation write rolled back — every
 `notify*` call in `lib/email/notify.ts` runs after the change it reports has
-committed. It is the record a retry would need, not the retry itself (B9):
-nothing re-sends on its own.
+committed. Append-only: a retry (B9, `retryDueNotifications` in
+`lib/email/retry.ts`) writes a new row rather than updating the failed one.
 
-| Column              | Type                 | Notes                                                         |
-| ------------------- | -------------------- | ------------------------------------------------------------- |
-| `id`                | `String`             | PK                                                            |
-| `kind`              | `NotificationKind`   | which of the five spec §5.5 triggers                          |
-| `recipientEmail`    | `String`             | the address actually used — a snapshot, not a `User` relation |
-| `status`            | `NotificationStatus` | `sent` / `failed`                                             |
-| `providerMessageId` | `String?`            | Resend's id for the message, to look it up in their dashboard |
-| `errorMessage`      | `String?`            |                                                               |
-| `meetingId`         | `String?`            | FK → `meetings.id`, cascade delete                            |
-| `invitationId`      | `String?`            | FK → `invitations.id`, cascade delete                         |
-| `createdAt`         | `DateTime`           |                                                               |
+| Column              | Type                 | Notes                                                                                                                    |
+| ------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `id`                | `String`             | PK                                                                                                                       |
+| `kind`              | `NotificationKind`   | which of the five spec §5.5 triggers, or `calendar_reconnect`                                                            |
+| `recipientEmail`    | `String`             | the address actually used — a snapshot, not a `User` relation                                                            |
+| `status`            | `NotificationStatus` | `sent` / `failed`                                                                                                        |
+| `providerMessageId` | `String?`            | Resend's id for the message, to look it up in their dashboard                                                            |
+| `errorMessage`      | `String?`            |                                                                                                                          |
+| `meetingId`         | `String?`            | FK → `meetings.id`, cascade delete                                                                                       |
+| `invitationId`      | `String?`            | FK → `invitations.id`, cascade delete                                                                                    |
+| `attempt`           | `Int`                | default `1` — B9; a retry writes a new row one higher, never updates this one                                            |
+| `retriedAt`         | `DateTime?`          | B9 — set once a failed row is claimed for a retry; the lock against two polls retrying it. Always `NULL` on a `sent` row |
+| `createdAt`         | `DateTime`           |                                                                                                                          |
 
-A row is about **exactly one** of a meeting or an invitation — never both,
-never neither. The database does not enforce this; the senders do.
+A row is about **at most one** of a meeting or an invitation — never both.
+Only `calendar_reconnect` is about neither: a broken calendar connection is
+the user's, not one meeting's. The database does not enforce this; the
+senders do.
 
-**Indexes:** `meetingId`; `invitationId`.
+**Indexes:** `meetingId`; `invitationId`; composite `(status, retriedAt)`.
+
+### `notifications`
+
+The in-app half of spec §5.5 (C9): one row per recipient per trigger, written
+beside the `notification_log` row for the same event, never instead of it.
+A separate table because the log is keyed on an email address and has no
+read state. `invitation` is never written here — there is nobody signed in
+to show it to.
+
+| Column      | Type               | Notes                                                               |
+| ----------- | ------------------ | ------------------------------------------------------------------- |
+| `id`        | `String`           | PK                                                                  |
+| `userId`    | `String`           | FK → `users.id`, cascade delete                                     |
+| `kind`      | `NotificationKind` |                                                                     |
+| `meetingId` | `String?`          | FK → `meetings.id`, cascade delete; `NULL` for `calendar_reconnect` |
+| `readAt`    | `DateTime?`        | `NULL` is unread                                                    |
+| `createdAt` | `DateTime`         |                                                                     |
+
+**Indexes:** composite `(userId, readAt)` — this user's, unread first.
 
 ---
 
@@ -429,7 +472,7 @@ never neither. The database does not enforce this; the senders do.
 | `RunStage`           | `calendars` · `places` · `venue_details` · `model` · `saving`                                                                              |
 | `InvitationStatus`   | `pending` · `accepted`                                                                                                                     |
 | `ExtractionOutcome`  | `soft` · `distance` · `time` · `venue_identity` · `none` — or why nothing was extracted: `failed_quota` · `failed_call` · `failed_invalid` |
-| `NotificationKind`   | `invitation` · `proposal_waiting` · `meeting_confirmed` · `conflict_reweigh` · `stuck`                                                     |
+| `NotificationKind`   | `invitation` · `proposal_waiting` · `meeting_confirmed` · `conflict_reweigh` · `stuck` · `calendar_reconnect`                              |
 | `NotificationStatus` | `sent` · `failed`                                                                                                                          |
 
 ---

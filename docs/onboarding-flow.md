@@ -47,11 +47,11 @@ Full plan for the first flow a new user goes through: from the invite link to a 
 
 ## 3. Screen 2 — Preference game (this-or-that)
 
-**Purpose:** get a usable soft-preference profile without a form. Pairs like _"Loud bar or quiet café?"_ · _"Hike in nature or a museum tour?"_ · _"Student budget or once-in-a-lifetime splurge?"_.
+**Purpose:** get a usable soft-preference profile without a form. Three questions: budget as a this-or-that pair (_"Student budget or once-in-a-lifetime splurge?"_), then kind of place (bar, café, restaurant) and cuisine (10 options), each a multi-select of chips with a "continue" button.
 
 **Acceptance (C2):** completed in **under 60 seconds**, timed on someone seeing it for the first time.
 
-**Output:** the soft-preference fields on `PreferenceProfile` — cuisine, budget, atmosphere, noise level. No free text at this stage; every question is a forced choice, which is what keeps it fast and keeps the output structured (nothing here needs an LLM to parse).
+**Output:** the soft-preference fields on `PreferenceProfile` — `budget`, `venueKinds`, `cuisines` (vocabulary in `lib/preferences/vocabulary.ts`). No free text at this stage; every answer is picked from a fixed list, which is what keeps it fast and keeps the output structured (nothing here needs an LLM to parse). "Doesn't matter to me" skips a question and stores nothing for it (#86); on a replay, skipping keeps the answer saved before.
 
 ---
 
@@ -90,7 +90,7 @@ Full plan for the first flow a new user goes through: from the invite link to a 
 | Screen                  | Entity              | Fields                                                                                   |
 | ----------------------- | ------------------- | ---------------------------------------------------------------------------------------- |
 | 1 — Google sign-in      | `User`              | Google account identity, calendar grant                                                  |
-| 2 — Preference game     | `PreferenceProfile` | cuisine, budget, atmosphere, noise level                                                 |
+| 2 — Preference game     | `PreferenceProfile` | budget, kind of place, cuisine                                                           |
 | 3 — Hard constraints    | `PreferenceProfile` | kosher, allergies, fixed unavailable hours                                               |
 | 4 — Location & mobility | `PreferenceProfile` | home neighbourhood (lat/lng, area granularity), `tolerance_km`, recurring mobility rules |
 

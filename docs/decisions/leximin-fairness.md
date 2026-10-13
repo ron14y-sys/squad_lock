@@ -119,6 +119,8 @@ Not cosmetic. §5.4 records that Google does not guarantee two identical Places 
 
 Until A12 exists, every field is absent and the defaults are the deterministic baseline — factor `1.0`, and each person's own `toleranceKm`. That baseline is not a degraded mode: §4.3 requires it to be exactly what the Resolver falls back to when it is off, times out, or fails validation.
 
+**Tonight's tolerance does not arrive this way.** `buildShortlist` accepts `burdenOptions` ([lib/matching/funnel.ts](../../lib/matching/funnel.ts)), but `assembleRun` passes none. A tolerance set for this meeting — `ParticipantMeetingContext.toleranceKm`, from an amendment or from A7 ([#220](https://github.com/ron14y-sys/squad_lock/issues/220)) — **replaces the profile's `toleranceKm`** in the participant mapping (`participantsAndSlots`, [lib/matching/run-cycle.ts](../../lib/matching/run-cycle.ts)). Once, in one place, so the burden's denominator, the 2.0 gate and A4's "within the range you gave" all read the same number; an override passed down as an option would reach the burden and not the justification. `BurdenOptions` stays the seam for A12's detour factors.
+
 ### Point-to-region belongs here; the regions do not
 
 `DetourFactor` is keyed by region pair, and A3 has no regions. But the missing link — which region a point falls in — is pure geometry, so A3 owns it and A12 owns the regions themselves. Neither needs the other to exist.
