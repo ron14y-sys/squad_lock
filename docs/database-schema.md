@@ -204,21 +204,22 @@ One of the ranked options a run produced (spec §4.1c). Only rank 1 is ever
 shown to the user; ranks 2–3 are kept for the timeline, the eval set, and
 the report.
 
-| Column                      | Type               | Notes                                                                                                                                                            |
-| --------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                        | `String`           | PK                                                                                                                                                               |
-| `matchRunId`                | `String`           | FK → `match_runs.id`, cascade delete                                                                                                                             |
-| `rank`                      | `Int`              | 1–3                                                                                                                                                              |
-| `venuePlaceId`              | `String?`          | Google Places id, if resolved from a real venue                                                                                                                  |
-| `venueName`, `venueAddress` | `String`/`String?` | snapshot at decision time — Places data can change later                                                                                                         |
-| `venueLat`, `venueLng`      | `Float?`           |                                                                                                                                                                  |
-| `venueType`, `venueSummary` | `String?`          | What the place is ("מסעדה איטלקית") and Google's one-line description, as Places gave them (#163). Shown under the venue name on the proposal                    |
-| `proposedDatetime`          | `DateTime`         |                                                                                                                                                                  |
-| `proposedEnd`               | `DateTime`         | stored, not implied: B6 shortens a meeting to fit a venue's opening hours                                                                                        |
-| `participantJustifications` | `Json`             | `userId → text`, written for that viewer specifically (spec §5.6)                                                                                                |
-| `tradeoffs`                 | `Json`             | what this option costs, and for whom — persisted for the timeline/report but **never** rendered as a comparative cost line to the person who bore it (spec §5.6) |
-| `unverified`                | `Json`             | `UnverifiedFact[]`, default `[]` — what A2 could not check (e.g. opening hours). Shown to everybody, written by code, never by the model                         |
-| `createdAt`                 | `DateTime`         |                                                                                                                                                                  |
+| Column                      | Type               | Notes                                                                                                                                                                                                                                                |
+| --------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                        | `String`           | PK                                                                                                                                                                                                                                                   |
+| `matchRunId`                | `String`           | FK → `match_runs.id`, cascade delete                                                                                                                                                                                                                 |
+| `rank`                      | `Int`              | 1–3                                                                                                                                                                                                                                                  |
+| `venuePlaceId`              | `String?`          | Google Places id, if resolved from a real venue                                                                                                                                                                                                      |
+| `venueName`, `venueAddress` | `String`/`String?` | snapshot at decision time — Places data can change later                                                                                                                                                                                             |
+| `venueLat`, `venueLng`      | `Float?`           |                                                                                                                                                                                                                                                      |
+| `venueType`, `venueSummary` | `String?`          | What the place is ("מסעדה איטלקית") and Google's one-line description, as Places gave them (#163). Shown under the venue name on the proposal                                                                                                        |
+| `venuePrice`                | `Json?`            | What a diner is expected to pay (#249): `{ level?, min?, max?, currency? }` as Google reported it. `NULL` when Google gave neither a range nor a level, and for options created before the column. Shown under the venue description on the proposal |
+| `proposedDatetime`          | `DateTime`         |                                                                                                                                                                                                                                                      |
+| `proposedEnd`               | `DateTime`         | stored, not implied: B6 shortens a meeting to fit a venue's opening hours                                                                                                                                                                            |
+| `participantJustifications` | `Json`             | `userId → text`, written for that viewer specifically (spec §5.6)                                                                                                                                                                                    |
+| `tradeoffs`                 | `Json`             | what this option costs, and for whom — persisted for the timeline/report but **never** rendered as a comparative cost line to the person who bore it (spec §5.6)                                                                                     |
+| `unverified`                | `Json`             | `UnverifiedFact[]`, default `[]` — what A2 could not check (e.g. opening hours). Shown to everybody, written by code, never by the model                                                                                                             |
+| `createdAt`                 | `DateTime`         |                                                                                                                                                                                                                                                      |
 
 **Indexes:** unique on `(matchRunId, rank)`.
 
@@ -399,15 +400,16 @@ Tier 2: the Enterprise-tier fields for one shortlisted place. Kept 24 hours
 — shorter on purpose, because opening hours are what decide whether a
 proposal is real.
 
-| Column                 | Type       | Notes                                                                                                     |
-| ---------------------- | ---------- | --------------------------------------------------------------------------------------------------------- |
-| `placeId`              | `String`   | PK — the Google Places id, exact and stable, so no rounding                                               |
-| `rating`               | `Float?`   |                                                                                                           |
-| `openingHours`         | `Json`     | `LocalWindow[]`, default `[]`. `[]` is "fetched, no hours"; a missing row is "never fetched"              |
-| `budget`               | `String?`  | `modest` / `splurge`, from Places `priceLevel` (#139). `NULL` is "not known", including `MODERATE`        |
-| `summary`              | `String?`  | Places `editorialSummary`, in Hebrew where Google has it (#163). `NULL` when Google has none              |
-| `servesVegetarianFood` | `Boolean?` | Places `servesVegetarianFood`. `NULL` is "not known" — Google did not say, or the row predates the column |
-| `fetchedAt`            | `DateTime` |                                                                                                           |
+| Column                 | Type       | Notes                                                                                                                                                                                          |
+| ---------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `placeId`              | `String`   | PK — the Google Places id, exact and stable, so no rounding                                                                                                                                    |
+| `rating`               | `Float?`   |                                                                                                                                                                                                |
+| `openingHours`         | `Json`     | `LocalWindow[]`, default `[]`. `[]` is "fetched, no hours"; a missing row is "never fetched"                                                                                                   |
+| `budget`               | `String?`  | `modest` / `splurge`, from Places `priceLevel` (#139). `NULL` is "not known", including `MODERATE`                                                                                             |
+| `summary`              | `String?`  | Places `editorialSummary`, in Hebrew where Google has it (#163). `NULL` when Google has none                                                                                                   |
+| `servesVegetarianFood` | `Boolean?` | Places `servesVegetarianFood`. `NULL` is "not known" — Google did not say, or the row predates the column                                                                                      |
+| `price`                | `Json?`    | Places `priceRange` and `priceLevel` as `{ level?, min?, max?, currency? }` (#249). `NULL` is "not known" — Google gave neither, or the row predates the column (refetched within the 24h TTL) |
+| `fetchedAt`            | `DateTime` |                                                                                                                                                                                                |
 
 ---
 

@@ -332,6 +332,10 @@ model MatchOption {
   /// on the proposal; NULL when Google did not say.
   venueType    String?
   venueSummary String?
+  /// What a diner is expected to pay (#249): `{ level?, min?, max?, currency? }`
+  /// as Google reported it, see `VenuePrice` in lib/types. NULL when Google
+  /// gave neither a range nor a level, and for options created before #249.
+  venuePrice   Json?
 
   proposedDatetime DateTime
   /// When it ends. Stored rather than implied: B6 shortens a meeting to fit a
@@ -590,6 +594,10 @@ model PlaceDetailsCache {
   /// Google's `servesVegetarianFood`. NULL is "not known" — Google did not
   /// say, or the row predates the field.
   servesVegetarianFood Boolean?
+  /// Google's `priceRange` and `priceLevel` (#249), as `VenuePrice`. NULL is
+  /// "not known" — Google gave neither, or the row predates the field (it is
+  /// refetched within `DETAILS_CACHE_TTL_MS`).
+  price                Json?
   fetchedAt            DateTime @default(now())
 
   @@map("place_details_cache")
