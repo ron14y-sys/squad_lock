@@ -228,6 +228,17 @@ describe("venuePriceText (#249)", () => {
     );
   });
 
+  it("reads Google's lowest bracket (from 1) as 'up to', not 'from 1'", () => {
+    expect(venuePriceText({ min: 1, max: 50, currency: "ILS" })).toBe(
+      "מחיר צפוי: עד 50 ₪ לסועד"
+    );
+    // A lone 1 says nothing: the level, if any, speaks instead.
+    expect(venuePriceText({ min: 1, currency: "ILS" })).toBeNull();
+    expect(
+      venuePriceText({ min: 1, currency: "ILS", level: "inexpensive" })
+    ).toBe("מחיר צפוי: זול");
+  });
+
   it("falls back to the coarse level when there is no range", () => {
     expect(venuePriceText({ level: "inexpensive" })).toBe("מחיר צפוי: זול");
     expect(venuePriceText({ level: "very_expensive" })).toBe(
