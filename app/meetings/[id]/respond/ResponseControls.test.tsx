@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { Cuisine } from "@/lib/preferences/vocabulary";
 import { ResponseControls } from "./ResponseControls";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -104,7 +105,8 @@ test("something doesn't work shows the remaining cycle count and requires a reas
 });
 
 function openRejection(
-  fetchMock = vi.fn(() => Promise.resolve(jsonResponse({})))
+  fetchMock = vi.fn(() => Promise.resolve(jsonResponse({}))),
+  venueCuisines: Cuisine[] = []
 ) {
   vi.stubGlobal("fetch", fetchMock);
   render(
@@ -115,6 +117,7 @@ function openRejection(
       amendmentIsFree={true}
       disabled={false}
       onResponded={vi.fn()}
+      venueCuisines={venueCuisines}
     />
   );
   return fetchMock;
@@ -258,6 +261,110 @@ test("not every cuisine can be ruled out", async () => {
 
   // Nine of ten are out; the tenth can no longer be picked.
   expect(screen.getByRole("button", { name: "הודי" })).toBeDisabled();
+});
+
+async function openCuisines(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    screen.getByRole("button", { name: "משהו כאן לא מתאים לי" })
+  );
+  await user.click(screen.getByRole("button", { name: "סוג האוכל" }));
+}
+
+test("no 'this place' chip when the venue's cuisine is unknown (#248)", async () => {
+  const user = userEvent.setup();
+  openRejection();
+  await openCuisines(user);
+
+  expect(
+    screen.queryByRole("button", { name: "המקום הזה" })
+  ).not.toBeInTheDocument();
+});
+
+test("'this place' ticks the venue's cuisines, which can then be adjusted (#248)", async () => {
+  const user = userEvent.setup();
+  const fetchMock = openRejection(undefined, ["middle_eastern"]);
+  await openCuisines(user);
+
+  const chip = screen.getByRole("button", { name: "המקום הזה" });
+  expect(chip).toHaveAttribute("aria-pressed", "false");
+
+  await user.click(chip);
+
+  expect(chip).toHaveAttribute("aria-pressed", "true");
+  expect(
+    screen.getByRole("button", { name: "ים-תיכוני / מזרחי" })
+  ).toHaveAttribute("aria-pressed", "true");
+
+  await user.click(screen.getByRole("button", { name: "שלח" }));
+  expect(sentBody(fetchMock)).toEqual({
+    kind: "doesnt_suit",
+    reasons: { cuisines: ["middle_eastern"] },
+  });
+});
+
+test("'this place' stays in step with the cuisine chips beside it (#248)", async () => {
+  const user = userEvent.setup();
+  openRejection(undefined, ["middle_eastern", "meat"]);
+  await openCuisines(user);
+  const chip = screen.getByRole("button", { name: "המקום הזה" });
+
+  await user.click(chip);
+  expect(chip).toHaveAttribute("aria-pressed", "true");
+
+  // Taking one of its cuisines back out means it no longer reads as pressed.
+  await user.click(screen.getByRole("button", { name: "בשרים / גריל" }));
+  expect(chip).toHaveAttribute("aria-pressed", "false");
+
+  // Pressed again it ticks both, and pressed once more it clears both.
+  await user.click(chip);
+  expect(chip).toHaveAttribute("aria-pressed", "true");
+  await user.click(chip);
+  expect(
+    screen.getByRole("button", { name: "ים-תיכוני / מזרחי" })
+  ).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("button", { name: "בשרים / גריל" })).toHaveAttribute(
+    "aria-pressed",
+    "false"
+  );
+});
+
+test("'this place' adds to what is already ticked, and un-ticking leaves the rest (#248)", async () => {
+  const user = userEvent.setup();
+  const fetchMock = openRejection(undefined, ["middle_eastern"]);
+  await openCuisines(user);
+
+  await user.click(screen.getByRole("button", { name: "פיצה" }));
+  await user.click(screen.getByRole("button", { name: "המקום הזה" }));
+  await user.click(screen.getByRole("button", { name: "המקום הזה" }));
+  await user.click(screen.getByRole("button", { name: "המקום הזה" }));
+  await user.click(screen.getByRole("button", { name: "שלח" }));
+
+  expect(sentBody(fetchMock)).toEqual({
+    kind: "doesnt_suit",
+    reasons: { cuisines: ["pizza", "middle_eastern"] },
+  });
+});
+
+test("'this place' cannot rule out every cuisine either (#248)", async () => {
+  const user = userEvent.setup();
+  openRejection(undefined, ["middle_eastern", "indian"]);
+  await openCuisines(user);
+
+  for (const label of [
+    "איטלקי",
+    "פיצה",
+    "המבורגר",
+    "בשרים / גריל",
+    "אסייתי",
+    "סושי / יפני",
+    "דגים ופירות ים",
+    "מקסיקני",
+  ]) {
+    await user.click(screen.getByRole("button", { name: label }));
+  }
+
+  // Eight ticked; the venue's two would make ten, so the shortcut is off.
+  expect(screen.getByRole("button", { name: "המקום הזה" })).toBeDisabled();
 });
 
 test("a failed rejection keeps the form open and shows the error", async () => {

@@ -21,6 +21,7 @@ import { ConflictWarning, type Conflict } from "./respond/ConflictWarning";
 import { StuckPanel } from "./StuckPanel";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
 import type { VenuePrice } from "@/lib/types";
+import type { Cuisine } from "@/lib/preferences/vocabulary";
 import { ScreenState } from "@/app/_components/ScreenState";
 
 type MeetingCardStatus =
@@ -39,6 +40,7 @@ type Proposal = {
   venueType: string | null;
   venueSummary: string | null;
   venuePrice: VenuePrice | null;
+  venueCuisines: Cuisine[];
   start: string;
   end: string;
   justification: string | null;
@@ -567,6 +569,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
                 ?.status ?? "pending"
             }
             remainingCycles={detail.remainingCycles}
+            venueCuisines={detail.proposal?.venueCuisines}
             amendmentIsFree={detail.viewerAmendmentIsFree}
             disabled={detail.status === "closed"}
             onResponded={refresh}
