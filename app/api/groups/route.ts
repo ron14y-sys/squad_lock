@@ -59,7 +59,8 @@ export async function POST(request: Request): Promise<Response> {
   const group = await prisma.group.create({
     data: {
       name: parsed.data.name,
-      members: { create: { userId } },
+      // The creator runs the group (#250).
+      members: { create: { userId, isAdmin: true } },
     },
   });
 

@@ -194,6 +194,10 @@ export function membersLabel(count: number): string {
  * paragraph. `invitation` is included for completeness (the enum has it)
  * even though `lib/db/notifications.ts` never actually writes one of this
  * kind — see that file's own comment.
+ *
+ * The four group kinds (#250) are in-app only, never emailed. These are
+ * their short headings; the card adds the group and the person from the
+ * columns the notification carries.
  */
 export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   invitation: "הוזמנת לקבוצה",
@@ -202,4 +206,8 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   conflict_reweigh: "הפגישה נפתחה מחדש בגלל התנגשות",
   stuck: "לא מצאנו הצעה לפגישה — צריך להחליט ידנית",
   calendar_reconnect: "החיבור ליומן Google שלך הפסיק לעבוד",
+  member_left: "חבר עזב את הקבוצה",
+  group_inactive: "הקבוצה כבר לא פעילה",
+  group_deleted: "הקבוצה נמחקה",
+  became_admin: "אתה המנהל החדש של הקבוצה",
 };

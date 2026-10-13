@@ -116,6 +116,14 @@ model GroupMember {
   /// the form so a reload cannot buy more lookups.
   failedVenueLookups Int      @default(0)
 
+  /// Whoever runs the group (#250): the one who can delete it, and who passes
+  /// the role on, to somebody chosen at random, when they leave. Exactly one
+  /// member of a group has it. Kept true by code, in the same transaction as
+  /// the change, under a lock on the group row — Prisma cannot express "one
+  /// true per group" as an index. Groups that existed before it got the
+  /// member who joined first, the one who created them.
+  isAdmin Boolean @default(false)
+
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -663,8 +671,22 @@ model Notification {
 
   /// Set for every meeting-related kind. NULL for `calendar_reconnect`, which
   /// is about the user's calendar, not a meeting (and for `invitation`, which
-  /// this table is never written for).
+  /// this table is never written for), and for the group kinds added in #250,
+  /// which are about a group and not one meeting.
   meetingId String?
+
+  /// #250: what a group notification says, copied in when it is written. No
+  /// relation to `groups`, deliberately: when an admin deletes a group the
+  /// notification telling everybody so has to outlive it, and a foreign key
+  /// would take it down with the row it describes. `groupId` still lets the
+  /// card link to a group that exists; the page checks before linking.
+  groupId           String?
+  groupName         String?
+  /// Who left, for `member_left` and `group_inactive`.
+  actorName         String?
+  /// How many open meetings were cancelled, for `group_inactive` and
+  /// `group_deleted`.
+  meetingsCancelled Int?
 
   /// NULL means unread. A timestamp rather than a boolean for the same
   /// reason `Response.respondedAt` is one — "whether" and "when" are both
@@ -696,6 +718,16 @@ enum NotificationKind {
   /// invitation -- the broken connection affects every meeting they are in,
   /// not just the one that happened to surface it -- so both refs stay null.
   calendar_reconnect
+  /// #250 -- somebody left a group that still has three members or more.
+  member_left
+  /// #250 -- somebody left and two or fewer remain, which is below the
+  /// three a meeting needs (`GROUP_SIZE_FLOOR`). The meetings still open
+  /// were cancelled; `meetingsCancelled` says how many.
+  group_inactive
+  /// #250 -- the group's admin deleted it, and with it every meeting in it.
+  group_deleted
+  /// #250 -- the admin left and this member was chosen to take over.
+  became_admin
 }
 
 enum NotificationStatus {
