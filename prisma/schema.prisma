@@ -240,6 +240,12 @@ model Meeting {
   /// "nothing special", same as every meeting has today.
   retryNotBefore DateTime?
 
+  /// Why the meeting is `stuck` (#246, #247). Written together with the
+  /// status. NULL is "not recorded": a meeting stuck before the column
+  /// existed, or a cause none of the three describes. Only meaningful while
+  /// `status` is `stuck`.
+  stuckReason StuckReason?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -257,6 +263,18 @@ model Meeting {
   @@index([groupId])
   @@index([status, currentDatetime])
   @@map("meetings")
+}
+
+/// Why a meeting is `stuck` (#246, #247): the group used up its attempts, or
+/// the search found nothing that fits what was asked for. The panel words
+/// each one differently — "three times" is only true of the first.
+enum StuckReason {
+  /// The three proposals (`CYCLE_CAP`) were all turned down.
+  cycle_cap
+  /// No time everyone is free in, within the day, part of day and hours asked for.
+  no_time
+  /// No venue everyone can reach, that is open then and not already rejected.
+  no_venue
 }
 
 /// The stages of one run, in the order `runCycle` enters them (#155).
