@@ -155,12 +155,12 @@ test("shows a sign-in prompt when unauthenticated", async () => {
   ).toBeInTheDocument();
 });
 
-test("polls every ~3s while a meeting on screen is re-weighing", async () => {
+test("polls every ~3s while a meeting's run is under way (#269)", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const fetchMock = vi.fn(() =>
     Promise.resolve(
       jsonResponse({
-        meetings: [card({ status: "reweighing" })],
+        meetings: [card({ status: "reweighing", runStage: "places" })],
         openCount: 1,
       })
     )
@@ -168,7 +168,7 @@ test("polls every ~3s while a meeting on screen is re-weighing", async () => {
   vi.stubGlobal("fetch", fetchMock);
 
   render(<GroupFeed groupId="group-1" />);
-  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  await screen.findByText(/פגישות \(1 פתוחות\)/);
 
   await vi.advanceTimersByTimeAsync(3000);
   expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -177,7 +177,29 @@ test("polls every ~3s while a meeting on screen is re-weighing", async () => {
   expect(fetchMock).toHaveBeenCalledTimes(3);
 });
 
-test("polls every ~30s once nothing is re-weighing", async () => {
+test("polls every ~30s, not 3s, while a re-weighing waits for its run (#269)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const fetchMock = vi.fn(() =>
+    Promise.resolve(
+      jsonResponse({
+        meetings: [card({ status: "reweighing", runStage: null })],
+        openCount: 1,
+      })
+    )
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupFeed groupId="group-1" />);
+  await screen.findByText(/פגישות \(1 פתוחות\)/);
+
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  await vi.advanceTimersByTimeAsync(27000);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+test("polls every ~30s while a proposal waits for answers", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const fetchMock = vi.fn(() =>
     Promise.resolve(jsonResponse({ meetings: [card()], openCount: 1 }))
@@ -185,12 +207,40 @@ test("polls every ~30s once nothing is re-weighing", async () => {
   vi.stubGlobal("fetch", fetchMock);
 
   render(<GroupFeed groupId="group-1" />);
-  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  await screen.findByText(/פגישות \(1 פתוחות\)/);
 
   await vi.advanceTimersByTimeAsync(3000);
   expect(fetchMock).toHaveBeenCalledTimes(1);
 
   await vi.advanceTimersByTimeAsync(27000);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+test("asks nothing while no meeting is open, and once on coming back (#269)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const fetchMock = vi.fn(() =>
+    Promise.resolve(
+      jsonResponse({
+        meetings: [
+          card({ status: "closed" }),
+          card({ id: "m2", status: "stuck" }),
+        ],
+        openCount: 1,
+      })
+    )
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupFeed groupId="group-1" />);
+  await screen.findByText(/פגישות \(1 פתוחות\)/);
+
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  setVisibility("hidden");
+  document.dispatchEvent(new Event("visibilitychange"));
+  setVisibility("visible");
+  document.dispatchEvent(new Event("visibilitychange"));
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 

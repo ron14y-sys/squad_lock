@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
+import { cardsPollDelay, usePolling } from "@/app/_components/use-polling";
 import Link from "next/link";
 
 import { ConflictBanner } from "@/app/_components/ConflictBanner";
@@ -35,6 +37,7 @@ type OpenMeeting = {
     | "closed";
   waitingOn: number | null;
   firstSearch: boolean;
+  runStage: string | null;
   currentDatetime: string | null;
   pinnedWhen: {
     kind: "date" | "date_and_time" | "part_of_day" | "date_and_part_of_day";
@@ -94,10 +97,14 @@ export function GroupsList() {
         setMeetings((await meetingsRes.json()).meetings);
         setLoadState("ready");
       })
-      .catch(() => setLoadState("error"));
+      // A later poll that fails leaves what is on screen (#269).
+      .catch(() =>
+        setLoadState((prev) => (prev === "loading" ? "error" : prev))
+      );
   }
 
   useEffect(load, []);
+  usePolling(load, loadState === "ready" ? cardsPollDelay(meetings) : null);
 
   async function createGroup() {
     const trimmed = name.trim();

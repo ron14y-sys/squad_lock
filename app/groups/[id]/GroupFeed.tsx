@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { meetingDateLabel, meetingTimeLabel } from "@/lib/format/meeting-when";
@@ -15,6 +15,7 @@ import {
   tiltClass,
 } from "@/app/_components/meeting-style";
 import { ScreenState } from "@/app/_components/ScreenState";
+import { cardsPollDelay, usePolling } from "@/app/_components/use-polling";
 
 type ResponseStatus = "pending" | "approved" | "cant_make_it" | "doesnt_suit";
 
@@ -41,6 +42,7 @@ type MeetingCard = {
   status: MeetingCardStatus;
   waitingOn: number | null;
   firstSearch: boolean;
+  runStage: string | null;
   currentDatetime: string | null;
   pinnedWhen: PinnedWhen | null;
   pinnedVenue: string | null;
@@ -117,73 +119,25 @@ function MeetingCardRow({ card, index }: { card: MeetingCard; index: number }) {
 export function GroupFeed({ groupId }: { groupId: string }) {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [feed, setFeed] = useState<Feed | null>(null);
-  // Read by the polling effect without re-running it on every fetch.
-  const feedRef = useRef<Feed | null>(null);
+
+  // The first load, and every one `usePolling` asks for after it.
+  const fetchFeed = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/meetings`);
+      if (res.status === 401) return setLoadState("signed-out");
+      if (res.status === 404) return setLoadState("not-found");
+      if (!res.ok) throw new Error(`GET meetings: ${res.status}`);
+      setFeed((await res.json()) as Feed);
+      setLoadState("ready");
+    } catch {
+      setLoadState((prev) => (prev === "loading" ? "error" : prev));
+    }
+  }, [groupId]);
 
   useEffect(() => {
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    async function fetchFeed(): Promise<boolean> {
-      try {
-        const res = await fetch(`/api/groups/${groupId}/meetings`);
-        if (cancelled) return false;
-        if (res.status === 401) {
-          setLoadState("signed-out");
-          return false;
-        }
-        if (res.status === 404) {
-          setLoadState("not-found");
-          return false;
-        }
-        if (!res.ok) throw new Error(`GET meetings: ${res.status}`);
-
-        const body = (await res.json()) as Feed;
-        if (cancelled) return false;
-        feedRef.current = body;
-        setFeed(body);
-        setLoadState("ready");
-        return body.meetings.some((m) => m.status === "reweighing");
-      } catch {
-        if (!cancelled)
-          setLoadState((prev) => (prev === "loading" ? "error" : prev));
-        return false;
-      }
-    }
-
-    function scheduleNext(hasReweighing: boolean) {
-      // Backgrounded: polling stops entirely (spec §5.6), not just slows down.
-      if (document.visibilityState !== "visible") return;
-      timeoutId = setTimeout(poll, hasReweighing ? 3000 : 30000);
-    }
-
-    async function poll() {
-      if (cancelled) return;
-      const hasReweighing = await fetchFeed();
-      if (!cancelled) scheduleNext(hasReweighing);
-    }
-
-    function onVisibilityChange() {
-      if (document.visibilityState === "visible") {
-        // Coming back to the foreground refreshes immediately rather than
-        // waiting out whatever delay was already ticking.
-        if (timeoutId) clearTimeout(timeoutId);
-        poll();
-        return;
-      }
-      // Going to the background cancels whatever poll was already queued —
-      // "stop entirely" means no more requests, not one last one in flight.
-      if (timeoutId) clearTimeout(timeoutId);
-    }
-
-    poll();
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [groupId]);
+    fetchFeed();
+  }, [fetchFeed]);
+  usePolling(fetchFeed, feed && cardsPollDelay(feed.meetings));
 
   if (loadState === "loading") {
     return <ScreenState kind="loading">טוען פגישות…</ScreenState>;

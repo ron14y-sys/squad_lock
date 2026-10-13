@@ -74,6 +74,74 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+  setVisibility("visible");
+});
+
+function setVisibility(state: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  });
+}
+
+test("refreshes every ~30s while a meeting is open, and shows what changed (#269)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let status = "waiting_on_others";
+  serve({ meetings: () => jsonResponse({ meetings: [meeting({ status })] }) });
+  render(<GroupsList />);
+  await screen.findByText("Rothschild Regulars");
+  expect(screen.queryByText(/ממתינים לך/)).not.toBeInTheDocument();
+
+  status = "waiting_on_you";
+  await vi.advanceTimersByTimeAsync(29_000);
+  expect(screen.queryByText(/ממתינים לך/)).not.toBeInTheDocument();
+
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(await screen.findByText("1 ממתינים לך")).toBeInTheDocument();
+});
+
+test("asks nothing while no meeting is open or in the background, and once on coming back (#269)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  serve({});
+  render(<GroupsList />);
+  await screen.findByText("Rothschild Regulars");
+  const loaded = fetchMock.mock.calls.length;
+
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(fetchMock).toHaveBeenCalledTimes(loaded);
+
+  setVisibility("visible");
+  document.dispatchEvent(new Event("visibilitychange"));
+  expect(fetchMock.mock.calls.length).toBeGreaterThan(loaded);
+});
+
+test("a refresh that fails leaves the screen as it was (#269)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let fail = false;
+  serve({
+    meetings: () =>
+      fail ? jsonResponse({}, 500) : jsonResponse({ meetings: [meeting()] }),
+  });
+  render(<GroupsList />);
+  await screen.findByText("1 ממתינים לך");
+
+  fail = true;
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(screen.getByText("1 ממתינים לך")).toBeInTheDocument();
+});
+
+test("asks nothing in the background, even with a meeting open (#269)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  serve({ meetings: () => jsonResponse({ meetings: [meeting()] }) });
+  render(<GroupsList />);
+  await screen.findByText("1 ממתינים לך");
+  const loaded = fetchMock.mock.calls.length;
+
+  setVisibility("hidden");
+  document.dispatchEvent(new Event("visibilitychange"));
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(fetchMock).toHaveBeenCalledTimes(loaded);
 });
 
 test("lists the signed-in user's groups with a member count", async () => {
