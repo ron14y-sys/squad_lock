@@ -59,6 +59,7 @@ const DRAFT: MatchRunDraft = {
         typeLabel: "בר יין",
         summary: "יין מקומי ונשנושים",
         price: { level: "moderate", min: 60, max: 90, currency: "ILS" },
+        types: ["wine_bar", "bar", "food"],
       },
       proposedDatetime: SLOT_START,
       proposedEnd: SLOT_END,
@@ -214,6 +215,13 @@ describe("the options", () => {
     });
     // Omitted, so the column is NULL — `null` is not valid input for it.
     expect(second.venuePrice).toBeUndefined();
+  });
+
+  it("keeps the venue's Places types, an empty list when it had none (#248)", () => {
+    const [first, second] = DATA.options.create;
+
+    expect(first.venueTypes).toEqual(["wine_bar", "bar", "food"]);
+    expect(second.venueTypes).toEqual([]);
   });
 
   it("writes null coordinates rather than zeroes for a venue with no location", () => {

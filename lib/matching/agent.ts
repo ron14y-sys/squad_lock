@@ -540,6 +540,7 @@ export function interpretAnswer(
         typeLabel: candidate.typeLabel,
         summary: candidate.summary,
         price: candidate.price,
+        types: candidate.types,
       },
       proposedDatetime: slot.start,
       proposedEnd: slot.end,
