@@ -382,7 +382,7 @@ export type Blocked = {
  * | `time` | the pair | the same venue three hours earlier is the right answer, not a worse one |
  * | `distance` | the venue | it is as far at every hour; blocking only the pair let the same venue come straight back at the next hour ([#211](https://github.com/ron14y-sys/squad_lock/issues/211)). The "no car after 21:00" case (#89) is a mobility amendment, not a rejection |
  * | `none` | the venue | the rejection was read and said nothing about the hour, so the only thing known is that this place was turned down. Blocking the pair let the same venue come back three hours later with nothing changed |
-| `failed_*` | the pair | nothing was read at all, so block the minimum #17 requires and let the sentence do the rest |
+ * | `failed_*` | the pair | nothing was read at all, so block the minimum #17 requires and let the sentence do the rest |
  *
  * Which venue a rejection was *about* is the one that was on screen when it
  * was written — the latest proposal at or before it. That is why the outcome
@@ -616,7 +616,7 @@ export async function assembleRun(
   // TIME_OF_DAY_VENUE_KINDS's own comment). `undefined` keeps today's
   // behaviour, every kind, when no part was chosen.
   const includedTypes = part ? TIME_OF_DAY_VENUE_KINDS[part] : undefined;
-  // #221: what was asked for tonight — in a rejection or an amendment — is a
+  // #221: what was asked for tonight — in a rejection — is a
   // request; what a profile lists is a preference. Either way the search
   // asks for it, in one more call per centre, because the part of day's
   // 20 most popular places may hold no bar at all. A request replaces the
