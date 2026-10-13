@@ -63,6 +63,7 @@ export type MatchRunCreateData = {
       venueLng: number | null;
       venueType: string | null;
       venueSummary: string | null;
+      venuePrice?: Prisma.InputJsonValue;
       proposedDatetime: Date;
       proposedEnd: Date;
       participantJustifications: Prisma.InputJsonValue;
@@ -133,6 +134,9 @@ export function toMatchRunCreate(
         venueLng: option.venue.location?.lng ?? null,
         venueType: option.venue.typeLabel ?? null,
         venueSummary: option.venue.summary ?? null,
+        // Left out, not null, when unknown: a nullable JSON column takes
+        // NULL by omission, and `null` itself is not a valid input for it.
+        venuePrice: option.venue.price ? asJson(option.venue.price) : undefined,
         proposedDatetime: option.proposedDatetime,
         proposedEnd: option.proposedEnd,
         participantJustifications: asJson(option.participantJustifications),

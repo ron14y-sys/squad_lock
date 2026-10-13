@@ -73,6 +73,8 @@ export type Candidate = {
   primaryType?: string | null;
   /** Google's one-line description, fetched with the details. Often absent. */
   summary?: string;
+  /** What a diner is expected to pay (#249), fetched with the details. Often absent. */
+  price?: VenuePrice;
 };
 
 /**
@@ -221,6 +223,7 @@ export type VenueSnapshot = {
   location: LatLng | null;
   typeLabel?: string;
   summary?: string;
+  price?: VenuePrice;
 };
 
 /**

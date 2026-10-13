@@ -15,6 +15,7 @@ import { fetchBusyForUsers } from "@/lib/calendar/participant-busy";
 import { notifyProposalWaiting } from "@/lib/email/notify";
 import { MeetingStatus } from "@/lib/generated/prisma/enums";
 import type { Candidate, ParticipantMeetingContext } from "@/lib/types";
+import { parseVenuePrice } from "@/lib/places/price";
 import { participantMeetingContextFromRow } from "@/lib/types/participant-meeting-context-from-row";
 import type { MatchRunDraft } from "./agent";
 import { buildShortlist } from "./funnel";
@@ -148,6 +149,9 @@ export async function rescheduleForConflict(
     openingHours: details.openingHours,
     typeLabel: top.venueType ?? undefined,
     summary: top.venueSummary ?? undefined,
+    // The snapshot's own price, like its summary: an option made before #249
+    // has none, and the venue is the same one.
+    price: parseVenuePrice(top.venuePrice),
   };
   const venueFacts = venueDietaryFactsFrom([
     {
@@ -205,6 +209,7 @@ export async function rescheduleForConflict(
               : null,
           typeLabel: venue.typeLabel,
           summary: venue.summary,
+          price: venue.price,
         },
         proposedDatetime: best.slot.start,
         proposedEnd: best.slot.end,

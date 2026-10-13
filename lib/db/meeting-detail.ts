@@ -17,6 +17,8 @@ import { nextRunAt } from "@/lib/matching/due";
 import type { RunStage } from "@/lib/generated/prisma/enums";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
 import type { MobilityMode } from "@/lib/types/profile";
+import type { VenuePrice } from "@/lib/types";
+import { parseVenuePrice } from "@/lib/places/price";
 import type {
   Meeting,
   MeetingCardStatus,
@@ -35,6 +37,8 @@ export type ProposalDTO = {
   venueAddress: string | null;
   venueType: string | null;
   venueSummary: string | null;
+  /** What a diner is expected to pay (#249); null when Google gave nothing. */
+  venuePrice: VenuePrice | null;
   start: string;
   end: string;
   /** This viewer's own reason, and only this viewer's — never a comparison. */
@@ -385,6 +389,7 @@ export async function getMeetingDetail(
         venueAddress: topOption.venueAddress,
         venueType: topOption.venueType,
         venueSummary: topOption.venueSummary,
+        venuePrice: parseVenuePrice(topOption.venuePrice) ?? null,
         start: topOption.proposedDatetime.toISOString(),
         end: topOption.proposedEnd.toISOString(),
         justification:

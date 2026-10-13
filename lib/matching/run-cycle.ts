@@ -1005,6 +1005,7 @@ async function weighPool(
     rating: details.rating,
     openingHours: details.openingHours,
     summary: details.summary,
+    price: details.price,
   }));
   const venueSoftFacts = venueSoftFactsFrom(
     detailed.map(({ candidate, details }) => ({

@@ -58,6 +58,7 @@ const DRAFT: MatchRunDraft = {
         location: { lat: 32.0648, lng: 34.7749 },
         typeLabel: "בר יין",
         summary: "יין מקומי ונשנושים",
+        price: { level: "moderate", min: 60, max: 90, currency: "ILS" },
       },
       proposedDatetime: SLOT_START,
       proposedEnd: SLOT_END,
@@ -200,6 +201,19 @@ describe("the options", () => {
     expect(first.venueSummary).toBe("יין מקומי ונשנושים");
     expect(second.venueType).toBeNull();
     expect(second.venueSummary).toBeNull();
+  });
+
+  it("keeps the expected price as JSON, and leaves the column out when unknown (#249)", () => {
+    const [first, second] = DATA.options.create;
+
+    expect(first.venuePrice).toEqual({
+      level: "moderate",
+      min: 60,
+      max: 90,
+      currency: "ILS",
+    });
+    // Omitted, so the column is NULL — `null` is not valid input for it.
+    expect(second.venuePrice).toBeUndefined();
   });
 
   it("writes null coordinates rather than zeroes for a venue with no location", () => {
