@@ -3,6 +3,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GroupDetail } from "./GroupDetail";
 
+const pushMock = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
+  usePathname: () => "/groups/group-1",
+}));
+
 function jsonResponse(body: unknown, status = 200) {
   return {
     ok: status >= 200 && status < 300,
@@ -44,7 +50,43 @@ function routeFetchMock(
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  pushMock.mockReset();
 });
+
+function memberRow(id: string, isAdmin = false) {
+  return {
+    userId: id,
+    joinedAt: "2026-08-01T00:00:00.000Z",
+    isAdmin,
+    user: { name: `name-${id}`, email: `${id}@example.com` },
+  };
+}
+
+/** A group of `size` members, as the viewer (a plain member unless admin) sees it. */
+function groupOfSize(
+  size: number,
+  extra: { viewerIsAdmin?: boolean; plannedMeetings?: number } = {}
+) {
+  return {
+    ...GROUP,
+    members: Array.from({ length: size }, (_, i) =>
+      memberRow(`u${i + 1}`, i === 0)
+    ),
+    viewerIsAdmin: false,
+    plannedMeetings: 0,
+    ...extra,
+  };
+}
+
+function manageFetch(
+  group: ReturnType<typeof groupOfSize>,
+  overrides: Record<string, () => Response> = {}
+) {
+  return routeFetchMock({
+    "/api/groups": () => jsonResponse([group]),
+    ...overrides,
+  });
+}
 
 test("marks the admin among the members", async () => {
   vi.stubGlobal(
@@ -290,4 +332,138 @@ test("says so when the invitation was accepted before it could be cancelled", as
   expect(
     await screen.findByText("yoav@example.com כבר הצטרף/ה לקבוצה.")
   ).toBeInTheDocument();
+});
+
+test("a plain member can leave, and cannot delete", async () => {
+  vi.stubGlobal("fetch", manageFetch(groupOfSize(4)));
+
+  render(<GroupDetail groupId="group-1" />);
+
+  expect(
+    await screen.findByRole("button", { name: "עזיבת הקבוצה" })
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "מחיקת הקבוצה" })
+  ).not.toBeInTheDocument();
+});
+
+test("leaving asks first, says who is left, and goes back to the groups", async () => {
+  const user = userEvent.setup();
+  const fetchMock = manageFetch(groupOfSize(4), {
+    "/api/groups/group-1/leave": () => jsonResponse({ left: true }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupDetail groupId="group-1" />);
+  await user.click(await screen.findByRole("button", { name: "עזיבת הקבוצה" }));
+
+  expect(screen.getByText(/יישארו בקבוצה 3 חברים/)).toBeInTheDocument();
+  expect(screen.queryByText(/יבוטלו/)).not.toBeInTheDocument();
+  expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/leave"))).toBe(
+    false
+  );
+
+  await user.click(screen.getByRole("button", { name: "כן, לעזוב" }));
+
+  const call = fetchMock.mock.calls.find(([url]) => url.endsWith("/leave"));
+  expect(call![0]).toBe("/api/groups/group-1/leave");
+  expect(call![1]).toMatchObject({ method: "POST" });
+  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/groups"));
+});
+
+test("leaving a group of three warns that the open meetings are cancelled", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal("fetch", manageFetch(groupOfSize(3)));
+
+  render(<GroupDetail groupId="group-1" />);
+  await user.click(await screen.findByRole("button", { name: "עזיבת הקבוצה" }));
+
+  expect(screen.getByText(/יישארו בקבוצה 2 חברים/)).toBeInTheDocument();
+  expect(screen.getByText(/הפגישות הפתוחות בקבוצה יבוטלו/)).toBeInTheDocument();
+});
+
+test("an admin who leaves is told the role passes on", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal("fetch", manageFetch(groupOfSize(4, { viewerIsAdmin: true })));
+
+  render(<GroupDetail groupId="group-1" />);
+  await user.click(await screen.findByRole("button", { name: "עזיבת הקבוצה" }));
+
+  expect(
+    screen.getByText(/התפקיד יעבור באקראי לאחד החברים/)
+  ).toBeInTheDocument();
+});
+
+test("the admin can delete, after being told how many meetings go too", async () => {
+  const user = userEvent.setup();
+  const fetchMock = manageFetch(
+    groupOfSize(4, { viewerIsAdmin: true, plannedMeetings: 2 }),
+    { "/api/groups/group-1": () => jsonResponse({}, 204) }
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupDetail groupId="group-1" />);
+  await user.click(await screen.findByRole("button", { name: "מחיקת הקבוצה" }));
+
+  expect(screen.getByText(/2 פגישות, גם כאלה שאושרו/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "כן, למחוק" }));
+
+  const call = fetchMock.mock.calls.find(
+    ([url, init]) => url === "/api/groups/group-1" && init?.method === "DELETE"
+  );
+  expect(call).toBeDefined();
+  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/groups"));
+});
+
+test("the last member can only delete", async () => {
+  vi.stubGlobal("fetch", manageFetch(groupOfSize(1, { viewerIsAdmin: true })));
+
+  render(<GroupDetail groupId="group-1" />);
+
+  expect(
+    await screen.findByRole("button", { name: "מחיקת הקבוצה" })
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "עזיבת הקבוצה" })
+  ).not.toBeInTheDocument();
+  expect(screen.getByText(/אפשר רק למחוק אותה/)).toBeInTheDocument();
+});
+
+test("an error keeps the question open and says what went wrong", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    manageFetch(groupOfSize(4), {
+      "/api/groups/group-1/leave": () =>
+        jsonResponse(
+          { error: "You are the last member. Delete the group instead." },
+          409
+        ),
+    })
+  );
+
+  render(<GroupDetail groupId="group-1" />);
+  await user.click(await screen.findByRole("button", { name: "עזיבת הקבוצה" }));
+  await user.click(screen.getByRole("button", { name: "כן, לעזוב" }));
+
+  expect(
+    await screen.findByText("אתה החבר האחרון, ולכן אפשר רק למחוק את הקבוצה.")
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "כן, לעזוב" })).toBeInTheDocument();
+  expect(pushMock).not.toHaveBeenCalled();
+});
+
+test("cancelling closes the question without calling anything", async () => {
+  const user = userEvent.setup();
+  const fetchMock = manageFetch(groupOfSize(4));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupDetail groupId="group-1" />);
+  await user.click(await screen.findByRole("button", { name: "עזיבת הקבוצה" }));
+  await user.click(screen.getByRole("button", { name: "ביטול" }));
+
+  expect(
+    screen.getByRole("button", { name: "עזיבת הקבוצה" })
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/לעזוב את/)).not.toBeInTheDocument();
 });

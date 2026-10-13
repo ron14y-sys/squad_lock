@@ -5,8 +5,9 @@
 
 import { Prisma } from "@/lib/generated/prisma/client";
 
-export const GROUP_SIZE_CAP = 6;
-export const GROUP_SIZE_FLOOR = 3;
+import { GROUP_SIZE_CAP, GROUP_SIZE_FLOOR } from "@/lib/groups/size";
+
+export { GROUP_SIZE_CAP, GROUP_SIZE_FLOOR };
 
 /**
  * Counting only accepted members would let a group send far more

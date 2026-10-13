@@ -3,7 +3,7 @@
 // database. `leaveGroup` (lib/db/group-membership.ts) carries the decision
 // out inside one transaction.
 
-import { GROUP_SIZE_FLOOR } from "@/lib/db/groups";
+import { GROUP_SIZE_FLOOR } from "@/lib/groups/size";
 
 export type DeparturePlan = {
   /** Who is left, in the order they were given. Never empty. */
