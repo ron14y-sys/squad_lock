@@ -15,6 +15,27 @@ import type { PreferenceProfile, SoftPreferences } from "./profile";
 import type { ParticipantMeetingContext } from "./meeting";
 import type { Kilometres, LatLng, LocalWindow, TimeSlot } from "./primitives";
 
+/** Google's `priceLevel`, as the proposal can word it (#249). */
+export type PriceLevel =
+  "free" | "inexpensive" | "moderate" | "expensive" | "very_expensive";
+
+/**
+ * What a diner is expected to pay at a venue (#249), as Google reported it.
+ *
+ * `min` / `max` are whole amounts in `currency` and either may be missing:
+ * Google leaves one end out for an open-ended range ("from 100", "up to 50").
+ * `level` is the coarse fallback for a place Google gave no range for. Every
+ * field is optional and the object is never stored empty: absent means "not
+ * known", never a made-up number.
+ */
+export type VenuePrice = {
+  level?: PriceLevel;
+  min?: number;
+  max?: number;
+  /** ISO 4217, e.g. `ILS`. Only present together with `min` or `max`. */
+  currency?: string;
+};
+
 /**
  * A venue as the funnel sees it — a Google Places result, narrowed to what we
  * asked for in the field mask.

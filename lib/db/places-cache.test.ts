@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Candidate, LatLng } from "@/lib/types";
+import type { Candidate, LatLng, VenuePrice } from "@/lib/types";
+import { Prisma } from "@/lib/generated/prisma/client";
 import {
   DETAILS_CACHE_TTL_MS,
   fetchPlaceDetailsCached,
@@ -403,6 +404,42 @@ describe("getCachedDetails / saveCachedDetails", () => {
       fetchedAt: new Date(),
     });
     expect((await getCachedDetails("p2", client))?.summary).toBeUndefined();
+  });
+
+  it("stores the price as JSON, DbNull when there is none, and reads it back (#249)", async () => {
+    const client = fakeCacheClient();
+    const price: VenuePrice = {
+      level: "moderate",
+      min: 60,
+      max: 90,
+      currency: "ILS",
+    };
+
+    await saveCachedDetails("p1", { openingHours: [], price }, client);
+    await saveCachedDetails("p2", { openingHours: [] }, client);
+
+    const calls = client.placeDetailsCache.upsert.mock.calls;
+    expect(calls[0][0].create.price).toEqual(price);
+    expect(calls[0][0].update.price).toEqual(price);
+    // Not `undefined`: on update that would leave a stale price in place.
+    expect(calls[1][0].create.price).toBe(Prisma.DbNull);
+    expect(calls[1][0].update.price).toBe(Prisma.DbNull);
+
+    client.placeDetailsCache.findUnique.mockResolvedValueOnce({
+      rating: null,
+      openingHours: [],
+      price,
+      fetchedAt: new Date(),
+    });
+    expect((await getCachedDetails("p1", client))?.price).toEqual(price);
+
+    client.placeDetailsCache.findUnique.mockResolvedValueOnce({
+      rating: null,
+      openingHours: [],
+      price: null,
+      fetchedAt: new Date(),
+    });
+    expect((await getCachedDetails("p2", client))?.price).toBeUndefined();
   });
 
   it("is an undefined rating, not null, when the stored rating is null", async () => {

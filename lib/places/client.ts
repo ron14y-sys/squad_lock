@@ -44,7 +44,9 @@ import type {
   LocalWeekday,
   LocalWindow,
   SoftPreferences,
+  VenuePrice,
 } from "@/lib/types";
+import { venuePriceFromGoogle, type RawPriceRange } from "./price";
 
 const SEARCH_ENDPOINT = "https://places.googleapis.com/v1/places:searchNearby";
 const TEXT_SEARCH_ENDPOINT =
@@ -74,7 +76,8 @@ const SEARCH_FIELD_MASK = [
 
 /**
  * The fields §6.3 gates to the shortlist. `priceLevel` is in the same tier as
- * the first two, so it rides in the same request (#139). `editorialSummary`
+ * the first two, so it rides in the same request (#139) — and so does
+ * `priceRange` (#249), also Enterprise. `editorialSummary`
  * is not: it moves this call from Enterprise to Enterprise + Atmosphere, a
  * decision taken in #163 so the proposal can say a few words about the place.
  * `servesVegetarianFood` is in that same Atmosphere tier, so it costs nothing
@@ -85,6 +88,7 @@ const DETAILS_FIELD_MASK = [
   "rating",
   "regularOpeningHours",
   "priceLevel",
+  "priceRange",
   "editorialSummary",
   "servesVegetarianFood",
 ].join(",");
@@ -145,6 +149,8 @@ type PlaceDetailsResponse = {
   rating?: number;
   /** Google's enum, e.g. `PRICE_LEVEL_INEXPENSIVE`. */
   priceLevel?: string;
+  /** Start and end price of a typical meal; either end may be missing. */
+  priceRange?: RawPriceRange;
   regularOpeningHours?: {
     periods?: RawPeriod[];
   };
@@ -395,6 +401,8 @@ export async function fetchPlaceDetails(placeId: string): Promise<{
   rating?: number;
   openingHours: LocalWindow[];
   budget?: SoftPreferences["budget"];
+  /** What a diner is expected to pay (#249); absent when Google gave neither. */
+  price?: VenuePrice;
   summary?: string;
   /** Absent when Google does not say — not known, not "no". */
   servesVegetarianFood?: boolean;
@@ -428,6 +436,7 @@ export async function fetchPlaceDetails(placeId: string): Promise<{
     rating: data.rating,
     openingHours: parseOpeningHours(data.regularOpeningHours),
     budget: budgetFromPriceLevel(data.priceLevel),
+    price: venuePriceFromGoogle(data),
     summary: data.editorialSummary?.text,
     servesVegetarianFood: data.servesVegetarianFood,
   };
