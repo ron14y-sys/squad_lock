@@ -1,6 +1,7 @@
 "use client";
 
 import { stickerClass } from "@/app/_components/meeting-style";
+import { usePolling } from "@/app/_components/use-polling";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -461,28 +462,17 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
   // person's answer, a new proposal. This poll is also the clock that starts
   // a due re-weighing (spec §3.2), so it quickens to three seconds only once
   // the run is under way or a minute or less away. Backgrounded: no requests
-  // (spec §5.6); back on screen: one at once.
-  const delay = detail && pollDelay(detail);
-  useEffect(() => {
-    if (!delay) return;
-    const cancelledRef = { current: false };
-    const poll = () => {
-      if (document.visibilityState !== "visible") return;
+  // (spec §5.6); back on screen: one at once (`usePolling`).
+  usePolling(
+    () =>
       loadDetail(
         meetingId,
-        cancelledRef,
+        { current: false },
         (s) => s !== "error" && setLoadState(s),
         setDetail
-      );
-    };
-    const intervalId = setInterval(poll, delay);
-    document.addEventListener("visibilitychange", poll);
-    return () => {
-      cancelledRef.current = true;
-      clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", poll);
-    };
-  }, [meetingId, delay]);
+      ),
+    detail && pollDelay(detail)
+  );
 
   function refresh() {
     loadDetail(meetingId, { current: false }, setLoadState, setDetail);
