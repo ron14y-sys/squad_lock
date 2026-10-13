@@ -7,6 +7,7 @@ import { ScreenState } from "@/app/_components/ScreenState";
 type GroupMember = {
   userId: string;
   joinedAt: string;
+  isAdmin: boolean;
   user: { name: string; email: string };
 };
 
@@ -187,7 +188,12 @@ export function GroupDetail({ groupId }: { groupId: string }) {
         <div className="flex flex-col gap-2">
           {group.members.map((member) => (
             <div key={member.userId} className="sl-field">
-              <div className="font-bold">{member.user.name}</div>
+              <div className="font-bold">
+                {member.user.name}
+                {member.isAdmin && (
+                  <span className="sl-sub font-normal"> · מנהל/ת</span>
+                )}
+              </div>
               <div className="sl-sub">{member.user.email}</div>
             </div>
           ))}

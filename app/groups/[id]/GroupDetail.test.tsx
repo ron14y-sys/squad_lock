@@ -46,6 +46,34 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+test("marks the admin among the members", async () => {
+  vi.stubGlobal(
+    "fetch",
+    routeFetchMock({
+      "/api/groups": () =>
+        jsonResponse([
+          {
+            ...GROUP,
+            members: [
+              { ...GROUP.members[0], isAdmin: true },
+              {
+                userId: "u2",
+                joinedAt: "2026-08-02T00:00:00.000Z",
+                isAdmin: false,
+                user: { name: "Yoav", email: "yoav@example.com" },
+              },
+            ],
+          },
+        ]),
+    })
+  );
+
+  render(<GroupDetail groupId="group-1" />);
+
+  expect(await screen.findByText("· מנהל/ת")).toBeInTheDocument();
+  expect(screen.getAllByText("· מנהל/ת")).toHaveLength(1);
+});
+
 test("shows the group's name, members, and pending invitations", async () => {
   const fetchMock = routeFetchMock({
     "/api/groups/group-1/invitations": () => jsonResponse([PENDING_INVITATION]),

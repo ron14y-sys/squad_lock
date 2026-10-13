@@ -24,6 +24,7 @@ export async function GET(): Promise<Response> {
         select: {
           userId: true,
           joinedAt: true,
+          isAdmin: true,
           user: { select: { name: true, email: true } },
         },
       },

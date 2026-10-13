@@ -24,6 +24,7 @@ function fakeClient() {
       updateMany: vi.fn(),
       count: vi.fn(),
     },
+    groupMember: { findMany: vi.fn() },
   };
 }
 
@@ -62,6 +63,34 @@ describe("recordInAppNotification", () => {
         userId: "user-1",
         kind: NotificationKind.calendar_reconnect,
         meetingId: null,
+      },
+    });
+  });
+
+  it("writes what a group notice says, so it survives the group", async () => {
+    const client = fakeClient();
+
+    await recordInAppNotification(
+      {
+        userId: "user-1",
+        kind: NotificationKind.group_inactive,
+        groupId: "group-1",
+        groupName: "השישיה",
+        actorName: "דנה",
+        meetingsCancelled: 2,
+      },
+      client
+    );
+
+    expect(client.notification.create).toHaveBeenCalledWith({
+      data: {
+        userId: "user-1",
+        kind: NotificationKind.group_inactive,
+        meetingId: null,
+        groupId: "group-1",
+        groupName: "השישיה",
+        actorName: "דנה",
+        meetingsCancelled: 2,
       },
     });
   });
@@ -139,6 +168,58 @@ describe("listNotifications", () => {
         isNew: false,
       },
     ]);
+  });
+});
+
+describe("listNotifications, group notices (#250)", () => {
+  const groupRow = (id: string, groupId: string) => ({
+    id,
+    kind: NotificationKind.member_left,
+    meetingId: null,
+    groupId,
+    groupName: "השישיה",
+    actorName: "דנה",
+    meetingsCancelled: null,
+    createdAt: new Date("2026-10-01T10:00:00.000Z"),
+    readAt: null,
+  });
+
+  it("links a notice only to a group the person is still in", async () => {
+    const client = fakeClient();
+    client.notification.findMany.mockResolvedValueOnce([
+      groupRow("n1", "group-here"),
+      groupRow("n2", "group-gone"),
+    ]);
+    client.groupMember.findMany.mockResolvedValueOnce([
+      { groupId: "group-here" },
+    ]);
+
+    const cards = await listNotifications("user-1", client);
+
+    expect(client.groupMember.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: "user-1",
+        groupId: { in: ["group-here", "group-gone"] },
+      },
+      select: { groupId: true },
+    });
+    expect(cards[0].group).toEqual({
+      id: "group-here",
+      name: "השישיה",
+      actorName: "דנה",
+      meetingsCancelled: null,
+      linkable: true,
+    });
+    expect(cards[1].group?.linkable).toBe(false);
+  });
+
+  it("asks nothing about groups when no notice is about one", async () => {
+    const client = fakeClient();
+    client.notification.findMany.mockResolvedValueOnce([]);
+
+    await listNotifications("user-1", client);
+
+    expect(client.groupMember.findMany).not.toHaveBeenCalled();
   });
 });
 

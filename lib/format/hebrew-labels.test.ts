@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   meetingStatusLabel,
   membersLabel,
+  notificationText,
   uncheckedCalendarNote,
   unmetPinnedVenueNote,
   unmetRequestNote,
@@ -148,5 +149,61 @@ describe("unmetPinnedVenueNote (#212)", () => {
         { kind: "unmet_pinned_venue", venue: "בר הים", reason: "too_far" },
       ])
     ).toBeNull();
+  });
+});
+
+describe("notificationText (#250)", () => {
+  const group = (meetingsCancelled: number | null) => ({
+    name: "השישיה",
+    actorName: "דנה",
+    meetingsCancelled,
+  });
+
+  it("keeps the one-line label for a meeting notification", () => {
+    expect(notificationText({ kind: "stuck" })).toBe(
+      "לא מצאנו הצעה לפגישה — צריך להחליט ידנית"
+    );
+  });
+
+  it("says who left and from which group", () => {
+    expect(notificationText({ kind: "member_left", group: group(null) })).toBe(
+      'דנה עזב/ה את הקבוצה "השישיה".'
+    );
+  });
+
+  it("says how many open meetings were cancelled, with the singular for one", () => {
+    expect(
+      notificationText({ kind: "group_inactive", group: group(2) })
+    ).toContain("2 פגישות פתוחות בוטלו.");
+    expect(
+      notificationText({ kind: "group_inactive", group: group(1) })
+    ).toContain("פגישה פתוחה אחת בוטלה.");
+    expect(
+      notificationText({ kind: "group_inactive", group: group(0) })
+    ).not.toContain("בוטלו");
+    expect(
+      notificationText({ kind: "group_inactive", group: group(0) })
+    ).toContain("הזמינו עוד חברים כדי להמשיך.");
+  });
+
+  it("says the admin deleted the group and how many meetings went with it", () => {
+    expect(notificationText({ kind: "group_deleted", group: group(3) })).toBe(
+      'המנהל/ת מחק/ה את הקבוצה "השישיה". 3 פגישות נמחקו איתה.'
+    );
+  });
+
+  it("tells a new admin which group", () => {
+    expect(
+      notificationText({ kind: "became_admin", group: group(null) })
+    ).toContain('הפכת למנהל/ת של הקבוצה "השישיה"');
+  });
+
+  it("falls back to the label when the notice has no group name", () => {
+    expect(
+      notificationText({
+        kind: "group_deleted",
+        group: { name: null, actorName: null, meetingsCancelled: null },
+      })
+    ).toBe("הקבוצה נמחקה");
   });
 });
