@@ -2,7 +2,12 @@
 // English literal the backend schema expects (lib/preferences/schema.ts).
 // Translating the label here never touches the value sent to the API.
 
-import type { LocalWeekday, MobilityMode } from "@/lib/types";
+import type {
+  LocalWeekday,
+  MobilityMode,
+  PriceLevel,
+  VenuePrice,
+} from "@/lib/types";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
 import {
   CUISINE_LABELS,
@@ -261,4 +266,38 @@ export function notificationText(card: {
     default:
       return label;
   }
+}
+
+export const PRICE_LEVEL_LABELS: Record<PriceLevel, string> = {
+  free: "חינם",
+  inexpensive: "זול",
+  moderate: "בינוני",
+  expensive: "יקר",
+  very_expensive: "יקר מאוד",
+};
+
+/**
+ * The proposal's price line (#249), or `null` when there is nothing honest to
+ * say. A range in shekels wins; a range in any other currency is not shown
+ * (no conversion, no guessed number) and the coarse level, if Google gave
+ * one, takes its place. Worded as "expected": these are Google's figures and
+ * can be stale, not a promise.
+ */
+export function venuePriceText(
+  price: VenuePrice | null | undefined
+): string | null {
+  if (!price) return null;
+
+  const { min, max, currency } = price;
+  if (currency === "ILS") {
+    if (min !== undefined && max !== undefined) {
+      return min === max
+        ? `מחיר צפוי: כ-${min} ₪ לסועד`
+        : `מחיר צפוי: כ-${min}–${max} ₪ לסועד`;
+    }
+    if (min !== undefined) return `מחיר צפוי: מ-${min} ₪ לסועד`;
+    if (max !== undefined) return `מחיר צפוי: עד ${max} ₪ לסועד`;
+  }
+
+  return price.level ? `מחיר צפוי: ${PRICE_LEVEL_LABELS[price.level]}` : null;
 }
