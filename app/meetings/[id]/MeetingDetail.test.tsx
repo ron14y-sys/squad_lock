@@ -59,8 +59,17 @@ function detail(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function setVisibility(state: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  });
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+  setVisibility("visible");
 });
 
 test("says what the place is, in Google's words, under its name", async () => {
@@ -631,8 +640,8 @@ test("asks again every ~3s while re-weighing, and stops once a proposal is back"
 
   expect(screen.getByText("משוקלל מחדש")).toBeInTheDocument();
 
-  // The third answer is `waiting_on_you` — the new proposal is out, and
-  // nothing is asked after the page shows it.
+  // The third answer is `waiting_on_you` — the new proposal is out, and the
+  // page goes back to asking every 30 seconds (#261).
   await vi.waitFor(() =>
     expect(screen.queryByText("משוקלל מחדש")).not.toBeInTheDocument()
   );
@@ -641,6 +650,122 @@ test("asks again every ~3s while re-weighing, and stops once a proposal is back"
   await vi.advanceTimersByTimeAsync(9000);
   expect(fetchMock).toHaveBeenCalledTimes(settled);
   vi.useRealTimers();
+});
+
+test("while a proposal waits, asks again every 30s and shows another person's answer (#261)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const yael = (status: string) => ({
+    userId: "u3",
+    name: "יעל",
+    status,
+    respondedAt: null,
+  });
+  const before = detail();
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      jsonResponse({
+        ...before,
+        participants: [...before.participants, yael("pending")],
+        totalCount: 3,
+      })
+    )
+    .mockResolvedValue(
+      jsonResponse({
+        ...before,
+        participants: [...before.participants, yael("approved")],
+        approvedCount: 2,
+        totalCount: 3,
+      })
+    );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+  expect(await screen.findByText("1 מתוך 3 אישרו")).toBeInTheDocument();
+
+  await vi.advanceTimersByTimeAsync(29_000);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(await screen.findByText("2 מתוך 3 אישרו")).toBeInTheDocument();
+});
+
+test("while the next proposal is minutes away, asks every 30s, not every 3s (#261)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const fetchMock = vi.fn(() =>
+    Promise.resolve(
+      jsonResponse(detail({ status: "reweighing", nextRunInMinutes: 4 }))
+    )
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+  await screen.findByText("ההצעה הבאה תהיה מוכנה בעוד כ-4 דקות.");
+
+  await vi.advanceTimersByTimeAsync(3_000);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  await vi.advanceTimersByTimeAsync(27_000);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+test("asks every 3s once the next proposal is a minute away, or its run is under way (#261)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  for (const close of [
+    { nextRunInMinutes: 1 },
+    { nextRunInMinutes: 4, runStage: "places" },
+  ]) {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(jsonResponse(detail({ status: "reweighing", ...close })))
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { unmount } = render(<MeetingDetail meetingId="meeting-1" />);
+    await screen.findByText("משוקלל מחדש");
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    unmount();
+  }
+});
+
+test("asks nothing more about a closed or stuck meeting (#261)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  for (const [status, shown] of [
+    ["closed", "סגור"],
+    ["stuck", "הפגישה הזו תקועה"],
+  ]) {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(detail({ status, isStuck: status === "stuck" }))
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { unmount } = render(<MeetingDetail meetingId="meeting-1" />);
+    await screen.findByText(shown);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    unmount();
+  }
+});
+
+test("asks nothing in the background, and once at once on coming back (#261)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const fetchMock = vi.fn(() => Promise.resolve(jsonResponse(detail())));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+  await screen.findByText("בית קפה נורדאו");
+
+  setVisibility("hidden");
+  document.dispatchEvent(new Event("visibilitychange"));
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  setVisibility("visible");
+  document.dispatchEvent(new Event("visibilitychange"));
+  expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
 test("names the stage while a run works through it (#169, #155)", async () => {
