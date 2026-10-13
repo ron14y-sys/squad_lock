@@ -336,6 +336,12 @@ model MatchOption {
   /// as Google reported it, see `VenuePrice` in lib/types. NULL when Google
   /// gave neither a range nor a level, and for options created before #249.
   venuePrice   Json?
+  /// The venue's Google Places `types` at decision time (#248). The cuisines
+  /// the rejection form's "this place" chip copies are derived from them on
+  /// read (`cuisinesOfTypes`), so a change to the cuisine table applies to
+  /// old options too. Empty for options created before #248 and for a venue
+  /// Google gave no types.
+  venueTypes   String[] @default([])
 
   proposedDatetime DateTime
   /// When it ends. Stored rather than implied: B6 shortens a meeting to fit a
