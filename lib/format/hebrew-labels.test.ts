@@ -4,6 +4,8 @@ import {
   meetingStatusLabel,
   membersLabel,
   notificationText,
+  stuckExplanation,
+  timeOfDayMovedNote,
   uncheckedCalendarNote,
   unmetPinnedVenueNote,
   unmetRequestNote,
@@ -257,5 +259,62 @@ describe("venuePriceText (#249)", () => {
     expect(venuePriceText(null)).toBeNull();
     expect(venuePriceText(undefined)).toBeNull();
     expect(venuePriceText({})).toBeNull();
+  });
+});
+
+describe("timeOfDayMovedNote (#247)", () => {
+  it("says which part of day the proposal moved out of, and why", () => {
+    expect(
+      timeOfDayMovedNote([
+        { kind: "time_of_day_moved", part: "midday", start: "17:00" },
+      ])
+    ).toBe("ההצעה הוזזה מהצהריים, כי ביקשו להתחיל מ-17:00.");
+  });
+
+  it("says nothing when the proposal stayed in its part of day", () => {
+    expect(timeOfDayMovedNote([])).toBeNull();
+  });
+});
+
+describe("stuckExplanation (#246, #247)", () => {
+  const none = { partOfDay: null, askedStart: null } as const;
+
+  it("only claims three tries when the cap is what stopped it", () => {
+    expect(stuckExplanation({ reason: "cycle_cap", ...none })).toMatch(
+      /ניסינו שלוש פעמים/
+    );
+    expect(stuckExplanation({ reason: "no_time", ...none })).not.toMatch(
+      /שלוש פעמים/
+    );
+    expect(stuckExplanation({ reason: "no_venue", ...none })).not.toMatch(
+      /שלוש פעמים/
+    );
+  });
+
+  it("names the part of day and hour that were asked for when no time was found", () => {
+    expect(
+      stuckExplanation({
+        reason: "no_time",
+        partOfDay: "midday",
+        askedStart: "17:00",
+      })
+    ).toMatch(/\(בצהריים, מ-17:00\)/);
+  });
+
+  it("names only what is known", () => {
+    expect(
+      stuckExplanation({
+        reason: "no_time",
+        partOfDay: "evening",
+        askedStart: null,
+      })
+    ).toMatch(/\(בערב\)/);
+    expect(stuckExplanation({ reason: "no_time", ...none })).not.toMatch(/\(/);
+  });
+
+  it("claims nothing about why when no reason was recorded", () => {
+    expect(stuckExplanation({ reason: null, ...none })).toMatch(
+      /^לא מצאנו הצעה שמתאימה לכולם/
+    );
   });
 });
