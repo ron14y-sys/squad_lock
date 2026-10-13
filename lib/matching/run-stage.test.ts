@@ -203,7 +203,11 @@ describe("runCycle's stage", () => {
 
     // `calendars`, then the clear, then the move to `stuck`.
     expect(stagesWritten()).toEqual(["calendars", null, undefined]);
-    expect(updateMany.mock.calls[2][0].data).toEqual({ status: "stuck" });
+    // ...and says why: nobody shares a free window (#246, #247).
+    expect(updateMany.mock.calls[2][0].data).toEqual({
+      status: "stuck",
+      stuckReason: "no_time",
+    });
     expect(runMatchingAgent).not.toHaveBeenCalled();
   });
 

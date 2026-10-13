@@ -65,6 +65,7 @@ import {
   MeetingStatus,
   ResponseStatus,
   type RunStage,
+  type StuckReason,
 } from "@/lib/generated/prisma/enums";
 import { CONFLICT_WINDOW_MS } from "@/lib/db/conflict-dismissal";
 import { commonFreeWindows } from "./availability";
@@ -122,9 +123,17 @@ import type { MatchAgentInput } from "./agent";
  * the same reason.
  */
 export class NoSolutionError extends Error {
-  constructor(reason: string) {
-    super(reason);
+  /**
+   * What the group is told (#246, #247), stored on the meeting as
+   * `stuckReason`. Absent when none of the three fits — the meeting is stuck
+   * all the same, and the panel words it neutrally.
+   */
+  readonly stuckReason: StuckReason | null;
+
+  constructor(message: string, stuckReason: StuckReason | null = null) {
+    super(message);
     this.name = "NoSolutionError";
+    this.stuckReason = stuckReason;
   }
 }
 
@@ -658,7 +667,8 @@ export async function assembleRun(
     .filter((candidate) => !blocked.venues.has(candidate.placeId));
   if (withPinned(found).length === 0) {
     throw new NoSolutionError(
-      `no venue near ${meetingId}'s group is still on the table`
+      `no venue near ${meetingId}'s group is still on the table`,
+      "no_venue"
     );
   }
 
@@ -718,7 +728,8 @@ export async function assembleRun(
 
   if (ranked.length === 0) {
     throw new NoSolutionError(
-      `nothing survived the filter for ${meetingId} — ${shortlisted.droppedPairs.length} pairs dropped, ${shortlisted.gatedOut.length} gated out, ${blocked.venues.size} venues and ${blocked.pairs.size} pairs already rejected`
+      `nothing survived the filter for ${meetingId} — ${shortlisted.droppedPairs.length} pairs dropped, ${shortlisted.gatedOut.length} gated out, ${blocked.venues.size} venues and ${blocked.pairs.size} pairs already rejected`,
+      "no_venue"
     );
   }
 
@@ -868,7 +879,8 @@ export async function participantsAndSlots(
     : commonFreeWindows(participants, window);
   if (slots.length === 0) {
     throw new NoSolutionError(
-      `no window ${meetingId}'s group shares in the search period`
+      `no window ${meetingId}'s group shares in the search period`,
+      "no_time"
     );
   }
 
@@ -1189,7 +1201,7 @@ export async function runCycle(
       // while this was running is not dragged back to `stuck`.
       const claimed = await getPrisma().meeting.updateMany({
         where: { id: meetingId, status: MeetingStatus.weighing },
-        data: { status: MeetingStatus.stuck },
+        data: { status: MeetingStatus.stuck, stuckReason: error.stuckReason },
       });
       console.warn(`[a8] stuck meeting=${meetingId}`, error.message);
       // Spec §5.5 trigger #5, B8 part two's other `stuck` hook

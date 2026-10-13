@@ -527,6 +527,8 @@ export async function respondToMeeting(
           cycleCount,
           status:
             cycleCount >= CYCLE_CAP ? MeetingStatus.stuck : meetingRow.status,
+          // Why it is stuck, written with the status (#246).
+          ...(cycleCount >= CYCLE_CAP ? { stuckReason: "cycle_cap" } : {}),
         },
       });
     }
@@ -550,6 +552,9 @@ export async function respondToMeeting(
             meetingRow.cycleCount >= CYCLE_CAP
               ? MeetingStatus.stuck
               : MeetingStatus.weighing,
+          ...(meetingRow.cycleCount >= CYCLE_CAP
+            ? { stuckReason: "cycle_cap" }
+            : {}),
         },
       });
     }
