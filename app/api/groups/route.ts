@@ -19,18 +19,33 @@ export async function GET(): Promise<Response> {
     where: { members: { some: { userId } } },
     orderBy: { createdAt: "desc" },
     include: {
+      // For the confirmation before an admin deletes the group (#250): how
+      // many meetings would go with it. Cancelled ones were gone already.
+      _count: {
+        select: { meetings: { where: { status: { not: "cancelled" } } } },
+      },
       members: {
         orderBy: { joinedAt: "asc" },
         select: {
           userId: true,
           joinedAt: true,
+          isAdmin: true,
           user: { select: { name: true, email: true } },
         },
       },
     },
   });
 
-  return Response.json(groups);
+  return Response.json(
+    groups.map(({ _count, ...group }) => ({
+      ...group,
+      // So the page knows which buttons to offer without knowing who it is.
+      viewerIsAdmin: group.members.some(
+        (member) => member.userId === userId && member.isAdmin
+      ),
+      plannedMeetings: _count.meetings,
+    }))
+  );
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -59,7 +74,8 @@ export async function POST(request: Request): Promise<Response> {
   const group = await prisma.group.create({
     data: {
       name: parsed.data.name,
-      members: { create: { userId } },
+      // The creator runs the group (#250).
+      members: { create: { userId, isAdmin: true } },
     },
   });
 

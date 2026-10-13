@@ -59,6 +59,55 @@ test("links calendar_reconnect to the re-auth route, not a meeting", async () =>
   );
 });
 
+test("a group notice links to its group while the person is still in it", async () => {
+  fetchMock.mockResolvedValueOnce(
+    jsonResponse([
+      card({
+        kind: "group_inactive",
+        meetingId: null,
+        group: {
+          id: "group-1",
+          name: "השישיה",
+          actorName: "דנה",
+          meetingsCancelled: 1,
+          linkable: true,
+        },
+      }),
+    ])
+  );
+
+  render(<NotificationsList />);
+
+  const link = await screen.findByRole("link");
+  expect(link).toHaveAttribute("href", "/groups/group-1");
+  expect(screen.getByText(/דנה עזב\/ה את הקבוצה "השישיה"/)).toBeInTheDocument();
+});
+
+test("a notice about a deleted group is plain text, with nowhere to go", async () => {
+  fetchMock.mockResolvedValueOnce(
+    jsonResponse([
+      card({
+        kind: "group_deleted",
+        meetingId: null,
+        group: {
+          id: "group-1",
+          name: "השישיה",
+          actorName: null,
+          meetingsCancelled: 0,
+          linkable: false,
+        },
+      }),
+    ])
+  );
+
+  render(<NotificationsList />);
+
+  expect(
+    await screen.findByText('המנהל/ת מחק/ה את הקבוצה "השישיה".')
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+});
+
 test("shows an empty state when there are none", async () => {
   fetchMock.mockResolvedValueOnce(jsonResponse([]));
 

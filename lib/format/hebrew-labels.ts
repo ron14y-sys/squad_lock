@@ -194,6 +194,10 @@ export function membersLabel(count: number): string {
  * paragraph. `invitation` is included for completeness (the enum has it)
  * even though `lib/db/notifications.ts` never actually writes one of this
  * kind — see that file's own comment.
+ *
+ * The four group kinds (#250) are in-app only, never emailed. These are
+ * their short headings; the card adds the group and the person from the
+ * columns the notification carries.
  */
 export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   invitation: "הוזמנת לקבוצה",
@@ -202,4 +206,59 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   conflict_reweigh: "הפגישה נפתחה מחדש בגלל התנגשות",
   stuck: "לא מצאנו הצעה לפגישה — צריך להחליט ידנית",
   calendar_reconnect: "החיבור ליומן Google שלך הפסיק לעבוד",
+  member_left: "חבר עזב את הקבוצה",
+  group_inactive: "הקבוצה כבר לא פעילה",
+  group_deleted: "הקבוצה נמחקה",
+  became_admin: "אתה המנהל החדש של הקבוצה",
 };
+
+/**
+ * #250: the sentence a notification card shows. The meeting kinds keep their
+ * one-line label; the group kinds say which group and who, from what the
+ * notification carried (its group may be deleted by now). A row missing that
+ * — one written before they existed cannot be, but a half-filled one should
+ * not print "undefined" — falls back to the label.
+ */
+export function notificationText(card: {
+  kind: NotificationKind;
+  group?: {
+    name: string | null;
+    actorName: string | null;
+    meetingsCancelled: number | null;
+  };
+}): string {
+  const label = NOTIFICATION_KIND_LABELS[card.kind];
+  const group = card.group;
+  if (!group?.name) return label;
+
+  const name = `"${group.name}"`;
+  const who = group.actorName ?? "מישהו";
+  const cancelled = group.meetingsCancelled ?? 0;
+
+  switch (card.kind) {
+    case "member_left":
+      return `${who} עזב/ה את הקבוצה ${name}.`;
+    case "group_inactive": {
+      const meetings =
+        cancelled === 1
+          ? " פגישה פתוחה אחת בוטלה."
+          : cancelled > 1
+            ? ` ${cancelled} פגישות פתוחות בוטלו.`
+            : "";
+      return `${who} עזב/ה את הקבוצה ${name}, ונשארו בה פחות מ-3 חברים, ולכן אי אפשר לפתוח בה פגישות.${meetings} הזמינו עוד חברים כדי להמשיך.`;
+    }
+    case "group_deleted": {
+      const meetings =
+        cancelled === 1
+          ? " פגישה אחת נמחקה איתה."
+          : cancelled > 1
+            ? ` ${cancelled} פגישות נמחקו איתה.`
+            : "";
+      return `המנהל/ת מחק/ה את הקבוצה ${name}.${meetings}`;
+    }
+    case "became_admin":
+      return `הפכת למנהל/ת של הקבוצה ${name}, כי המנהל/ת הקודם/ת עזב/ה.`;
+    default:
+      return label;
+  }
+}

@@ -18,6 +18,8 @@ type NotificationsClient = {
     PrismaClient["notification"],
     "create" | "findMany" | "updateMany" | "count"
   >;
+  /** Read only to tell whether a group notice can still link to its group. */
+  groupMember: Pick<PrismaClient["groupMember"], "findMany">;
 };
 
 /** Narrower than `NotificationsClient` — `recordInAppNotification` only ever calls `.create`, same convention as `lib/db/notification-log.ts`'s own `NotificationLogClient`. */
@@ -25,11 +27,26 @@ type RecordNotificationClient = {
   notification: Pick<PrismaClient["notification"], "create">;
 };
 
+/**
+ * What a group notice (#250) says, copied onto it when it was written — the
+ * group may be gone by the time it is read.
+ */
+export type NotificationGroupDTO = {
+  id: string;
+  name: string | null;
+  actorName: string | null;
+  meetingsCancelled: number | null;
+  /** The group still exists and this person is still in it; only then can the card link to it. */
+  linkable: boolean;
+};
+
 /** One card the notification screen shows. Dates are ISO strings, same convention as `MeetingCardDTO`. */
 export type NotificationCardDTO = {
   id: string;
   kind: NotificationKind;
   meetingId: string | null;
+  /** Only on the group kinds (#250). */
+  group?: NotificationGroupDTO;
   createdAt: string;
   /** Whether this one was still unread *before* `markAllNotificationsRead` last ran — see that function's own comment on why the read state a screen renders is not the one the next query would return. */
   isNew: boolean;
@@ -45,7 +62,16 @@ export type NotificationCardDTO = {
  * rides alongside, same discipline as `sendAndLog` itself failing to log.
  */
 export async function recordInAppNotification(
-  input: { userId: string; kind: NotificationKind; meetingId?: string },
+  input: {
+    userId: string;
+    kind: NotificationKind;
+    meetingId?: string;
+    /** #250: a group notice carries what it needs to say, because its group may be deleted. */
+    groupId?: string;
+    groupName?: string;
+    actorName?: string;
+    meetingsCancelled?: number;
+  },
   client: RecordNotificationClient = getPrisma()
 ): Promise<void> {
   try {
@@ -54,6 +80,12 @@ export async function recordInAppNotification(
         userId: input.userId,
         kind: input.kind,
         meetingId: input.meetingId ?? null,
+        ...(input.groupId !== undefined && { groupId: input.groupId }),
+        ...(input.groupName !== undefined && { groupName: input.groupName }),
+        ...(input.actorName !== undefined && { actorName: input.actorName }),
+        ...(input.meetingsCancelled !== undefined && {
+          meetingsCancelled: input.meetingsCancelled,
+        }),
       },
     });
   } catch (error) {
@@ -91,10 +123,36 @@ export async function listNotifications(
     take: LIST_LIMIT,
   });
 
+  // A group notice links to its group only while the group exists and this
+  // person is still in it. One query for all the cards, and none when there
+  // are no group notices.
+  const groupIds = [
+    ...new Set(rows.flatMap((row) => (row.groupId ? [row.groupId] : []))),
+  ];
+  const stillIn = new Set(
+    groupIds.length === 0
+      ? []
+      : (
+          await client.groupMember.findMany({
+            where: { userId, groupId: { in: groupIds } },
+            select: { groupId: true },
+          })
+        ).map((member) => member.groupId)
+  );
+
   return rows.map((row) => ({
     id: row.id,
     kind: row.kind,
     meetingId: row.meetingId,
+    ...(row.groupId && {
+      group: {
+        id: row.groupId,
+        name: row.groupName,
+        actorName: row.actorName,
+        meetingsCancelled: row.meetingsCancelled,
+        linkable: stillIn.has(row.groupId),
+      },
+    }),
     createdAt: row.createdAt.toISOString(),
     isNew: row.readAt === null,
   }));

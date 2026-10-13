@@ -2,11 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ScreenState } from "@/app/_components/ScreenState";
+import { membersLabel } from "@/lib/format/hebrew-labels";
+import { GROUP_SIZE_FLOOR } from "@/lib/groups/size";
 
 type GroupMember = {
   userId: string;
   joinedAt: string;
+  isAdmin: boolean;
   user: { name: string; email: string };
 };
 
@@ -14,6 +18,10 @@ type Group = {
   id: string;
   name: string;
   members: GroupMember[];
+  /** Whether the person looking is the one who runs it (#250). */
+  viewerIsAdmin: boolean;
+  /** Meetings that would be deleted with it: everything not cancelled. */
+  plannedMeetings: number;
 };
 
 type Invitation = {
@@ -34,6 +42,13 @@ const KNOWN_INVITE_ERRORS: Record<string, string> = {
     "לכתובת הזו אי אפשר לשלוח מייל. כדאי לבדוק שאין טעות הקלדה.",
 };
 
+const KNOWN_MANAGE_ERRORS: Record<string, string> = {
+  "Group not found.": "הקבוצה הזו לא נמצאה.",
+  "You are the last member. Delete the group instead.":
+    "אתה החבר האחרון, ולכן אפשר רק למחוק את הקבוצה.",
+  "Only the admin can delete the group.": "רק המנהל/ת יכול/ה למחוק את הקבוצה.",
+};
+
 function groupFullMessage(message: string): string | null {
   // GroupFullError's text (#174), e.g. "Group g1 already has 6 members or
   // pending invitations."
@@ -50,6 +65,13 @@ export function GroupDetail({ groupId }: { groupId: string }) {
   const [email, setEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const router = useRouter();
+  // #250: leaving and deleting each ask first, in the page itself.
+  const [confirming, setConfirming] = useState<"none" | "leave" | "delete">(
+    "none"
+  );
+  const [managing, setManaging] = useState(false);
+  const [manageMessage, setManageMessage] = useState<string | null>(null);
 
   function load() {
     Promise.all([
@@ -145,6 +167,31 @@ export function GroupDetail({ groupId }: { groupId: string }) {
     }
   }
 
+  async function manage(kind: "leave" | "delete") {
+    setManaging(true);
+    setManageMessage(null);
+    try {
+      const res = await fetch(
+        kind === "leave"
+          ? `/api/groups/${groupId}/leave`
+          : `/api/groups/${groupId}`,
+        { method: kind === "leave" ? "POST" : "DELETE" }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setManageMessage(
+          KNOWN_MANAGE_ERRORS[body.error] ?? "לא הצלחנו. נסה שוב."
+        );
+        return;
+      }
+      router.push("/groups");
+    } catch {
+      setManageMessage("לא הצלחנו. נסה שוב.");
+    } finally {
+      setManaging(false);
+    }
+  }
+
   if (loadState === "loading") {
     return <ScreenState kind="loading">טוען את הקבוצה…</ScreenState>;
   }
@@ -174,6 +221,8 @@ export function GroupDetail({ groupId }: { groupId: string }) {
   }
 
   const pendingInvitations = invitations.filter((i) => i.status === "pending");
+  const remainingAfterLeaving = group.members.length - 1;
+  const isLastMember = remainingAfterLeaving === 0;
 
   return (
     <div className="sl-page">
@@ -187,7 +236,12 @@ export function GroupDetail({ groupId }: { groupId: string }) {
         <div className="flex flex-col gap-2">
           {group.members.map((member) => (
             <div key={member.userId} className="sl-field">
-              <div className="font-bold">{member.user.name}</div>
+              <div className="font-bold">
+                {member.user.name}
+                {member.isAdmin && (
+                  <span className="sl-sub font-normal"> · מנהל/ת</span>
+                )}
+              </div>
               <div className="sl-sub">{member.user.email}</div>
             </div>
           ))}
@@ -246,6 +300,114 @@ export function GroupDetail({ groupId }: { groupId: string }) {
           </button>
         </div>
         {inviteMessage && <p className="sl-sub">{inviteMessage}</p>}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="sl-sec">ניהול הקבוצה</h2>
+        {isLastMember && (
+          <p className="sl-sub">
+            אתה החבר האחרון בקבוצה, ולכן אפשר רק למחוק אותה.
+          </p>
+        )}
+
+        {confirming === "none" && (
+          <div className="sl-row">
+            {!isLastMember && (
+              <button
+                type="button"
+                onClick={() => setConfirming("leave")}
+                className="sl-btn"
+              >
+                עזיבת הקבוצה
+              </button>
+            )}
+            {group.viewerIsAdmin && (
+              <button
+                type="button"
+                onClick={() => setConfirming("delete")}
+                className="sl-btn"
+              >
+                מחיקת הקבוצה
+              </button>
+            )}
+          </div>
+        )}
+
+        {confirming === "leave" && (
+          <div className="sl-panel">
+            <p>
+              לעזוב את &quot;{group.name}&quot;? תוסר מהפגישות הפתוחות בקבוצה.
+            </p>
+            <p className="sl-sub">
+              אחרי העזיבה יישארו בקבוצה {membersLabel(remainingAfterLeaving)}.
+            </p>
+            {remainingAfterLeaving < GROUP_SIZE_FLOOR && (
+              <p className="sl-sub">
+                הפגישות הפתוחות בקבוצה יבוטלו, ולא יהיה אפשר לפתוח חדשות עד
+                שיצטרפו עוד חברים.
+              </p>
+            )}
+            {group.viewerIsAdmin && (
+              <p className="sl-sub">
+                אתה המנהל/ת, והתפקיד יעבור באקראי לאחד החברים שנשארים.
+              </p>
+            )}
+            <div className="sl-row">
+              <button
+                type="button"
+                disabled={managing}
+                onClick={() => manage("leave")}
+                className="sl-btn"
+              >
+                כן, לעזוב
+              </button>
+              <button
+                type="button"
+                disabled={managing}
+                onClick={() => setConfirming("none")}
+                className="sl-btn"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        )}
+
+        {confirming === "delete" && (
+          <div className="sl-panel">
+            <p>
+              למחוק את &quot;{group.name}&quot;? כל החברים יוצאו ממנה
+              {group.plannedMeetings > 0
+                ? `, וכל הפגישות בה (${
+                    group.plannedMeetings === 1
+                      ? "פגישה אחת"
+                      : `${group.plannedMeetings} פגישות`
+                  }, גם כאלה שאושרו) יימחקו.`
+                : ", וכל מה שבה יימחק."}
+            </p>
+            <p className="sl-sub">אי אפשר לשחזר.</p>
+            <div className="sl-row">
+              <button
+                type="button"
+                disabled={managing}
+                onClick={() => manage("delete")}
+                className="sl-btn"
+              >
+                כן, למחוק
+              </button>
+              <button
+                type="button"
+                disabled={managing}
+                onClick={() => setConfirming("none")}
+                className="sl-btn"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        )}
+
+        {manageMessage && <p className="sl-sub">{manageMessage}</p>}
       </section>
     </div>
   );

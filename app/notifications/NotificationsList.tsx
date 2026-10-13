@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { ScreenState } from "@/app/_components/ScreenState";
-import { NOTIFICATION_KIND_LABELS } from "@/lib/format/hebrew-labels";
+import { notificationText } from "@/lib/format/hebrew-labels";
 import { APP_TIME_ZONE } from "@/lib/types/primitives";
 import type { NotificationKind } from "@/lib/generated/prisma/enums";
 
@@ -12,6 +12,14 @@ type NotificationCard = {
   id: string;
   kind: NotificationKind;
   meetingId: string | null;
+  /** Only on the group kinds (#250). */
+  group?: {
+    id: string;
+    name: string | null;
+    actorName: string | null;
+    meetingsCancelled: number | null;
+    linkable: boolean;
+  };
   createdAt: string;
   isNew: boolean;
 };
@@ -36,6 +44,10 @@ const WHEN_FMT = new Intl.DateTimeFormat("he-IL", {
  * own — null falls through to a plain, unlinked card.
  */
 function hrefFor(card: NotificationCard): string | null {
+  // #250: a group notice goes to its group, but only while there is one the
+  // person is in — a deleted group has nowhere to go.
+  if (card.group)
+    return card.group.linkable ? `/groups/${card.group.id}` : null;
   if (card.meetingId) return `/meetings/${card.meetingId}`;
   if (card.kind === "calendar_reconnect") {
     return `/api/calendar/connect?callbackUrl=${encodeURIComponent("/groups")}`;
@@ -95,7 +107,7 @@ export function NotificationsList() {
         const href = hrefFor(card);
         const content = (
           <div className={`sl-panel ${card.isNew ? "" : "opacity-60"}`}>
-            <p className="sl-line">{NOTIFICATION_KIND_LABELS[card.kind]}</p>
+            <p className="sl-line">{notificationText(card)}</p>
             <p className="sl-sub">
               {WHEN_FMT.format(new Date(card.createdAt))}
             </p>

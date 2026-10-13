@@ -9,7 +9,11 @@ import { MeetingStatus } from "@/lib/generated/prisma/client";
 import { NotAMeetingParticipantError } from "./meetings";
 import { getPrisma } from "./client";
 
-/** Only whoever started the meeting can cancel it for everyone. */
+/**
+ * Only whoever started the meeting can cancel it for everyone — unless they
+ * have left the group (#250), when nobody else could, and the meeting would
+ * hold one of the group's open places for good.
+ */
 export class NotTheInitiatorError extends Error {
   constructor() {
     super("Only the initiator can cancel a meeting.");
@@ -43,7 +47,18 @@ export async function cancelStuckMeeting(
   if (!meeting || meeting.responses.length === 0) {
     throw new NotAMeetingParticipantError(meetingId);
   }
-  if (meeting.initiatorId !== userId) throw new NotTheInitiatorError();
+  if (meeting.initiatorId !== userId) {
+    const initiatorStillIn = await prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId: meeting.groupId,
+          userId: meeting.initiatorId,
+        },
+      },
+      select: { id: true },
+    });
+    if (initiatorStillIn) throw new NotTheInitiatorError();
+  }
   if (meeting.status !== MeetingStatus.stuck) {
     throw new MeetingNotStuckError(meetingId);
   }
