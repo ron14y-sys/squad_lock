@@ -51,6 +51,7 @@ import type {
   LocalWindow,
   MobilityMode,
   Participant,
+  TimeOfDayPart,
   TimeSlot,
 } from "@/lib/types";
 import { APP_TIME_ZONE } from "@/lib/types";
@@ -300,7 +301,11 @@ export type UnverifiedFact =
   // #212: the venue the initiator named could not be offered, and this says
   // why. Same standing as `unmet_request`: about the run, added after the
   // model, and never read by it.
-  | { kind: "unmet_pinned_venue"; venue: string; reason: PinnedVenueReason };
+  | { kind: "unmet_pinned_venue"; venue: string; reason: PinnedVenueReason }
+  // #247: the initiator picked a part of day and somebody asked for an hour
+  // outside it, so the evening was searched whole instead. Same standing as
+  // the two above: about the run, added after the model, never read by it.
+  | { kind: "time_of_day_moved"; part: TimeOfDayPart; start: string };
 
 /**
  * Why the venue an initiator named was not proposed (#212): Google knows no

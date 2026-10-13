@@ -458,6 +458,8 @@ export type AssembledRun = {
     UnverifiedFact,
     { kind: "unmet_pinned_venue" }
   > | null;
+  /** #247: set when the chosen part of day was dropped for an hour somebody asked for. */
+  movedOutOfPart: Extract<UnverifiedFact, { kind: "time_of_day_moved" }> | null;
 };
 
 /**
@@ -578,14 +580,16 @@ export async function assembleRun(
 
   const window = searchWindow(meeting.pinnedDate, now);
   await reportStage("calendars");
-  const { participants, slots, unread } = await participantsAndSlots(
-    meetingId,
-    attending,
-    contextRows,
-    window,
-    part,
-    busyFor
-  );
+  const { participants, slots, unread, movedOutOfPart } =
+    await participantsAndSlots(
+      meetingId,
+      attending,
+      contextRows,
+      window,
+      part,
+      busyFor,
+      true
+    );
 
   // `originOf` throws for anyone with no home location, and that is its own
   // deliberate decision — leximin compares vectors position by position, so
@@ -624,7 +628,10 @@ export async function assembleRun(
   // for — filtering afterwards left almost nothing for a scarce kind (see
   // TIME_OF_DAY_VENUE_KINDS's own comment). `undefined` keeps today's
   // behaviour, every kind, when no part was chosen.
-  const includedTypes = part ? TIME_OF_DAY_VENUE_KINDS[part] : undefined;
+  // #247: a part of day that was dropped for an asked-for hour no longer
+  // decides the kinds either — café-only mornings are no help at 17:00.
+  const includedTypes =
+    part && !movedOutOfPart ? TIME_OF_DAY_VENUE_KINDS[part] : undefined;
   // #221: what was asked for tonight — in a rejection — is a
   // request; what a profile lists is a preference. Either way the search
   // asks for it, in one more call per centre, because the part of day's
@@ -785,6 +792,7 @@ export async function assembleRun(
     uncheckedCalendars: unread,
     unmetRequest: unmet ? unmetRequestOf(requests) : null,
     unmetPinnedVenue,
+    movedOutOfPart,
   };
 }
 
@@ -813,11 +821,18 @@ export async function participantsAndSlots(
   contextRows: Map<string, ParticipantMeetingContext[]>,
   window: TimeSlot,
   part: TimeOfDayPart | null,
-  busyFor: BusyLookup
+  busyFor: BusyLookup,
+  /**
+   * #247: when the chosen part of day leaves nothing and somebody asked for
+   * an hour, search the whole day instead (a full weighing only — a conflict
+   * moving a meeting keeps the part, `reschedule.ts`).
+   */
+  widenOnTimeBound = false
 ): Promise<{
   participants: Participant[];
   slots: TimeSlot[];
   unread: string[];
+  movedOutOfPart: AssembledRun["movedOutOfPart"];
 }> {
   const otherMeetings = await otherMeetingsBusy(
     meetingId,
@@ -872,11 +887,27 @@ export async function participantsAndSlots(
   // `commonFreeWindows` already returns several free slots out of one
   // window (busy blocks split it up) — concatenating its output across
   // several *narrowed* windows needs no change downstream of this line.
-  const slots = part
+  let slots = part
     ? partOfDayWindows(window, part).flatMap((dayWindow) =>
         commonFreeWindows(participants, dayWindow)
       )
     : commonFreeWindows(participants, window);
+  // #247: somebody asked for an hour and it lies outside the part of day the
+  // initiator chose — "17:00" against "noon". Asking for a later hour is
+  // asking to move the meeting, so the day is searched whole (calendars and
+  // the hour itself still apply). Only an asked-for hour does this: the
+  // initiator's pick holds against everything else.
+  let movedOutOfPart: AssembledRun["movedOutOfPart"] = null;
+  if (slots.length === 0 && part && widenOnTimeBound) {
+    const start = latestAskedStart(participants);
+    if (start) {
+      const wholeDay = commonFreeWindows(participants, window);
+      if (wholeDay.length > 0) {
+        slots = wholeDay;
+        movedOutOfPart = { kind: "time_of_day_moved", part, start };
+      }
+    }
+  }
   if (slots.length === 0) {
     throw new NoSolutionError(
       `no window ${meetingId}'s group shares in the search period`,
@@ -884,7 +915,17 @@ export async function participantsAndSlots(
     );
   }
 
-  return { participants, slots, unread: calendars.unread };
+  return { participants, slots, unread: calendars.unread, movedOutOfPart };
+}
+
+/** The latest hour (`HH:MM`) anyone asked to start from for this meeting, if any. */
+function latestAskedStart(participants: Participant[]): string | null {
+  const starts = participants.flatMap((participant) =>
+    participant.context?.earliestStart
+      ? [participant.context.earliestStart]
+      : []
+  );
+  return starts.length > 0 ? starts.sort().at(-1)! : null;
 }
 
 /**
@@ -1372,6 +1413,7 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
     uncheckedCalendars,
     unmetRequest,
     unmetPinnedVenue,
+    movedOutOfPart,
   } = await assembleRun(meetingId, now, busyFor, reportStage);
   await reportStage("model");
   const { draft, call } = await runMatchingAgent(input);
@@ -1392,6 +1434,8 @@ async function weigh(meetingId: string, now: Date, busyFor: BusyLookup) {
       ...(unmetRequest ? [unmetRequest] : []),
       // #212: "we could not offer the bar you named", on every option.
       ...(unmetPinnedVenue ? [unmetPinnedVenue] : []),
+      // #247: "moved out of noon because 17:00 was asked for", on every option.
+      ...(movedOutOfPart ? [movedOutOfPart] : []),
     ];
   }
 
