@@ -6,6 +6,7 @@ import type {
   LocalWeekday,
   MobilityMode,
   PriceLevel,
+  TimeOfDayPart,
   VenuePrice,
 } from "@/lib/types";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
@@ -14,7 +15,11 @@ import {
   VENUE_KIND_LABELS,
 } from "@/lib/preferences/vocabulary";
 import type { MeetingCardStatus, ResponseStatus } from "@/lib/types/meeting";
-import type { NotificationKind, RunStage } from "@/lib/generated/prisma/enums";
+import type {
+  NotificationKind,
+  RunStage,
+  StuckReason,
+} from "@/lib/generated/prisma/enums";
 
 export const WEEKDAY_LABELS: Record<LocalWeekday, string> = {
   sunday: "א׳",
@@ -303,4 +308,64 @@ export function venuePriceText(
   }
 
   return price.level ? `מחיר צפוי: ${PRICE_LEVEL_LABELS[price.level]}` : null;
+}
+
+/** "from the morning" / "in the morning": the part of day the initiator chose (#247). */
+const PART_OF_DAY_FROM: Record<TimeOfDayPart, string> = {
+  morning: "הבוקר",
+  midday: "הצהריים",
+  evening: "הערב",
+};
+const PART_OF_DAY_IN: Record<TimeOfDayPart, string> = {
+  morning: "בבוקר",
+  midday: "בצהריים",
+  evening: "בערב",
+};
+
+/**
+ * #247: the initiator chose a part of day and somebody asked for an hour
+ * outside it, so the proposal is somewhere else in the day. Said on the
+ * proposal, so a pick of "noon" followed by an evening proposal is never
+ * left unexplained.
+ */
+export function timeOfDayMovedNote(
+  facts: readonly UnverifiedFact[]
+): string | null {
+  const fact = facts.find((f) => f.kind === "time_of_day_moved");
+  if (!fact || fact.kind !== "time_of_day_moved") return null;
+  return `ההצעה הוזזה מ${PART_OF_DAY_FROM[fact.part]}, כי ביקשו להתחיל מ-${fact.start}.`;
+}
+
+/** What a stuck meeting knows about why, for the panel's first paragraph (#246). */
+export type StuckWhy = {
+  reason: StuckReason | null;
+  /** The part of day the initiator chose, if any. */
+  partOfDay: TimeOfDayPart | null;
+  /** The latest hour (`HH:MM`) anyone asked to start from, if any. */
+  askedStart: string | null;
+};
+
+/**
+ * #246, #247: why the search stopped. "Three times" is true only of the
+ * first case; the others say what was not found, and for time name what was
+ * asked for. Without a recorded reason it claims nothing it cannot know.
+ */
+export function stuckExplanation(why: StuckWhy): string {
+  const handOver = "אז המערכת מפסיקה לחפש ומעבירה את ההחלטה אליכם.";
+  switch (why.reason) {
+    case "cycle_cap":
+      return `ניסינו שלוש פעמים ולא מצאנו הצעה שמתאימה לכולם, ${handOver}`;
+    case "no_time": {
+      const asked = [
+        why.partOfDay ? PART_OF_DAY_IN[why.partOfDay] : null,
+        why.askedStart ? `מ-${why.askedStart}` : null,
+      ].filter(Boolean);
+      const named = asked.length > 0 ? ` (${asked.join(", ")})` : "";
+      return `לא מצאנו זמן שבו כולם פנויים${named}, ${handOver}`;
+    }
+    case "no_venue":
+      return `לא מצאנו מקום שמתאים לכולם: קרוב מספיק, פתוח בזמן הזה ולא כזה שכבר נדחה, ${handOver}`;
+    default:
+      return `לא מצאנו הצעה שמתאימה לכולם, ${handOver}`;
+  }
 }

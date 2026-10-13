@@ -73,6 +73,7 @@ function row(overrides: Partial<MeetingModel> = {}): MeetingModel {
     currentDatetime: null,
     runStage: null,
     retryNotBefore: null,
+    stuckReason: null,
     createdAt: new Date("2026-08-27T09:00:00.000Z"),
     updatedAt: new Date("2026-08-27T09:00:00.000Z"),
     ...overrides,

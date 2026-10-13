@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runStageOf } from "@/lib/db/meeting-cards";
 
-import { runCycle, runDueMeetings, type BusyLookup } from "./run-cycle";
+import {
+  assembleRun,
+  runCycle,
+  runDueMeetings,
+  type BusyLookup,
+} from "./run-cycle";
 
 /**
  * #155: a run writes each stage onto the meeting as it enters it, and leaves
@@ -50,6 +55,10 @@ const NEXT_DOOR = {
 
 // Called as (centre, radius, includedTypes); a test may answer by the types.
 const searchNeighbourhoodCached = vi.fn();
+// When every venue but the shut one is open. Evenings by default; a test about
+// the middle of the day opens it earlier (#247).
+const EVENING_HOURS = [{ weekdays: [], from: "18:00", to: "23:00" }];
+let venueHours = EVENING_HOURS;
 vi.mock("@/lib/db/places-cache", () => ({
   searchNeighbourhoodCached: (...args: unknown[]) =>
     searchNeighbourhoodCached(...args),
@@ -59,7 +68,7 @@ vi.mock("@/lib/db/places-cache", () => ({
     openingHours:
       placeId === "pinned-shut"
         ? [{ weekdays: [], from: "06:00", to: "08:00" }]
-        : [{ weekdays: [], from: "18:00", to: "23:00" }],
+        : venueHours,
     servesVegetarianFood: true,
   }),
 }));
@@ -169,6 +178,7 @@ beforeEach(() => {
   findPlaceByText.mockReset().mockResolvedValue(null);
   persistMatchRun.mockReset().mockRejectedValue(new Error("not under test"));
   meetingRow = MEETING;
+  venueHours = EVENING_HOURS;
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -203,7 +213,11 @@ describe("runCycle's stage", () => {
 
     // `calendars`, then the clear, then the move to `stuck`.
     expect(stagesWritten()).toEqual(["calendars", null, undefined]);
-    expect(updateMany.mock.calls[2][0].data).toEqual({ status: "stuck" });
+    // ...and says why: nobody shares a free window (#246, #247).
+    expect(updateMany.mock.calls[2][0].data).toEqual({
+      status: "stuck",
+      stuckReason: "no_time",
+    });
     expect(runMatchingAgent).not.toHaveBeenCalled();
   });
 
@@ -919,5 +933,93 @@ describe("venues the group has lately been to (#213)", () => {
     const { candidates } = await venuesSent();
 
     expect(candidates).toContain("p1");
+  });
+});
+
+describe("an asked-for hour outside the chosen part of day (#247)", () => {
+  function askedHour(earliestStart: string | null) {
+    return {
+      id: "ctx-1",
+      meetingId: "m1",
+      userId: "u1",
+      originLat: null,
+      originLng: null,
+      originLabel: null,
+      mobilityWindows: [],
+      softPreferences: null,
+      rejectionText: "השעה לא מתאימה",
+      rejectionOutcome: "time",
+      toleranceKm: null,
+      earliestStart,
+      latestStart: null,
+      untranslated: null,
+      note: null,
+      createdAt: STAMP,
+    };
+  }
+
+  function midday(earliestStart: string | null) {
+    meetingRow = {
+      ...MEETING,
+      pinnedTime: "midday",
+      participantContexts: earliestStart ? [askedHour(earliestStart)] : [],
+    } as unknown as typeof MEETING;
+  }
+
+  it("searches the whole day instead of sticking, and says it moved", async () => {
+    midday("17:00");
+
+    const run = await assembleRun("m1", NOW, FREE, async () => {});
+
+    expect(run.movedOutOfPart).toEqual({
+      kind: "time_of_day_moved",
+      part: "midday",
+      start: "17:00",
+    });
+    // There is something to propose: the run did not stop with no solution.
+    expect(run.input.viable.length).toBeGreaterThan(0);
+  });
+
+  it("no longer narrows the search to the part's kinds of venue", async () => {
+    midday("17:00");
+
+    await assembleRun("m1", NOW, FREE, async () => {});
+
+    // Midday asks for restaurants and cafés only; moved out of it, every kind.
+    expect(searchNeighbourhoodCached.mock.calls[0][2]).toBeUndefined();
+  });
+
+  it("keeps the part, and its kinds, when nobody asked for an hour", async () => {
+    venueHours = [{ weekdays: [], from: "08:00", to: "23:00" }];
+    midday(null);
+
+    const run = await assembleRun("m1", NOW, FREE, async () => {});
+
+    expect(run.movedOutOfPart).toBeNull();
+    expect(searchNeighbourhoodCached.mock.calls[0][2]).toEqual([
+      "restaurant",
+      "cafe",
+    ]);
+  });
+
+  it("still sticks when the whole day has nothing either", async () => {
+    midday("17:00");
+
+    await runCycle("m1", NOW, ALWAYS_BUSY);
+
+    expect(updateMany.mock.calls.at(-1)?.[0].data).toEqual({
+      status: "stuck",
+      stuckReason: "no_time",
+    });
+    expect(runMatchingAgent).not.toHaveBeenCalled();
+  });
+
+  it("does not widen when the hour asked for is inside the part", async () => {
+    venueHours = [{ weekdays: [], from: "08:00", to: "23:00" }];
+    midday("13:00");
+
+    const run = await assembleRun("m1", NOW, FREE, async () => {});
+
+    expect(run.movedOutOfPart).toBeNull();
   });
 });

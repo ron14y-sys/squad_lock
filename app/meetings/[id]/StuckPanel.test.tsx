@@ -22,6 +22,7 @@ function renderPanel(
       initiatorName="אלדד"
       isInitiator={false}
       hasProposal
+      why={{ reason: "cycle_cap", partOfDay: null, askedStart: null }}
       rejections={[{ by: "דני", reasonText: "רועש מדי" }]}
       onCancelled={onCancelled}
       {...overrides}
@@ -40,6 +41,33 @@ test("explains why the search stopped and what people said along the way", () =>
   expect(screen.getByText("הפגישה הזו תקועה")).toBeInTheDocument();
   expect(screen.getByText(/ניסינו שלוש פעמים/)).toBeInTheDocument();
   expect(screen.getByText(/דני: "רועש מדי"/)).toBeInTheDocument();
+});
+
+test("says no time was found, and what was asked for, instead of claiming three tries (#246, #247)", () => {
+  renderPanel({
+    why: { reason: "no_time", partOfDay: "midday", askedStart: "17:00" },
+  });
+
+  expect(
+    screen.getByText(/לא מצאנו זמן שבו כולם פנויים \(בצהריים, מ-17:00\)/)
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/ניסינו שלוש פעמים/)).not.toBeInTheDocument();
+});
+
+test("says no venue was found when that is why it stopped (#246)", () => {
+  renderPanel({
+    why: { reason: "no_venue", partOfDay: null, askedStart: null },
+  });
+
+  expect(screen.getByText(/לא מצאנו מקום שמתאים לכולם/)).toBeInTheDocument();
+  expect(screen.queryByText(/ניסינו שלוש פעמים/)).not.toBeInTheDocument();
+});
+
+test("claims nothing about why when the reason was not recorded (#246)", () => {
+  renderPanel({ why: null });
+
+  expect(screen.getByText(/לא מצאנו הצעה שמתאימה לכולם/)).toBeInTheDocument();
+  expect(screen.queryByText(/ניסינו שלוש פעמים/)).not.toBeInTheDocument();
 });
 
 test("points to approving the best option, and to starting a new meeting", () => {

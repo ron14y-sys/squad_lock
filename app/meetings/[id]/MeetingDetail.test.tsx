@@ -20,6 +20,7 @@ function detail(overrides: Record<string, unknown> = {}) {
     remainingCycles: 3,
     viewerAmendmentIsFree: true,
     isStuck: false,
+    stuckWhy: null,
     isInitiator: false,
     conflicts: [],
     missingHome: [],
@@ -478,6 +479,55 @@ test("a proposal says when what was asked for tonight was not found (#221)", asy
     await screen.findByText(
       "לא מצאנו מקום שמתאים לכולם מהסוג שביקשתם (בר), אז הצענו משהו אחר."
     )
+  ).toBeInTheDocument();
+});
+
+test("a proposal says when it was moved out of the chosen part of day (#247)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            proposal: {
+              ...detail().proposal,
+              unverified: [
+                { kind: "time_of_day_moved", part: "midday", start: "17:00" },
+              ],
+            },
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText("ההצעה הוזזה מהצהריים, כי ביקשו להתחיל מ-17:00.")
+  ).toBeInTheDocument();
+});
+
+test("a stuck meeting says why it is stuck (#246)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            status: "stuck",
+            isStuck: true,
+            stuckWhy: { reason: "no_venue", partOfDay: null, askedStart: null },
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText(/לא מצאנו מקום שמתאים לכולם/)
   ).toBeInTheDocument();
 });
 

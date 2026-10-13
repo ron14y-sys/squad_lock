@@ -11,7 +11,10 @@ import { deriveMeetingCardStatus, runStageOf } from "./meeting-cards";
 import { findConflictingMeetings } from "./conflict-dismissal";
 import { CYCLE_CAP } from "./meetings";
 import { getPrisma } from "./client";
-import { MOBILITY_MODE_LABELS } from "@/lib/format/hebrew-labels";
+import {
+  MOBILITY_MODE_LABELS,
+  type StuckWhy,
+} from "@/lib/format/hebrew-labels";
 import { nextRunAt } from "@/lib/matching/due";
 
 import type { RunStage } from "@/lib/generated/prisma/enums";
@@ -125,6 +128,11 @@ export type MeetingDetailDTO = {
   viewerAmendmentIsFree: boolean;
   /** The stored status is `stuck` — separate from `status`, because a clash outranks it on the card. */
   isStuck: boolean;
+  /**
+   * #246, #247: why the meeting is stuck, with what the group asked for in
+   * time, for the panel. Null unless it is stuck.
+   */
+  stuckWhy: StuckWhy | null;
   /** Where the run weighing it is, while one is (#155). */
   runStage: RunStage | null;
   /** Whether the viewer started this meeting — the only one who can cancel it when stuck. */
@@ -551,6 +559,24 @@ export async function getMeetingDetail(
     remainingCycles: Math.max(0, CYCLE_CAP - meeting.cycleCount),
     viewerAmendmentIsFree,
     isStuck: row.status === "stuck",
+    stuckWhy:
+      row.status === "stuck"
+        ? {
+            reason: row.stuckReason,
+            partOfDay:
+              meeting.pinnedWhen?.kind === "part_of_day" ||
+              meeting.pinnedWhen?.kind === "date_and_part_of_day"
+                ? meeting.pinnedWhen.part
+                : null,
+            askedStart:
+              row.participantContexts
+                .flatMap((context) =>
+                  context.earliestStart ? [context.earliestStart] : []
+                )
+                .sort()
+                .at(-1) ?? null,
+          }
+        : null,
     runStage: runStageOf(row),
     isInitiator: row.initiatorId === viewerId,
     conflicts,

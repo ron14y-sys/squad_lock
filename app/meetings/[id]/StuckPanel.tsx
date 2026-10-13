@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { stuckExplanation, type StuckWhy } from "@/lib/format/hebrew-labels";
 
 export type Rejection = { by: string; reasonText: string };
 
@@ -27,6 +28,7 @@ export function StuckPanel({
   initiatorName,
   isInitiator,
   hasProposal,
+  why,
   rejections,
   onCancelled,
 }: {
@@ -35,6 +37,8 @@ export function StuckPanel({
   initiatorName: string;
   isInitiator: boolean;
   hasProposal: boolean;
+  /** Why the search stopped (#246, #247); null when it was not recorded. */
+  why: StuckWhy | null;
   rejections: Rejection[];
   onCancelled: () => void;
 }) {
@@ -66,8 +70,9 @@ export function StuckPanel({
     <section className="sl-warn flex flex-col gap-3">
       <h2 className="sl-sec">הפגישה הזו תקועה</h2>
       <p>
-        ניסינו שלוש פעמים ולא מצאנו הצעה שמתאימה לכולם, אז המערכת מפסיקה לחפש
-        ומעבירה את ההחלטה אליכם.
+        {stuckExplanation(
+          why ?? { reason: null, partOfDay: null, askedStart: null }
+        )}
       </p>
 
       {rejections.length > 0 && (

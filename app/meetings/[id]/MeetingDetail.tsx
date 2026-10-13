@@ -12,8 +12,10 @@ import {
   RUN_STAGE_LABELS,
   uncheckedCalendarNote,
   unmetPinnedVenueNote,
+  timeOfDayMovedNote,
   unmetRequestNote,
   unverifiedNote,
+  type StuckWhy,
   venuePriceText,
 } from "@/lib/format/hebrew-labels";
 import type { RunStage } from "@/lib/generated/prisma/enums";
@@ -93,6 +95,7 @@ type MeetingDetail = {
   remainingCycles: number;
   viewerAmendmentIsFree: boolean;
   isStuck: boolean;
+  stuckWhy: StuckWhy | null;
   isInitiator: boolean;
   conflicts: Conflict[];
   missingHome: MissingHome[];
@@ -175,6 +178,7 @@ function ProposalBlock({
   const unmet = unmetRequestNote(proposal.unverified);
   const priceText = venuePriceText(proposal.venuePrice);
   const unmetVenue = unmetPinnedVenueNote(proposal.unverified);
+  const movedNote = timeOfDayMovedNote(proposal.unverified);
   const uncheckedMine = proposal.uncheckedCalendars.some(
     (p) => p.userId === viewerId
   );
@@ -216,6 +220,7 @@ function ProposalBlock({
 
       {unmet && <p className="sl-sub">{unmet}</p>}
       {unmetVenue && <p className="sl-sub">{unmetVenue}</p>}
+      {movedNote && <p className="sl-sub">{movedNote}</p>}
       {note && <p className="sl-sub">{note}</p>}
       {/* A calendar is optional: whoever has none is treated as free apart
           from the hours they set, and the proposal says so. */}
@@ -542,6 +547,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
           initiatorName={detail.initiatorName}
           isInitiator={detail.isInitiator}
           hasProposal={detail.proposal !== null}
+          why={detail.stuckWhy}
           rejections={detail.timeline.flatMap((event) =>
             event.kind === "response" &&
             event.status === "doesnt_suit" &&
