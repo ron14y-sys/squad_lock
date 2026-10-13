@@ -822,71 +822,102 @@ describe("a venue the initiator named (#212)", () => {
   });
 });
 
-describe("venues the group was lately offered (#213)", () => {
+describe("venues the group has lately been to (#213)", () => {
   const daysAgo = (days: number) => new Date(NOW.getTime() - days * 86_400_000);
-  const pastRun = (days: number, placeId: string | null, name: string) => ({
-    createdAt: daysAgo(days),
-    options: [{ venuePlaceId: placeId, venueName: name }],
+  /** Another meeting of the group, whose last proposal was `placeId`. */
+  const meetingAt = (placeId: string, status: string, days = 5) => ({
+    status,
+    currentDatetime: daysAgo(days),
+    matchRuns: [{ options: [{ venuePlaceId: placeId }] }],
   });
+  // About a kilometre from Dana, well inside her 5 km.
+  const DOWN_THE_ROAD = {
+    ...NEXT_DOOR,
+    placeId: "p2",
+    name: "Down the road",
+    location: { lat: HOME.lat + 0.01, lng: HOME.lng },
+  };
+  // About 7 km: past her 5 km, inside the burden gate.
+  const ACROSS_TOWN = {
+    ...DOWN_THE_ROAD,
+    placeId: "p3",
+    name: "Across town",
+    location: { lat: HOME.lat + 0.063, lng: HOME.lng },
+  };
 
-  /** The group's other meetings, as `assembleRun` reads them. */
-  function groupHistory(...runs: ReturnType<typeof pastRun>[]) {
+  function groupHistory(...meetings: ReturnType<typeof meetingAt>[]) {
     meetingRow = {
-      ...MEETING,
-      group: { meetings: [{ matchRuns: runs }] },
+      ...meetingRow,
+      group: { meetings },
     } as unknown as typeof MEETING;
   }
 
-  async function inputSent() {
+  async function venuesSent() {
     runMatchingAgent.mockRejectedValue(new Error("stop here"));
     await runCycle("m1", NOW, FREE);
-    return runMatchingAgent.mock.calls[0][0];
+    const input = runMatchingAgent.mock.calls[0][0];
+    return {
+      input,
+      candidates: input.candidates.map((c: { placeId: string }) => c.placeId),
+      paired: [
+        ...new Set(
+          input.viable.map(
+            (p: { candidatePlaceId: string }) => p.candidatePlaceId
+          )
+        ),
+      ],
+    };
   }
 
-  it("hands the model the lately-offered venue it could pick", async () => {
-    groupHistory(pastRun(5, "p1", "Next door"));
+  it("holds back the venue of a closed meeting while another is within everyone's range", async () => {
+    searchNeighbourhoodCached.mockResolvedValue([NEXT_DOOR, DOWN_THE_ROAD]);
+    groupHistory(meetingAt("p1", "closed"));
 
-    const input = await inputSent();
+    const { candidates, paired } = await venuesSent();
 
-    expect(input.recentVenues).toEqual([{ placeId: "p1", name: "Next door" }]);
+    expect(candidates).toEqual(["p2"]);
+    expect(paired).toEqual(["p2"]);
   });
 
-  it("says nothing for a group with no history, so a first meeting is weighed as before", async () => {
-    const input = await inputSent();
+  it("keeps it when the only other venue is beyond someone's range", async () => {
+    searchNeighbourhoodCached.mockResolvedValue([NEXT_DOOR, ACROSS_TOWN]);
+    groupHistory(meetingAt("p1", "closed"));
 
-    expect(input).not.toHaveProperty("recentVenues");
+    const { candidates } = await venuesSent();
+
+    expect(candidates).toContain("p1");
   });
 
-  it("leaves out a venue that is not in the pool, and one older than a month", async () => {
-    groupHistory(
-      pastRun(5, "somewhere-else", "Somewhere else"),
-      pastRun(40, "p1", "Next door")
-    );
-
-    const input = await inputSent();
-
-    expect(input).not.toHaveProperty("recentVenues");
-  });
-
-  it("never calls the named venue something to avoid", async () => {
-    groupHistory(pastRun(5, "pinned", "Bar Ha'Ir"));
+  it("never holds back the venue the initiator named", async () => {
+    const named = { ...NEXT_DOOR, placeId: "pinned", name: "Bar Ha'Ir" };
+    searchNeighbourhoodCached.mockResolvedValue([DOWN_THE_ROAD]);
+    findPlaceByText.mockResolvedValue({
+      ...named,
+      types: ["bar"],
+      primaryType: "bar",
+    });
+    groupHistory(meetingAt("pinned", "closed"));
     meetingRow = {
       ...meetingRow,
       pinnedVenue: "Bar Ha'Ir",
     } as unknown as typeof MEETING;
-    findPlaceByText.mockResolvedValue({
-      placeId: "pinned",
-      name: "Bar Ha'Ir",
-      address: null,
-      location: { lat: HOME.lat + 0.001, lng: HOME.lng },
-      neighbourhood: null,
-      types: ["bar"],
-      primaryType: "bar",
-    });
 
-    const input = await inputSent();
+    const { input, candidates } = await venuesSent();
 
+    expect(candidates).toContain("pinned");
     expect(input.pinnedVenue).toEqual({ placeId: "pinned", name: "Bar Ha'Ir" });
-    expect(input).not.toHaveProperty("recentVenues");
+  });
+
+  it("counts neither a proposal nobody approved nor a meeting older than a month", async () => {
+    searchNeighbourhoodCached.mockResolvedValue([NEXT_DOOR, DOWN_THE_ROAD]);
+    groupHistory(
+      meetingAt("p1", "awaiting"),
+      meetingAt("p1", "cancelled"),
+      meetingAt("p1", "closed", 40)
+    );
+
+    const { candidates } = await venuesSent();
+
+    expect(candidates).toContain("p1");
   });
 });

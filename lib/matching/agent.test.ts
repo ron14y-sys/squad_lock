@@ -21,7 +21,6 @@ import {
   buildPayload,
   interpretAnswer,
   runMatchingAgent,
-  SYSTEM_PROMPT,
   type MatchAgentInput,
 } from "./agent";
 import { pairId, slotId } from "./schemas";
@@ -911,56 +910,6 @@ describe("a venue the initiator named (#212)", () => {
     expect(unnamed).not.toContain("Pinned venue");
     // The people and the pairs are still where `parsePayload` finds them.
     expect(parsePayload(named).pairs.length).toBeGreaterThan(0);
-  });
-});
-
-describe("venues the group was lately offered (#213)", () => {
-  const recent = [
-    { placeId: "place-near", name: "Near" },
-    { placeId: "place-far", name: "Far" },
-  ];
-
-  it("lists them in the payload, newest first, inside the first block", () => {
-    const payload = buildPayload({
-      ...inputFor([NEAR, MIDDLE, FAR]),
-      recentVenues: recent,
-    });
-
-    expect(payload).toContain(
-      'Recently offered to this group (last 30 days, newest first): "Near" (venue_id place-near), "Far" (venue_id place-far).'
-    );
-    // No blank line of its own: the blocks below are told apart by them, and
-    // `parsePayload` finds the people and the pairs by that.
-    const before = payload.slice(0, payload.indexOf("Participants:"));
-    expect(before.trimEnd()).toMatch(/place-far\)\.$/);
-    expect(parsePayload(payload).pairs.length).toBeGreaterThan(0);
-  });
-
-  it("adds nothing when the group has no history, so a first meeting reads as before", () => {
-    const plain = buildPayload(inputFor([NEAR, MIDDLE, FAR]));
-
-    expect(plain).not.toContain("Recently offered");
-    expect(
-      buildPayload({ ...inputFor([NEAR, MIDDLE, FAR]), recentVenues: [] })
-    ).toBe(plain);
-  });
-
-  it("asks for variety as a mild preference that the rest of the prompt outranks", () => {
-    expect(SYSTEM_PROMPT).toContain("recently offered venues");
-    expect(SYSTEM_PROMPT).toMatch(/never outweighs a pinned venue/);
-  });
-
-  it("does not turn the list into a rule: an answer at a recent venue is accepted", () => {
-    const draft = interpretAnswer(
-      answer([
-        { rank: 1, venue: "place-near" },
-        { rank: 2, venue: "place-far" },
-        { rank: 3, venue: "place-middle" },
-      ]),
-      { ...inputFor([NEAR, MIDDLE, FAR]), recentVenues: recent }
-    );
-
-    expect(draft.options[0].venue.placeId).toBe("place-near");
   });
 });
 

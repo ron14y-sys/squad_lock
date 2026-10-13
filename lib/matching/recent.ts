@@ -1,68 +1,71 @@
 /**
- * #213: what this group has already been offered lately.
+ * #213: variety across a group's meetings.
  *
  * Venue choice is deterministic — the same pool, the same group and the same
  * free evening give the same ranked list, and so the same rank 1, every time
- * a meeting is made. Nothing remembered what the group had been shown.
+ * a meeting is made. So a venue the group has lately been to is held back
+ * from the model **when there is somewhere else everyone is within range
+ * of**; when there is not, it stays, so a small group in a quiet
+ * neighbourhood still gets an answer. The venue the initiator named is never
+ * held back: it was asked for.
  *
- * This is the memory, and only the memory: the venues that were the top
- * proposal of another meeting of the same group in the last `RECENT_VENUE_DAYS`.
- * It never removes a venue (it is advice to the model that a different one is
- * welcome, see the prompt in `agent.ts`), so a small group in a quiet
- * neighbourhood still gets an answer.
- *
- * A proposal counts whether or not it was accepted. The group *saw* it, and
- * seeing the same bar offered twice is the complaint. What the group actually
- * went to is a different, stricter question, kept for a later ticket.
+ * "Been to" is a meeting that closed — everyone approved it — dated in the
+ * last `VISITED_VENUE_DAYS` or later. Its venue is rank 1 of its last run.
+ * A proposal nobody approved does not count.
  */
 
+import { MeetingStatus } from "@/lib/generated/prisma/enums";
+import type { ViablePair } from "./constraints";
+import type { CandidateScore } from "./distance";
+
 /** How far back "lately" reaches. Tunable; Ron owns the product answer. */
-export const RECENT_VENUE_DAYS = 30;
+export const VISITED_VENUE_DAYS = 30;
 
-/** At most this many names go to the model — a hint, not a ledger. */
-export const RECENT_VENUES_SHOWN = 8;
-
-export type RecentVenue = { placeId: string; name: string };
-
-/** The slice of a past meeting this needs: rank 1 of each of its runs. */
-export type PastMeeting = {
-  matchRuns: {
-    createdAt: Date;
-    options: { venuePlaceId: string | null; venueName: string }[];
-  }[];
+/** Another meeting of the group, as `assembleRun` reads it: runs oldest first. */
+export type GroupMeeting = {
+  status: MeetingStatus;
+  currentDatetime: Date | null;
+  matchRuns: { options: { venuePlaceId: string | null }[] }[];
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** The earliest a run may be and still count as recent. */
-export function recentSince(now: Date, days = RECENT_VENUE_DAYS): Date {
-  return new Date(now.getTime() - days * DAY_MS);
+/** The venues of the group's closed meetings, from `VISITED_VENUE_DAYS` ago on. */
+export function visitedVenues(
+  meetings: readonly GroupMeeting[],
+  now: Date
+): Set<string> {
+  const since = now.getTime() - VISITED_VENUE_DAYS * DAY_MS;
+  return new Set(
+    meetings
+      .filter(
+        (meeting) =>
+          meeting.status === MeetingStatus.closed &&
+          meeting.currentDatetime !== null &&
+          meeting.currentDatetime.getTime() >= since
+      )
+      .flatMap((meeting) => meeting.matchRuns.at(-1)?.options ?? [])
+      .flatMap((option) => (option.venuePlaceId ? [option.venuePlaceId] : []))
+  );
 }
 
 /**
- * Newest first, one entry per place, capped at `RECENT_VENUES_SHOWN`.
- * A venue with no `placeId` (a free-text pin that was never resolved) cannot
- * be matched against the pool, so it is left out.
+ * Drops the visited venues, all but `keep`, from what the model may choose —
+ * only when what is left has a venue within everyone's range: a worst-off
+ * burden (`leximin[0]`) of at most 1.0, exactly as far as that person said
+ * they would travel. Otherwise returns both lists unchanged.
  */
-export function recentVenuesOf(
-  meetings: readonly PastMeeting[],
-  now: Date,
-  days = RECENT_VENUE_DAYS
-): RecentVenue[] {
-  const since = recentSince(now, days).getTime();
-  const runs = meetings
-    .flatMap((meeting) => meeting.matchRuns)
-    .filter((run) => run.createdAt.getTime() >= since)
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
-  const seen = new Set<string>();
-  const venues: RecentVenue[] = [];
-  for (const run of runs) {
-    for (const option of run.options) {
-      if (!option.venuePlaceId || seen.has(option.venuePlaceId)) continue;
-      seen.add(option.venuePlaceId);
-      venues.push({ placeId: option.venuePlaceId, name: option.venueName });
-    }
-  }
-  return venues.slice(0, RECENT_VENUES_SHOWN);
+export function withoutVisited(
+  ranked: CandidateScore[],
+  viable: ViablePair[],
+  visited: ReadonlySet<string>,
+  keep: string | undefined
+): { ranked: CandidateScore[]; viable: ViablePair[] } {
+  const held = (placeId: string) => visited.has(placeId) && placeId !== keep;
+  const left = ranked.filter((score) => !held(score.candidate.placeId));
+  if (!left.some((score) => score.leximin[0] <= 1)) return { ranked, viable };
+  return {
+    ranked: left,
+    viable: viable.filter((pair) => !held(pair.candidatePlaceId)),
+  };
 }
