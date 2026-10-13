@@ -370,6 +370,22 @@ would be treated as two different dismissals. The helper is
 
 **Indexes:** unique on `(userId, meetingAId, meetingBId)`.
 
+### `meeting_hides`
+
+This user no longer wants to see this meeting in their lists. Personal: the
+meeting itself, and everyone else's view of it, are untouched. Only a meeting
+that is over (closed, cancelled, or past its date) can be hidden — checked in
+`hideMeeting`, `lib/db/meeting-hides.ts`.
+
+| Column      | Type       | Notes                              |
+| ----------- | ---------- | ---------------------------------- |
+| `id`        | `String`   | PK                                 |
+| `userId`    | `String`   | FK → `users.id`, cascade delete    |
+| `meetingId` | `String`   | FK → `meetings.id`, cascade delete |
+| `createdAt` | `DateTime` |                                    |
+
+**Indexes:** unique on `(userId, meetingId)`.
+
 ---
 
 ## Places cache (B7)

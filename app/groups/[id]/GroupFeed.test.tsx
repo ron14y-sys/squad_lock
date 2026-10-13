@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { GroupFeed } from "./GroupFeed";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -24,6 +25,7 @@ function card(overrides: Record<string, unknown> = {}) {
     approvedCount: 0,
     totalCount: 2,
     isPast: false,
+    canHide: false,
     participants: [
       { userId: "u1", name: "Dana", status: "pending" },
       { userId: "u2", name: "Yoav", status: "approved" },
@@ -403,4 +405,98 @@ test("a card names the venue that was asked for while there is no proposal yet (
   render(<GroupFeed groupId="group-1" />);
 
   expect(await screen.findByText(/בבר הים/)).toBeInTheDocument();
+});
+
+test("offers to remove a finished meeting from my list, and only a finished one", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          meetings: [
+            card({ id: "live" }),
+            card({ id: "over", status: "closed", isPast: true, canHide: true }),
+          ],
+          openCount: 1,
+        })
+      )
+    )
+  );
+
+  render(<GroupFeed groupId="group-1" />);
+
+  await screen.findByText("ממתין לך");
+  expect(
+    screen.getAllByRole("button", { name: "הסר מהרשימה שלי" })
+  ).toHaveLength(1);
+});
+
+test("removing a finished meeting asks the server and takes the card off the list", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn((url: string) =>
+    Promise.resolve(
+      url.endsWith("/hide")
+        ? jsonResponse({ ok: true })
+        : jsonResponse({
+            meetings: [
+              card({
+                id: "over",
+                status: "closed",
+                isPast: true,
+                canHide: true,
+              }),
+            ],
+            openCount: 0,
+          })
+    )
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupFeed groupId="group-1" />);
+  await user.click(
+    await screen.findByRole("button", { name: "הסר מהרשימה שלי" })
+  );
+
+  expect(fetchMock).toHaveBeenCalledWith("/api/meetings/over/hide", {
+    method: "POST",
+  });
+  expect(
+    screen.queryByRole("button", { name: "הסר מהרשימה שלי" })
+  ).not.toBeInTheDocument();
+});
+
+test("keeps the card and says so when the server refuses to remove it", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string) =>
+      Promise.resolve(
+        url.endsWith("/hide")
+          ? jsonResponse({ error: "no" }, 409)
+          : jsonResponse({
+              meetings: [
+                card({
+                  id: "over",
+                  status: "closed",
+                  isPast: true,
+                  canHide: true,
+                }),
+              ],
+              openCount: 0,
+            })
+      )
+    )
+  );
+
+  render(<GroupFeed groupId="group-1" />);
+  await user.click(
+    await screen.findByRole("button", { name: "הסר מהרשימה שלי" })
+  );
+
+  expect(
+    await screen.findByText("לא הצלחנו להסיר את הפגישה. נסה שוב.")
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "הסר מהרשימה שלי" })
+  ).toBeInTheDocument();
 });

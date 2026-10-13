@@ -6,6 +6,7 @@
 import { meetingFromRow } from "@/lib/types/meeting-from-row";
 
 import { findConflictingMeetings } from "./conflict-dismissal";
+import { canHideMeeting } from "./meeting-hides";
 import { OPEN_MEETING_STATUSES } from "./meetings";
 import { getPrisma } from "./client";
 
@@ -85,6 +86,8 @@ export type MeetingCardDTO = {
   totalCount: number;
   /** True once `currentDatetime` has passed — the feed's "past" divider. */
   isPast: boolean;
+  /** Over (closed, cancelled or past), so the viewer may remove it from their lists. */
+  canHide: boolean;
   /** Where the run weighing it is, while one is (#155). */
   runStage: RunStage | null;
   /**
@@ -195,6 +198,7 @@ function toMeetingCardDTO(
     isPast:
       meeting.currentDatetime !== null &&
       meeting.currentDatetime.getTime() < now,
+    canHide: canHideMeeting(row, now),
     runStage: runStageOf(row),
     firstSearch: status === "reweighing" && row._count.matchRuns === 0,
     participants: row.responses.map((r) => ({
@@ -226,6 +230,7 @@ export async function listMeetingCardsForGroup(
       responses: { include: { user: { select: { name: true } } } },
       _count: { select: { matchRuns: true } },
       matchRuns: LATEST_PROPOSAL_VENUE,
+      hides: { where: { userId: viewerId }, select: { id: true } },
     },
   });
 
@@ -235,9 +240,11 @@ export async function listMeetingCardsForGroup(
   ).length;
 
   const now = Date.now();
-  const cards = rows.map((row) =>
-    toMeetingCardDTO(row, viewerId, conflictingIds, now)
-  );
+  // Counted above from every row: a hidden meeting still holds its place
+  // against the group's open-meeting cap, whether the viewer sees it or not.
+  const cards = rows
+    .filter((row) => row.hides.length === 0)
+    .map((row) => toMeetingCardDTO(row, viewerId, conflictingIds, now));
 
   return { meetings: sortMeetingCards(cards), openCount };
 }
@@ -262,7 +269,10 @@ export async function listOpenMeetingCardsForUser(
   const myResponses = await prisma.response.findMany({
     where: {
       userId: viewerId,
-      meeting: { status: { in: OPEN_MEETING_STATUSES } },
+      meeting: {
+        status: { in: OPEN_MEETING_STATUSES },
+        hides: { none: { userId: viewerId } },
+      },
     },
     include: {
       meeting: {
