@@ -152,6 +152,8 @@ export async function rescheduleForConflict(
     // The snapshot's own price, like its summary: an option made before #249
     // has none, and the venue is the same one.
     price: parseVenuePrice(top.venuePrice),
+    // An option made before #248 stored none: unknown, not "no types".
+    types: top.venueTypes.length > 0 ? top.venueTypes : undefined,
   };
   const venueFacts = venueDietaryFactsFrom([
     {
@@ -210,6 +212,7 @@ export async function rescheduleForConflict(
           typeLabel: venue.typeLabel,
           summary: venue.summary,
           price: venue.price,
+          types: venue.types,
         },
         proposedDatetime: best.slot.start,
         proposedEnd: best.slot.end,

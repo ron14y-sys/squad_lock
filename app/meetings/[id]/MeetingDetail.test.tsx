@@ -34,6 +34,7 @@ function detail(overrides: Record<string, unknown> = {}) {
       venueType: null,
       venueSummary: null,
       venuePrice: null,
+      venueCuisines: [],
       start: "2026-09-15T18:00:00.000Z",
       end: "2026-09-15T20:00:00.000Z",
       justification: "מקום שקט, קרוב לעבודה שלך.",

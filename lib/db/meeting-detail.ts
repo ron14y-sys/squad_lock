@@ -19,6 +19,7 @@ import type { UnverifiedFact } from "@/lib/matching/constraints";
 import type { MobilityMode } from "@/lib/types/profile";
 import type { VenuePrice } from "@/lib/types";
 import { parseVenuePrice } from "@/lib/places/price";
+import { cuisinesOfTypes, type Cuisine } from "@/lib/preferences/vocabulary";
 import type {
   Meeting,
   MeetingCardStatus,
@@ -39,6 +40,13 @@ export type ProposalDTO = {
   venueSummary: string | null;
   /** What a diner is expected to pay (#249); null when Google gave nothing. */
   venuePrice: VenuePrice | null;
+  /**
+   * The cuisines the venue counts as (#248), derived from its Places types on
+   * every read. What the rejection form's "this place" chip ticks; empty when
+   * the types match none of ours, and for options made before the types were
+   * stored.
+   */
+  venueCuisines: Cuisine[];
   start: string;
   end: string;
   /** This viewer's own reason, and only this viewer's — never a comparison. */
@@ -390,6 +398,7 @@ export async function getMeetingDetail(
         venueType: topOption.venueType,
         venueSummary: topOption.venueSummary,
         venuePrice: parseVenuePrice(topOption.venuePrice) ?? null,
+        venueCuisines: cuisinesOfTypes(topOption.venueTypes),
         start: topOption.proposedDatetime.toISOString(),
         end: topOption.proposedEnd.toISOString(),
         justification:

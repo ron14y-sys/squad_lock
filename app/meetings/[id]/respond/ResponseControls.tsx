@@ -92,6 +92,7 @@ export function ResponseControls({
   disabled,
   onResponded,
   aboveApprove,
+  venueCuisines = [],
 }: {
   meetingId: string;
   myStatus: ResponseStatus;
@@ -106,6 +107,11 @@ export function ResponseControls({
   onResponded: () => void;
   /** Rendered directly above the approve button — the conflict warning lives here (spec §5.7). */
   aboveApprove?: ReactNode;
+  /**
+   * The cuisines the proposed venue counts as (#248): what the "this place"
+   * chip in the cuisine picker ticks. Empty hides the chip.
+   */
+  venueCuisines?: Cuisine[];
 }) {
   const [open, setOpen] = useState<Open>("none");
   const [ticked, setTicked] = useState<ReasonKey[]>([]);
@@ -164,6 +170,17 @@ export function ResponseControls({
   if (ticked.includes("style") && avoidedKinds.length > 0) {
     reasons.venueKinds = avoidedKinds;
   }
+  // "This place" (#248) is a shortcut over the same list, not a state of its
+  // own: it reads as pressed while every cuisine of the venue is ticked, so
+  // it can never disagree with the chips beside it.
+  const placeTicked =
+    venueCuisines.length > 0 &&
+    venueCuisines.every((cuisine) => avoidedCuisines.includes(cuisine));
+  const withPlace = [
+    ...avoidedCuisines,
+    ...venueCuisines.filter((cuisine) => !avoidedCuisines.includes(cuisine)),
+  ];
+
   if (ticked.includes("cuisine") && avoidedCuisines.length > 0) {
     reasons.cuisines = avoidedCuisines;
   }
@@ -322,6 +339,27 @@ export function ResponseControls({
             <div className="flex flex-col gap-1">
               <span className="sl-sub">איזה סוג אוכל לא מתאים לך?</span>
               <div className="flex flex-wrap gap-2">
+                {venueCuisines.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAvoidedCuisines(
+                        placeTicked
+                          ? avoidedCuisines.filter(
+                              (cuisine) => !venueCuisines.includes(cuisine)
+                            )
+                          : withPlace
+                      )
+                    }
+                    aria-pressed={placeTicked}
+                    disabled={
+                      !placeTicked && withPlace.length > MAX_AVOIDED_CUISINES
+                    }
+                    className={`${placeTicked ? "sl-chip on" : "sl-chip"} disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    המקום הזה
+                  </button>
+                )}
                 {CUISINES.map((cuisine) => {
                   const active = avoidedCuisines.includes(cuisine);
                   return (

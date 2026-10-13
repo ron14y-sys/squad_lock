@@ -224,6 +224,8 @@ export type VenueSnapshot = {
   typeLabel?: string;
   summary?: string;
   price?: VenuePrice;
+  /** Google's Places types (#248); absent when the candidate had none. */
+  types?: string[];
 };
 
 /**
