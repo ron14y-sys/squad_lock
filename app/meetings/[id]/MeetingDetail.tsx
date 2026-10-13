@@ -435,6 +435,16 @@ function loadDetail(
     });
 }
 
+/** How often the meeting screen asks again, or null once nothing can change. */
+function pollDelay(detail: MeetingDetail): number | null {
+  if (detail.status === "closed" || detail.status === "stuck") return null;
+  if (detail.status !== "reweighing") return 30_000;
+  const minutesLeft = detail.nextRunInMinutes ?? detail.retryInMinutes;
+  return detail.runStage || minutesLeft === null || minutesLeft <= 1
+    ? 3_000
+    : 30_000;
+}
+
 export function MeetingDetail({ meetingId }: { meetingId: string }) {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [detail, setDetail] = useState<MeetingDetail | null>(null);
@@ -447,15 +457,16 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
     };
   }, [meetingId]);
 
-  // While a re-weighing is under way, ask again every three seconds — the
-  // same cadence as the feed, and what makes the route above run it. A failed
-  // poll keeps the page on screen; the next one tries again.
-  const reweighing = detail?.status === "reweighing";
+  // #261: ask again for as long as something can still change — another
+  // person's answer, a new proposal. This poll is also the clock that starts
+  // a due re-weighing (spec §3.2), so it quickens to three seconds only once
+  // the run is under way or a minute or less away. Backgrounded: no requests
+  // (spec §5.6); back on screen: one at once.
+  const delay = detail && pollDelay(detail);
   useEffect(() => {
-    if (!reweighing) return;
+    if (!delay) return;
     const cancelledRef = { current: false };
-    const intervalId = setInterval(() => {
-      // Backgrounded: no requests (spec §5.6).
+    const poll = () => {
       if (document.visibilityState !== "visible") return;
       loadDetail(
         meetingId,
@@ -463,12 +474,15 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
         (s) => s !== "error" && setLoadState(s),
         setDetail
       );
-    }, 3000);
+    };
+    const intervalId = setInterval(poll, delay);
+    document.addEventListener("visibilitychange", poll);
     return () => {
       cancelledRef.current = true;
       clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", poll);
     };
-  }, [meetingId, reweighing]);
+  }, [meetingId, delay]);
 
   function refresh() {
     loadDetail(meetingId, { current: false }, setLoadState, setDetail);
@@ -548,7 +562,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
           onCancelled={refresh}
         />
       )}
-      {reweighing && !detail.isStuck ? (
+      {detail.status === "reweighing" && !detail.isStuck ? (
         <ReweighingBlock
           runStage={detail.runStage}
           firstSearch={detail.proposal === null}
