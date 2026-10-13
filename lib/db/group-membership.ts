@@ -1,4 +1,4 @@
-// Leaving a group (#250). The decision — who becomes admin, what the people
+// Leaving a group, and deleting one (#250). The decision — who becomes admin, what the people
 // who stay are told, whether open meetings go — is `planDeparture`'s
 // (lib/groups/departure.ts); this carries it out.
 //
@@ -27,9 +27,17 @@ import { getPrisma } from "./client";
 import { MeetingNotOpenError, respondToMeeting } from "./meetings";
 import { MeetingStatus, ResponseStatus } from "@/lib/generated/prisma/client";
 import { NotificationKind } from "@/lib/generated/prisma/enums";
-import { planDeparture } from "@/lib/groups/departure";
+import { NotInGroupError, planDeparture } from "@/lib/groups/departure";
 
 export { LastMemberError, NotInGroupError } from "@/lib/groups/departure";
+
+/** Only the group's admin can delete it. */
+export class NotTheAdminError extends Error {
+  constructor(groupId: string) {
+    super(`Only the admin of group ${groupId} can delete it.`);
+    this.name = "NotTheAdminError";
+  }
+}
 
 /** The meetings that can still change; `closed` and `cancelled` cannot. */
 const OPEN_MEETING_STATUSES = [
@@ -175,4 +183,59 @@ export async function leaveGroup(
   });
 
   return { closedMeetingIds };
+}
+
+/**
+ * The admin deletes the group, and with it everything in it: the members,
+ * the invitations and every meeting, confirmed ones included (the database
+ * cascades from the group). Everybody else is told, in-app, with how many
+ * meetings were still planned. Those notices have no foreign key to the
+ * group, which is what lets them outlive it.
+ *
+ * Under the same lock as leaving, so a member leaving at the same moment
+ * either finishes first or finds the group gone.
+ */
+export async function deleteGroup(
+  userId: string,
+  groupId: string
+): Promise<void> {
+  const prisma = getPrisma();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "groups" WHERE "id" = ${groupId} FOR UPDATE`;
+
+    const members = await tx.groupMember.findMany({
+      where: { groupId },
+      select: { userId: true, isAdmin: true, user: { select: { name: true } } },
+    });
+    const caller = members.find((member) => member.userId === userId);
+    if (!caller) throw new NotInGroupError(userId);
+    if (!caller.isAdmin) throw new NotTheAdminError(groupId);
+
+    const group = await tx.group.findUniqueOrThrow({
+      where: { id: groupId },
+      select: { name: true },
+    });
+    // Every meeting that was still going to happen or being arranged; the
+    // ones already cancelled were gone to begin with.
+    const meetingsCancelled = await tx.meeting.count({
+      where: { groupId, status: { not: MeetingStatus.cancelled } },
+    });
+
+    const others = members.filter((member) => member.userId !== userId);
+    if (others.length > 0) {
+      await tx.notification.createMany({
+        data: others.map((other) => ({
+          userId: other.userId,
+          kind: NotificationKind.group_deleted,
+          groupId,
+          groupName: group.name,
+          actorName: caller.user.name,
+          meetingsCancelled,
+        })),
+      });
+    }
+
+    await tx.group.delete({ where: { id: groupId } });
+  });
 }

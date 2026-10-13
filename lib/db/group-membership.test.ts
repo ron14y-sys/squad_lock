@@ -14,8 +14,8 @@ const tx = vi.hoisted(() => ({
   groupMember: { findMany: vi.fn(), delete: vi.fn(), update: vi.fn() },
   invitation: { deleteMany: vi.fn() },
   response: { deleteMany: vi.fn() },
-  meeting: { updateMany: vi.fn() },
-  group: { findUniqueOrThrow: vi.fn() },
+  meeting: { updateMany: vi.fn(), count: vi.fn() },
+  group: { findUniqueOrThrow: vi.fn(), delete: vi.fn() },
   notification: { createMany: vi.fn() },
 }));
 const prisma = vi.hoisted(() => ({
@@ -25,8 +25,13 @@ const prisma = vi.hoisted(() => ({
 }));
 vi.mock("./client", () => ({ getPrisma: () => prisma }));
 
-const { LastMemberError, NotInGroupError, leaveGroup } =
-  await import("./group-membership");
+const {
+  LastMemberError,
+  NotInGroupError,
+  NotTheAdminError,
+  deleteGroup,
+  leaveGroup,
+} = await import("./group-membership");
 const { MeetingNotOpenError } = await import("./meetings");
 
 const OPEN = [
@@ -221,5 +226,74 @@ describe("leaveGroup", () => {
 
     expect(tx.groupMember.delete).not.toHaveBeenCalled();
     expect(tx.notification.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteGroup", () => {
+  it("deletes the group, after telling the others how many meetings go with it", async () => {
+    groupOf(member("a", true), member("b"), member("c"));
+    tx.meeting.count.mockResolvedValue(3);
+
+    await deleteGroup("a", "g1");
+
+    expect(tx.meeting.count).toHaveBeenCalledWith({
+      where: { groupId: "g1", status: { not: MeetingStatus.cancelled } },
+    });
+    expect(tx.notification.createMany).toHaveBeenCalledWith({
+      data: ["b", "c"].map((userId) => ({
+        userId,
+        kind: NotificationKind.group_deleted,
+        groupId: "g1",
+        groupName: "השישיה",
+        actorName: "name-a",
+        meetingsCancelled: 3,
+      })),
+    });
+    expect(tx.group.delete).toHaveBeenCalledWith({ where: { id: "g1" } });
+    expect(tx.notification.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.group.delete.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("works for the last member, who has nobody to tell", async () => {
+    groupOf(member("a", true));
+    tx.meeting.count.mockResolvedValue(0);
+
+    await deleteGroup("a", "g1");
+
+    expect(tx.notification.createMany).not.toHaveBeenCalled();
+    expect(tx.group.delete).toHaveBeenCalledOnce();
+  });
+
+  it("is the admin's alone", async () => {
+    groupOf(member("a", true), member("b"), member("c"));
+
+    await expect(deleteGroup("b", "g1")).rejects.toThrow(NotTheAdminError);
+
+    expect(tx.group.delete).not.toHaveBeenCalled();
+    expect(tx.notification.createMany).not.toHaveBeenCalled();
+  });
+
+  it("turns a stranger away", async () => {
+    groupOf(member("a", true), member("b"));
+
+    await expect(deleteGroup("z", "g1")).rejects.toThrow(NotInGroupError);
+
+    expect(tx.group.delete).not.toHaveBeenCalled();
+  });
+
+  it("takes the lock on the group first", async () => {
+    groupOf(member("a", true), member("b"));
+    tx.meeting.count.mockResolvedValue(0);
+    const order: string[] = [];
+    tx.$queryRaw.mockImplementation(async () => void order.push("lock"));
+    tx.groupMember.findMany.mockImplementation(async () => {
+      order.push("read");
+      return [member("a", true), member("b")];
+    });
+
+    await deleteGroup("a", "g1");
+
+    expect(order).toEqual(["lock", "read"]);
   });
 });
