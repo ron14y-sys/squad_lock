@@ -288,7 +288,10 @@ export function venuePriceText(
 ): string | null {
   if (!price) return null;
 
-  const { min, max, currency } = price;
+  const { max, currency } = price;
+  // Google's lowest bracket starts at 1 ("₪1–50"): that is the floor of the
+  // scale, not a price anyone pays, so it reads as "up to 50".
+  const min = price.min !== undefined && price.min > 1 ? price.min : undefined;
   if (currency === "ILS") {
     if (min !== undefined && max !== undefined) {
       return min === max
