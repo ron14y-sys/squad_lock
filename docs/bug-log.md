@@ -23,6 +23,41 @@ says so.
 
 ---
 
+## Another person's approval never reached an open meeting screen — 2026-10-13
+
+- **Seen:** manual test 7.4, two accounts: "On the computer I approved and saw
+  it update at once. On the phone, as the other user, nothing changed. Time
+  passed, then I refreshed and saw the new status." The phone was on the
+  meeting screen itself.
+- **Cause:** the meeting screen (`app/meetings/[id]/MeetingDetail.tsx`) loaded
+  once and asked again only while the meeting was `reweighing` — the case it
+  was written for (#169), waiting for a new proposal. While a proposal waited
+  for answers it never asked, so someone else's approval, the approval count
+  and their status appeared only after a reload. The approving screen updated
+  because its own click reloaded it. The group feed was not the cause: it has
+  polled every 30 seconds since C5.
+- **Fix:** [#268](https://github.com/ron14y-sys/squad_lock/pull/268).
+  `pollDelay` sets the cadence from what the screen already has, with no API
+  change: every 30 s while a proposal waits or the meeting conflicts; every
+  3 s only while a re-weighing is under way or a minute or less away (this
+  poll is also what starts a due run, spec §3.2); 30 s while it is further
+  off; nothing for a closed or stuck meeting. Backgrounded, nothing; back on
+  screen, one request at once. A five-minute wait after a rejection now costs
+  about 28 requests instead of about 100.
+- **Proof:** `MeetingDetail.test.tsx`, the #261 tests. Three fail on the old
+  code: another person's approval shows after 30 s ("2 מתוך 3 אישרו"), 30 s
+  rather than 3 s when the next run is four minutes away, and a request at
+  once on coming back. Two guard what already worked (3 s near or during a
+  run; nothing for closed or stuck), each checked by breaking its condition.
+  Not yet re-run on the live site.
+- **Still open:** the group feed polled every 3 s for a whole re-weighing,
+  and the all-groups screen never refreshed on its own
+  ([#269](https://github.com/ron14y-sys/squad_lock/issues/269), fixed in
+  [#270](https://github.com/ron14y-sys/squad_lock/pull/270): one shared
+  `usePolling` hook, and polling only while a meeting is open).
+
+---
+
 ## "גם שקלנו" listed the proposed venue twice — 2026-10-07
 
 - **Seen:** the proposal was קפה גן סיפור חולון, and under it: "גם שקלנו: קפה
