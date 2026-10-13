@@ -13,12 +13,14 @@ import {
   unmetPinnedVenueNote,
   unmetRequestNote,
   unverifiedNote,
+  venuePriceText,
 } from "@/lib/format/hebrew-labels";
 import type { RunStage } from "@/lib/generated/prisma/enums";
 import { ResponseControls } from "./respond/ResponseControls";
 import { ConflictWarning, type Conflict } from "./respond/ConflictWarning";
 import { StuckPanel } from "./StuckPanel";
 import type { UnverifiedFact } from "@/lib/matching/constraints";
+import type { VenuePrice } from "@/lib/types";
 import { ScreenState } from "@/app/_components/ScreenState";
 
 type MeetingCardStatus =
@@ -36,6 +38,7 @@ type Proposal = {
   venueAddress: string | null;
   venueType: string | null;
   venueSummary: string | null;
+  venuePrice: VenuePrice | null;
   start: string;
   end: string;
   justification: string | null;
@@ -167,6 +170,7 @@ function ProposalBlock({
 
   const note = unverifiedNote(proposal.unverified);
   const unmet = unmetRequestNote(proposal.unverified);
+  const priceText = venuePriceText(proposal.venuePrice);
   const unmetVenue = unmetPinnedVenueNote(proposal.unverified);
   const uncheckedMine = proposal.uncheckedCalendars.some(
     (p) => p.userId === viewerId
@@ -188,6 +192,7 @@ function ProposalBlock({
             .join(" · ")}
         </p>
       )}
+      {priceText && <p className="sl-sub">{priceText}</p>}
       {proposal.venueAddress && (
         <p className="sl-sub">{proposal.venueAddress}</p>
       )}

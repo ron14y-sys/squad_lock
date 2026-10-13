@@ -426,7 +426,7 @@ describe("fetchPlaceDetails", () => {
     expect(init.method).toBe("GET");
     expect(init.headers["X-Goog-Api-Key"]).toBe("test-key");
     expect(init.headers["X-Goog-FieldMask"]).toBe(
-      "rating,regularOpeningHours,priceLevel,editorialSummary,servesVegetarianFood"
+      "rating,regularOpeningHours,priceLevel,priceRange,editorialSummary,servesVegetarianFood"
     );
   });
 
@@ -456,6 +456,33 @@ describe("fetchPlaceDetails", () => {
       { weekdays: ["sunday"], from: "09:00", to: "22:30" },
       { weekdays: ["friday"], from: "12:00", to: "15:00" },
     ]);
+  });
+
+  it("returns the price Google reports, range and level together (#249)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      fakeResponse(true, {
+        priceLevel: "PRICE_LEVEL_MODERATE",
+        priceRange: {
+          startPrice: { currencyCode: "ILS", units: "60" },
+          endPrice: { currencyCode: "ILS", units: "90" },
+        },
+      })
+    );
+
+    const details = await fetchPlaceDetails("place-1");
+
+    expect(details.price).toEqual({
+      level: "moderate",
+      min: 60,
+      max: 90,
+      currency: "ILS",
+    });
+  });
+
+  it("has no price when Google sends neither a range nor a level (#249)", async () => {
+    fetchMock.mockResolvedValueOnce(fakeResponse(true, { rating: 4 }));
+
+    expect((await fetchPlaceDetails("place-1")).price).toBeUndefined();
   });
 
   it("treats a period with no close as open until 23:59 that day", async () => {

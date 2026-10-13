@@ -39,6 +39,7 @@ import type {
   LatLng,
   LocalWindow,
   SoftPreferences,
+  VenuePrice,
 } from "@/lib/types";
 import {
   DEFAULT_INCLUDED_TYPES,
@@ -46,8 +47,10 @@ import {
   searchNeighbourhood,
 } from "@/lib/places/client";
 import { roundToNeighbourhood } from "@/lib/places/geo";
+import { parseVenuePrice } from "@/lib/places/price";
 import { getPrisma } from "./client";
-import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
+import { Prisma } from "@/lib/generated/prisma/client";
+import type { PrismaClient } from "@/lib/generated/prisma/client";
 
 export { roundToNeighbourhood } from "@/lib/places/geo";
 
@@ -220,6 +223,8 @@ export type PlaceDetails = {
   openingHours: LocalWindow[];
   /** From `priceLevel`; absent means not known (#139). */
   budget?: SoftPreferences["budget"];
+  /** From `priceRange` / `priceLevel` (#249); absent means not known. */
+  price?: VenuePrice;
   summary?: string;
   /** Google's `servesVegetarianFood`; absent means not known. */
   servesVegetarianFood?: boolean;
@@ -244,6 +249,7 @@ export async function getCachedDetails(
     rating: row.rating ?? undefined,
     openingHours: row.openingHours as unknown as LocalWindow[],
     budget: parseBudget(row.budget ?? null),
+    price: parseVenuePrice(row.price),
     summary: row.summary ?? undefined,
     servesVegetarianFood: row.servesVegetarianFood ?? undefined,
   };
@@ -262,6 +268,7 @@ export async function saveCachedDetails(
       rating: details.rating ?? null,
       openingHours: asJson(details.openingHours),
       budget: details.budget ?? null,
+      price: details.price ? asJson(details.price) : Prisma.DbNull,
       summary: details.summary ?? null,
       servesVegetarianFood: details.servesVegetarianFood ?? null,
     },
@@ -269,6 +276,8 @@ export async function saveCachedDetails(
       rating: details.rating ?? null,
       openingHours: asJson(details.openingHours),
       budget: details.budget ?? null,
+      // DbNull, not undefined: a price Google has since dropped must clear.
+      price: details.price ? asJson(details.price) : Prisma.DbNull,
       summary: details.summary ?? null,
       servesVegetarianFood: details.servesVegetarianFood ?? null,
       fetchedAt: new Date(),

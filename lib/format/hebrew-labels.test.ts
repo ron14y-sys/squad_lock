@@ -8,6 +8,7 @@ import {
   unmetPinnedVenueNote,
   unmetRequestNote,
   unverifiedNote,
+  venuePriceText,
 } from "./hebrew-labels";
 
 describe("membersLabel", () => {
@@ -205,5 +206,45 @@ describe("notificationText (#250)", () => {
         group: { name: null, actorName: null, meetingsCancelled: null },
       })
     ).toBe("הקבוצה נמחקה");
+  });
+});
+
+describe("venuePriceText (#249)", () => {
+  it("words a range in shekels as expected, per diner", () => {
+    expect(
+      venuePriceText({ min: 60, max: 90, currency: "ILS", level: "moderate" })
+    ).toBe("מחיר צפוי: כ-60–90 ₪ לסועד");
+  });
+
+  it("words one amount, and an open-ended range", () => {
+    expect(venuePriceText({ min: 80, max: 80, currency: "ILS" })).toBe(
+      "מחיר צפוי: כ-80 ₪ לסועד"
+    );
+    expect(venuePriceText({ min: 100, currency: "ILS" })).toBe(
+      "מחיר צפוי: מ-100 ₪ לסועד"
+    );
+    expect(venuePriceText({ max: 50, currency: "ILS" })).toBe(
+      "מחיר צפוי: עד 50 ₪ לסועד"
+    );
+  });
+
+  it("falls back to the coarse level when there is no range", () => {
+    expect(venuePriceText({ level: "inexpensive" })).toBe("מחיר צפוי: זול");
+    expect(venuePriceText({ level: "very_expensive" })).toBe(
+      "מחיר צפוי: יקר מאוד"
+    );
+  });
+
+  it("never shows another currency's number as shekels, only the level", () => {
+    expect(
+      venuePriceText({ min: 25, max: 40, currency: "USD", level: "expensive" })
+    ).toBe("מחיר צפוי: יקר");
+    expect(venuePriceText({ min: 25, max: 40, currency: "USD" })).toBeNull();
+  });
+
+  it("is null when there is nothing to say", () => {
+    expect(venuePriceText(null)).toBeNull();
+    expect(venuePriceText(undefined)).toBeNull();
+    expect(venuePriceText({})).toBeNull();
   });
 });

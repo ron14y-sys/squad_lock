@@ -539,6 +539,7 @@ export function interpretAnswer(
         location: candidate.location,
         typeLabel: candidate.typeLabel,
         summary: candidate.summary,
+        price: candidate.price,
       },
       proposedDatetime: slot.start,
       proposedEnd: slot.end,

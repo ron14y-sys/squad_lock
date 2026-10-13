@@ -33,6 +33,7 @@ function detail(overrides: Record<string, unknown> = {}) {
       venueAddress: "נורדאו 14",
       venueType: null,
       venueSummary: null,
+      venuePrice: null,
       start: "2026-09-15T18:00:00.000Z",
       end: "2026-09-15T20:00:00.000Z",
       justification: "מקום שקט, קרוב לעבודה שלך.",
@@ -86,6 +87,42 @@ test("says what the place is, in Google's words, under its name", async () => {
   expect(
     await screen.findByText("בית קפה · קפה קלוי במקום ומאפים")
   ).toBeInTheDocument();
+});
+
+test("says what a diner is expected to pay, when Google gave a range (#249)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            proposal: {
+              ...detail().proposal,
+              venuePrice: { min: 60, max: 90, currency: "ILS" },
+            },
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText("מחיר צפוי: כ-60–90 ₪ לסועד")
+  ).toBeInTheDocument();
+});
+
+test("shows no price line when the proposal has none (#249)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(jsonResponse(detail())))
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  await screen.findByText("בית קפה נורדאו");
+  expect(screen.queryByText(/מחיר צפוי/)).not.toBeInTheDocument();
 });
 
 test("shows the proposal, and reveals the justification only on request", async () => {
