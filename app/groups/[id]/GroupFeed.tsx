@@ -52,6 +52,7 @@ type MeetingCard = {
   approvedCount: number;
   totalCount: number;
   isPast: boolean;
+  canHide: boolean;
   participants: { userId: string; name: string; status: ResponseStatus }[];
 };
 
@@ -139,6 +140,28 @@ export function GroupFeed({ groupId }: { groupId: string }) {
   }, [fetchFeed]);
   usePolling(fetchFeed, feed && cardsPollDelay(feed.meetings));
 
+  // Removing a finished meeting from my own list: personal, the meeting stays
+  // for everyone else.
+  const [hideFailed, setHideFailed] = useState(false);
+  async function hideMeeting(meetingId: string) {
+    setHideFailed(false);
+    try {
+      const res = await fetch(`/api/meetings/${meetingId}/hide`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(`POST hide: ${res.status}`);
+      setFeed(
+        (prev) =>
+          prev && {
+            ...prev,
+            meetings: prev.meetings.filter((m) => m.id !== meetingId),
+          }
+      );
+    } catch {
+      setHideFailed(true);
+    }
+  }
+
   if (loadState === "loading") {
     return <ScreenState kind="loading">טוען פגישות…</ScreenState>;
   }
@@ -187,10 +210,23 @@ export function GroupFeed({ groupId }: { groupId: string }) {
             <div key={card.id} className="flex flex-col gap-3">
               {showDivider && <div className="sl-sec">פגישות שעברו</div>}
               <MeetingCardRow card={card} index={index} />
+              {card.canHide && (
+                <button
+                  type="button"
+                  onClick={() => hideMeeting(card.id)}
+                  className="sl-sub self-start font-bold underline"
+                >
+                  הסר מהרשימה שלי
+                </button>
+              )}
             </div>
           );
         })}
       </div>
+
+      {hideFailed && (
+        <p className="sl-note">לא הצלחנו להסיר את הפגישה. נסה שוב.</p>
+      )}
 
       {atCap ? (
         <button type="button" disabled className="sl-btn">

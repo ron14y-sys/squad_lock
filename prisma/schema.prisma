@@ -36,6 +36,7 @@ model User {
   responses           Response[]
   participantContexts ParticipantMeetingContext[]
   conflictDismissals  ConflictDismissal[]
+  meetingHides        MeetingHide[]
   sentInvitations     Invitation[]                @relation("InvitationSender")
   acceptedInvitations Invitation[]                @relation("InvitationAcceptor")
   notifications       Notification[]
@@ -259,6 +260,7 @@ model Meeting {
   dismissalsAsB       ConflictDismissal[]         @relation("MeetingB")
   notificationLogs    NotificationLog[]
   notifications       Notification[]
+  hides               MeetingHide[]
 
   @@index([groupId])
   @@index([status, currentDatetime])
@@ -565,6 +567,23 @@ model ConflictDismissal {
 
   @@unique([userId, meetingAId, meetingBId])
   @@map("conflict_dismissals")
+}
+
+/// This user no longer wants to see this meeting in their lists. Personal:
+/// the meeting itself stays, for everyone else and for the record. Only a
+/// meeting that is over (closed, cancelled, or past its date) can be hidden;
+/// see lib/db/meeting-hides.ts.
+model MeetingHide {
+  id        String   @id @default(cuid())
+  userId    String
+  meetingId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, meetingId])
+  @@map("meeting_hides")
 }
 
 /// B7 two-tier Places cache, tier 1 (spec §6.3): the broad Nearby Search
