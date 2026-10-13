@@ -1,93 +1,110 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  RECENT_VENUES_SHOWN,
-  recentSince,
-  recentVenuesOf,
-  type PastMeeting,
-} from "./recent";
+import type { MeetingStatus } from "@/lib/generated/prisma/enums";
+import type { ViablePair } from "./constraints";
+import type { CandidateScore } from "./distance";
+import { visitedVenues, withoutVisited, type GroupMeeting } from "./recent";
 
 const NOW = new Date("2026-10-11T12:00:00.000Z");
 const daysAgo = (days: number) => new Date(NOW.getTime() - days * 86_400_000);
 
 function meeting(
-  ...runs: { at: Date; venues: [string | null, string][] }[]
-): PastMeeting {
+  status: MeetingStatus,
+  at: Date | null,
+  ...runs: (string | null)[]
+): GroupMeeting {
   return {
-    matchRuns: runs.map((run) => ({
-      createdAt: run.at,
-      options: run.venues.map(([venuePlaceId, venueName]) => ({
-        venuePlaceId,
-        venueName,
-      })),
-    })),
+    status,
+    currentDatetime: at,
+    matchRuns: runs.map((venuePlaceId) => ({ options: [{ venuePlaceId }] })),
   };
 }
 
-describe("recentVenuesOf (#213)", () => {
-  it("is empty for a group with no history", () => {
-    expect(recentVenuesOf([], NOW)).toEqual([]);
-  });
-
-  it("lists the top proposals of the last 30 days, newest first", () => {
-    const venues = recentVenuesOf(
+describe("visitedVenues (#213)", () => {
+  it("is the venue of each closed meeting, from 30 days ago on, future ones too", () => {
+    const visited = visitedVenues(
       [
-        meeting({ at: daysAgo(10), venues: [["a", "Aroma"]] }),
-        meeting({ at: daysAgo(2), venues: [["b", "Bar"]] }),
+        meeting("closed", daysAgo(30), "a"),
+        meeting("closed", daysAgo(-3), "b"),
+        meeting("closed", daysAgo(31), "old"),
       ],
       NOW
     );
-    expect(venues).toEqual([
-      { placeId: "b", name: "Bar" },
-      { placeId: "a", name: "Aroma" },
-    ]);
+    expect([...visited]).toEqual(["a", "b"]);
   });
 
-  it("ignores a run older than the window, and counts one just inside it", () => {
-    const venues = recentVenuesOf(
+  it("counts no meeting that did not close", () => {
+    const visited = visitedVenues(
       [
-        meeting(
-          { at: daysAgo(31), venues: [["old", "Old"]] },
-          { at: daysAgo(29), venues: [["new", "New"]] }
-        ),
+        meeting("awaiting", daysAgo(1), "a"),
+        meeting("weighing", daysAgo(1), "b"),
+        meeting("stuck", daysAgo(1), "c"),
+        meeting("cancelled", daysAgo(1), "d"),
       ],
       NOW
     );
-    expect(venues.map((v) => v.placeId)).toEqual(["new"]);
+    expect(visited.size).toBe(0);
   });
 
-  it("names a place once even when it came up in several meetings", () => {
-    const venues = recentVenuesOf(
-      [
-        meeting({ at: daysAgo(3), venues: [["a", "Aroma"]] }),
-        meeting({ at: daysAgo(8), venues: [["a", "Aroma"]] }),
-      ],
+  it("reads only the last run: the earlier ones were turned down", () => {
+    const visited = visitedVenues(
+      [meeting("closed", daysAgo(1), "rejected", "approved")],
       NOW
     );
-    expect(venues).toEqual([{ placeId: "a", name: "Aroma" }]);
+    expect([...visited]).toEqual(["approved"]);
   });
 
-  it("leaves out a venue that never resolved to a place", () => {
-    const venues = recentVenuesOf(
-      [meeting({ at: daysAgo(1), venues: [[null, "Somewhere typed"]] })],
-      NOW
+  it("skips a venue that was never resolved to a place", () => {
+    expect(visitedVenues([meeting("closed", daysAgo(1), null)], NOW).size).toBe(
+      0
     );
-    expect(venues).toEqual([]);
-  });
-
-  it("caps how many names it hands on, keeping the newest", () => {
-    const runs = Array.from({ length: RECENT_VENUES_SHOWN + 3 }, (_, i) => ({
-      at: daysAgo(i + 1),
-      venues: [[`p${i}`, `Venue ${i}`]] as [string, string][],
-    }));
-    const venues = recentVenuesOf([meeting(...runs)], NOW);
-    expect(venues).toHaveLength(RECENT_VENUES_SHOWN);
-    expect(venues[0].placeId).toBe("p0");
   });
 });
 
-describe("recentSince", () => {
-  it("is thirty days before now by default", () => {
-    expect(recentSince(NOW).toISOString()).toBe("2026-09-11T12:00:00.000Z");
+describe("withoutVisited (#213)", () => {
+  const score = (placeId: string, worst: number) =>
+    ({ candidate: { placeId }, leximin: [worst] }) as unknown as CandidateScore;
+  const pair = (placeId: string) =>
+    ({ candidatePlaceId: placeId }) as unknown as ViablePair;
+  const ids = (result: ReturnType<typeof withoutVisited>) => [
+    result.ranked.map((s) => s.candidate.placeId),
+    result.viable.map((p) => p.candidatePlaceId),
+  ];
+  const visited = new Set(["been"]);
+
+  it("drops a visited venue when another is within everyone's range (1.0 exactly)", () => {
+    const result = withoutVisited(
+      [score("been", 0.2), score("new", 1)],
+      [pair("been"), pair("new")],
+      visited,
+      undefined
+    );
+    expect(ids(result)).toEqual([["new"], ["new"]]);
+  });
+
+  it("keeps it when every other venue is beyond someone's range", () => {
+    const result = withoutVisited(
+      [score("been", 0.2), score("new", 1.01)],
+      [pair("been"), pair("new")],
+      visited,
+      undefined
+    );
+    expect(ids(result)).toEqual([
+      ["been", "new"],
+      ["been", "new"],
+    ]);
+  });
+
+  it("never drops the venue it is told to keep", () => {
+    const result = withoutVisited(
+      [score("been", 0.2), score("new", 0.5)],
+      [pair("been"), pair("new")],
+      visited,
+      "been"
+    );
+    expect(ids(result)).toEqual([
+      ["been", "new"],
+      ["been", "new"],
+    ]);
   });
 });

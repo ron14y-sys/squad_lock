@@ -87,7 +87,7 @@ import {
 import type { ExtractionOutcome } from "@/lib/generated/prisma/enums";
 import type { TonightCorrection } from "@/lib/types/profile";
 import { buildShortlist } from "./funnel";
-import { recentSince, recentVenuesOf } from "./recent";
+import { visitedVenues, withoutVisited } from "./recent";
 import {
   answersRequest,
   googleTypesFor,
@@ -494,21 +494,21 @@ export async function assembleRun(
         orderBy: { cycleNumber: "asc" },
         include: { options: { where: { rank: 1 } } },
       },
-      // #213: the top proposal of every run of the group's *other* meetings
-      // in the last month — what it has lately been shown, as opposed to the
-      // rank 1s above, which are what this one meeting may not repeat.
+      // #213: the group's other meetings — the closed ones are where it has
+      // lately been (`visitedVenues`).
       group: {
         select: {
           meetings: {
             where: { id: { not: meetingId } },
             select: {
+              status: true,
+              currentDatetime: true,
               matchRuns: {
-                where: { createdAt: { gte: recentSince(now) } },
+                orderBy: { cycleNumber: "asc" },
                 select: {
-                  createdAt: true,
                   options: {
                     where: { rank: 1 },
-                    select: { venuePlaceId: true, venueName: true },
+                    select: { venuePlaceId: true },
                   },
                 },
               },
@@ -706,7 +706,15 @@ export async function assembleRun(
       blocked
     );
   }
-  const { ranked, viable, shortlisted, venueFacts, venueSoftFacts } = weighed;
+  const { shortlisted, venueFacts, venueSoftFacts } = weighed;
+  // #213: somewhere the group has lately been is held back while there is
+  // another venue everyone is within range of. The named venue never is.
+  const { ranked, viable } = withoutVisited(
+    weighed.ranked,
+    weighed.viable,
+    visitedVenues(meeting.group?.meetings ?? [], now),
+    pinned?.placeId
+  );
 
   if (ranked.length === 0) {
     throw new NoSolutionError(
@@ -739,18 +747,6 @@ export async function assembleRun(
     }
   }
 
-  // #213: lately-offered venues the model could actually pick. One it cannot
-  // pick is noise, and the named venue is the exception to variety — it was
-  // asked for, so it is never described as something to avoid.
-  const pickable = new Set(ranked.map((score) => score.candidate.placeId));
-  const recentVenues = recentVenuesOf(
-    meeting.group?.meetings ?? [],
-    now
-  ).filter(
-    (venue) =>
-      pickable.has(venue.placeId) && venue.placeId !== pinnedVenue?.placeId
-  );
-
   // Which run this is, counted from the runs themselves. It cannot come from
   // `Meeting.cycleCount`, which counts something else — see `runCycle`.
   const cycleNumber =
@@ -773,7 +769,6 @@ export async function assembleRun(
       ...(venueFacts ? { venueFacts } : {}),
       ...(venueSoftFacts ? { venueSoftFacts } : {}),
       ...(pinnedVenue ? { pinnedVenue } : {}),
-      ...(recentVenues.length > 0 ? { recentVenues } : {}),
     },
     contextIds: meeting.participantContexts.map((row) => row.id),
     uncheckedCalendars: unread,
