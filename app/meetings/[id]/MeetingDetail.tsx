@@ -61,7 +61,7 @@ type Participant = {
 };
 
 type TimelineEvent =
-  | { kind: "initiated"; at: string; by: string }
+  | { kind: "initiated"; at: string; by: string; byId: string }
   | {
       kind: "proposed";
       at: string;
@@ -73,6 +73,7 @@ type TimelineEvent =
       kind: "response";
       at: string;
       by: string;
+      byId: string;
       status: ResponseStatus;
       reasonText: string | null;
     }
@@ -82,6 +83,7 @@ type TimelineEvent =
       kind: "amendment";
       at: string;
       by: string;
+      byId: string;
       description: string;
     };
 
@@ -320,10 +322,17 @@ function StatusBlock({ detail }: { detail: MeetingDetail }) {
   );
 }
 
-function timelineLine(event: TimelineEvent): string {
-  if (event.kind === "initiated") return `${event.by} יזם/ה את הפגישה`;
+function timelineLine(event: TimelineEvent, viewerId: string): string {
+  // #262: the viewer finds their own at a glance — by id, as names repeat.
+  const who =
+    event.kind === "proposed"
+      ? ""
+      : event.byId === viewerId
+        ? `${event.by} (את/ה)`
+        : event.by;
+  if (event.kind === "initiated") return `${who} יזם/ה את הפגישה`;
   if (event.kind === "amendment")
-    return `${event.by} עדכנ/ה את המצב: "${event.description}"`;
+    return `${who} עדכנ/ה את המצב: "${event.description}"`;
   if (event.kind === "proposed") {
     const base =
       event.cycleNumber === 1
@@ -335,18 +344,24 @@ function timelineLine(event: TimelineEvent): string {
   }
   const label = RESPONSE_STATUS_LABELS[event.status];
   return event.reasonText
-    ? `${event.by}: ${label} — "${event.reasonText}"`
-    : `${event.by}: ${label}`;
+    ? `${who}: ${label} — "${event.reasonText}"`
+    : `${who}: ${label}`;
 }
 
-function TimelineBlock({ timeline }: { timeline: TimelineEvent[] }) {
+function TimelineBlock({
+  timeline,
+  viewerId,
+}: {
+  timeline: TimelineEvent[];
+  viewerId: string;
+}) {
   return (
     <section className="sl-panel">
       <h2 className="sl-sec">מה קרה עד עכשיו</h2>
       <ol className="sl-tl">
         {timeline.map((event, i) => (
           <li key={i}>
-            {timelineLine(event)}
+            {timelineLine(event, viewerId)}
             <small className="sl-sub block">
               {TIMELINE_DATE_FMT.format(new Date(event.at))} ·{" "}
               {TIME_FMT.format(new Date(event.at))}
@@ -606,7 +621,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
         </>
       )}
       <StatusBlock detail={detail} />
-      <TimelineBlock timeline={detail.timeline} />
+      <TimelineBlock timeline={detail.timeline} viewerId={detail.viewerId} />
     </div>
   );
 }

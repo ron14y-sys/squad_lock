@@ -23,6 +23,27 @@ says so.
 
 ---
 
+## The timeline did not mark the viewer's own actions — 2026-10-13
+
+- **Seen:** manual testing: in «מה קרה עד עכשיו» every event shows a name;
+  asked for «(את/ה)» beside the viewer's own, so they find their actions at
+  a glance.
+- **Cause:** not a bug — the timeline events carried only the person's name
+  (`lib/db/meeting-detail.ts`), so the screen had nothing to tell the viewer
+  by except a name, which two members can share.
+- **Fix:** [#262](https://github.com/ron14y-sys/squad_lock/issues/262). The
+  three kinds that name someone (initiated, response, amendment) carry
+  `byId` too, and `MeetingDetail.tsx` adds «(את/ה)» where it is the viewer's.
+  Only the timeline; nobody else's name changes.
+- **Proof:** `MeetingDetail.test.tsx` (all three kinds marked for the viewer,
+  not for another member with the same name) and
+  `__tests__/meeting-timeline-db.test.ts` (each event's `byId`, run against
+  the local database). Both fail on the old code, and each of nine
+  mutations fails one — including marking by name instead of id.
+- **Still open:** nothing.
+
+---
+
 ## No way to remove a member from a group — 2026-10-13
 
 - **Seen:** manual test 4.4: "there is no way to undo an invitation or to
