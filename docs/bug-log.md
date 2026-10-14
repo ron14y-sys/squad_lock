@@ -23,6 +23,26 @@ says so.
 
 ---
 
+## Not a bug: a new account was sent to the preference game — 2026-10-13
+
+- **Seen:** manual test 4.1: opening `/groups` with a new account "sends to
+  the preference game" instead of «עדיין אין לך קבוצות.»
+- **Cause:** none in the code. `/groups` (`app/groups/page.tsx`) sends a user
+  with no saved preference profile to the game — the onboarding #173 added
+  (manual test 1.6) — and the profile row is created only when the game is
+  finished and saved («נשמר.»). The account was new and had not finished the
+  game. Checked that saving cannot fail silently: skipping every question
+  still saves, an empty multi-choice sends nothing the server rejects, a
+  failed save says «לא הצלחנו לשמור», and nothing deletes a profile.
+- **Fix:** none needed. Test 4.1 said "a new account (after onboarding)"
+  without saying what that means; it now says to finish the game until
+  «נשמר.» and save a neighbourhood first.
+  [#254](https://github.com/ron14y-sys/squad_lock/issues/254), closed.
+- **Proof:** not applicable.
+- **Still open:** nothing.
+
+---
+
 ## Another person's approval never reached an open meeting screen — 2026-10-13
 
 - **Seen:** manual test 7.4, two accounts: "On the computer I approved and saw
