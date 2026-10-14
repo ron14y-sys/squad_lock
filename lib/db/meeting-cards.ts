@@ -7,7 +7,11 @@ import { meetingFromRow } from "@/lib/types/meeting-from-row";
 
 import { findConflictingMeetings } from "./conflict-dismissal";
 import { canHideMeeting } from "./meeting-hides";
-import { OPEN_MEETING_STATUSES } from "./meetings";
+import {
+  OPEN_MEETING_STATUSES,
+  isMeetingOver,
+  notStartedYet,
+} from "./meetings";
 import { getPrisma } from "./client";
 
 import type { MeetingStatus, RunStage } from "@/lib/generated/prisma/enums";
@@ -41,7 +45,9 @@ export function deriveMeetingCardStatus(
 ): MeetingCardStatus {
   const { meeting, responses, viewerId, hasConflict } = input;
 
-  if (meeting.status === "closed" || meeting.status === "cancelled") {
+  // A meeting whose time has started is closed whatever its stored status:
+  // it can no longer be answered, and it frees its place in the group.
+  if (isMeetingOver(meeting, (input.now ?? new Date()).getTime())) {
     return "closed";
   }
   if (hasConflict) return "conflicting";
@@ -178,6 +184,7 @@ function toMeetingCardDTO(
     responses,
     viewerId,
     hasConflict: conflictingIds.has(meeting.id),
+    now: new Date(now),
   });
 
   const pendingCount = responses.filter((r) => r.status === "pending").length;
@@ -235,11 +242,13 @@ export async function listMeetingCardsForGroup(
   });
 
   const conflictingIds = await conflictingMeetingIds(viewerId);
-  const openCount = rows.filter((row) =>
-    (OPEN_MEETING_STATUSES as string[]).includes(row.status)
+  const now = Date.now();
+  const openCount = rows.filter(
+    (row) =>
+      (OPEN_MEETING_STATUSES as string[]).includes(row.status) &&
+      !isMeetingOver(row, now)
   ).length;
 
-  const now = Date.now();
   // Counted above from every row: a hidden meeting still holds its place
   // against the group's open-meeting cap, whether the viewer sees it or not.
   const cards = rows
@@ -271,6 +280,7 @@ export async function listOpenMeetingCardsForUser(
       userId: viewerId,
       meeting: {
         status: { in: OPEN_MEETING_STATUSES },
+        ...notStartedYet(new Date()),
         hides: { none: { userId: viewerId } },
       },
     },

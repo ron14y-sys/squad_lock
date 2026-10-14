@@ -45,6 +45,15 @@ describe("canHideMeeting", () => {
     ).toBe(true);
   });
 
+  it("is false while it is being re-weighed, even under an old time", () => {
+    expect(
+      canHideMeeting(
+        { status: MeetingStatus.weighing, currentDatetime: PAST },
+        NOW
+      )
+    ).toBe(false);
+  });
+
   it("is false for a meeting that is still going", () => {
     expect(
       canHideMeeting(

@@ -9,7 +9,7 @@ import { meetingFromRow } from "@/lib/types/meeting-from-row";
 
 import { deriveMeetingCardStatus, runStageOf } from "./meeting-cards";
 import { findConflictingMeetings } from "./conflict-dismissal";
-import { CYCLE_CAP } from "./meetings";
+import { CYCLE_CAP, isMeetingOver } from "./meetings";
 import { getPrisma } from "./client";
 import {
   MOBILITY_MODE_LABELS,
@@ -347,8 +347,9 @@ export async function getMeetingDetail(
 
   // A confirmed meeting is a clash for the *other* meeting's page, where
   // there is still an approve button to warn above — not for its own.
-  const conflictPairs =
-    meeting.status === "closed" ? [] : await findConflictingMeetings(viewerId);
+  const conflictPairs = isMeetingOver(row, now.getTime())
+    ? []
+    : await findConflictingMeetings(viewerId);
   const otherMeetingIds = conflictPairs.flatMap((pair) => {
     if (pair.meetingA.id === meeting.id) return [pair.meetingB.id];
     if (pair.meetingB.id === meeting.id) return [pair.meetingA.id];
@@ -395,7 +396,12 @@ export async function getMeetingDetail(
     responses,
     viewerId,
     hasConflict,
+    now,
   });
+
+  // A stuck meeting whose time has started is simply closed: nobody can act
+  // on it any more, so there is nothing to ask the group to decide.
+  const isStuck = row.status === "stuck" && status !== "closed";
 
   const latestRun = row.matchRuns[row.matchRuns.length - 1] ?? null;
   const topOption = latestRun?.options.find((o) => o.rank === 1) ?? null;
@@ -565,25 +571,24 @@ export async function getMeetingDetail(
     viewerId,
     remainingCycles: Math.max(0, CYCLE_CAP - meeting.cycleCount),
     viewerAmendmentIsFree,
-    isStuck: row.status === "stuck",
-    stuckWhy:
-      row.status === "stuck"
-        ? {
-            reason: row.stuckReason,
-            partOfDay:
-              meeting.pinnedWhen?.kind === "part_of_day" ||
-              meeting.pinnedWhen?.kind === "date_and_part_of_day"
-                ? meeting.pinnedWhen.part
-                : null,
-            askedStart:
-              row.participantContexts
-                .flatMap((context) =>
-                  context.earliestStart ? [context.earliestStart] : []
-                )
-                .sort()
-                .at(-1) ?? null,
-          }
-        : null,
+    isStuck,
+    stuckWhy: isStuck
+      ? {
+          reason: row.stuckReason,
+          partOfDay:
+            meeting.pinnedWhen?.kind === "part_of_day" ||
+            meeting.pinnedWhen?.kind === "date_and_part_of_day"
+              ? meeting.pinnedWhen.part
+              : null,
+          askedStart:
+            row.participantContexts
+              .flatMap((context) =>
+                context.earliestStart ? [context.earliestStart] : []
+              )
+              .sort()
+              .at(-1) ?? null,
+        }
+      : null,
     runStage: runStageOf(row),
     isInitiator: row.initiatorId === viewerId,
     conflicts,
