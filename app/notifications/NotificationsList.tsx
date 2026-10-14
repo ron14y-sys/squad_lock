@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { ScreenState } from "@/app/_components/ScreenState";
 import { notificationText } from "@/lib/format/hebrew-labels";
 import { APP_TIME_ZONE } from "@/lib/types/primitives";
 import type { NotificationKind } from "@/lib/generated/prisma/enums";
+import { openNotification } from "./actions";
 
 type NotificationCard = {
   id: string;
@@ -41,7 +43,7 @@ const WHEN_FMT = new Intl.DateTimeFormat("he-IL", {
  * `calendarReconnectEmail` sends (`lib/email/templates.ts`'s own comment on
  * why `/groups` is the callback target). `invitation` never actually
  * appears here (see `lib/db/notifications.ts`), so it has no link of its
- * own — null falls through to a plain, unlinked card.
+ * own — null falls through to a card opened in place.
  */
 function hrefFor(card: NotificationCard): string | null {
   // #250: a group notice goes to its group, but only while there is one the
@@ -56,14 +58,24 @@ function hrefFor(card: NotificationCard): string | null {
 }
 
 /**
- * C9 (#46): this user's notifications, newest first. Fetching marks them
- * all read server-side (`GET /api/notifications`'s own comment) — `isNew`
- * in the response is what each one *was* a moment before that, which is
- * why a freshly-read screen can still show which ones just arrived.
+ * C9 (#46): this user's notifications, newest first, the unread ones bold.
+ * #238: one is read once it is opened — marked first, so the header's count
+ * is down by one before the page it leads to; one with nowhere to go is
+ * opened in place, and fades.
  */
 export function NotificationsList() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [notifications, setNotifications] = useState<NotificationCard[]>([]);
+  const router = useRouter();
+
+  async function open(card: NotificationCard, href: string | null) {
+    if (card.isNew) await openNotification(card.id).catch(() => {});
+    if (href) router.push(href);
+    else
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === card.id ? { ...n, isNew: false } : n))
+      );
+  }
 
   useEffect(() => {
     fetch("/api/notifications")
@@ -115,11 +127,25 @@ export function NotificationsList() {
         );
 
         return href ? (
-          <Link key={card.id} href={href}>
+          <Link
+            key={card.id}
+            href={href}
+            onClick={(e) => {
+              e.preventDefault();
+              open(card, href);
+            }}
+          >
             {content}
           </Link>
         ) : (
-          <div key={card.id}>{content}</div>
+          <button
+            key={card.id}
+            type="button"
+            className="text-start"
+            onClick={() => open(card, null)}
+          >
+            {content}
+          </button>
         );
       })}
     </div>

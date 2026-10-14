@@ -291,6 +291,8 @@ The funnel is deterministic code, not an LLM. It is cheap, testable, and keeps t
 
 **v1: in-app + email.** Email carries the link; everything else happens in the app. Web push is deferred — on iOS it only works after the user adds the PWA to their home screen, which is friction we do not want in the critical path.
 
+**A notification is read once it is opened**, not when the list is seen ([#238](https://github.com/ron14y-sys/squad_lock/issues/238)): the header's count goes down by one per notification opened, and the list shows the unread ones bold and the opened ones faded. One with nowhere to lead (a deleted group) is opened in place.
+
 **Mail is sent from a dedicated project address**, never from a participant's own mailbox, through a **transactional email provider** the backend calls with an API key (§6.3). No participant's mailbox is ever the sender, no Gmail OAuth scope is requested, and the system never reads anyone's mail. The flow is one-directional:
 
 ```

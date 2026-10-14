@@ -1,13 +1,8 @@
-// C9 (#46): this user's notifications. GET both reads and marks everything
-// read, in that order — listNotifications runs first so the response still
-// reflects which ones were new, and markAllNotificationsRead runs after so
-// the badge count is back to zero by the next page load.
+// C9 (#46): this user's notifications. Reading them marks nothing — each one
+// is read once it is opened from the list (#238, `app/notifications/actions.ts`).
 
 import { auth } from "@/auth";
-import {
-  listNotifications,
-  markAllNotificationsRead,
-} from "@/lib/db/notifications";
+import { listNotifications } from "@/lib/db/notifications";
 
 export async function GET(): Promise<Response> {
   const session = await auth();
@@ -16,8 +11,5 @@ export async function GET(): Promise<Response> {
     return Response.json({ error: "Not signed in." }, { status: 401 });
   }
 
-  const notifications = await listNotifications(userId);
-  await markAllNotificationsRead(userId);
-
-  return Response.json(notifications);
+  return Response.json(await listNotifications(userId));
 }
