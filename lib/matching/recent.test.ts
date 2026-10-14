@@ -95,6 +95,29 @@ describe("withoutVisited (#213)", () => {
     ]);
   });
 
+  it("drops it, far apart, for one at most a quarter of a range less fair (#213)", () => {
+    const result = withoutVisited(
+      [score("been", 1.7), score("new", 1.9)],
+      [pair("been"), pair("new")],
+      visited,
+      undefined
+    );
+    expect(ids(result)).toEqual([["new"], ["new"]]);
+  });
+
+  it("keeps it, far apart, when the other is more than a quarter of a range less fair", () => {
+    const result = withoutVisited(
+      [score("been", 1.7), score("new", 2.0)],
+      [pair("been"), pair("new")],
+      visited,
+      undefined
+    );
+    expect(ids(result)).toEqual([
+      ["been", "new"],
+      ["been", "new"],
+    ]);
+  });
+
   it("never drops the venue it is told to keep", () => {
     const result = withoutVisited(
       [score("been", 0.2), score("new", 0.5)],

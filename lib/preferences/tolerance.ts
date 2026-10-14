@@ -15,5 +15,5 @@ export const TOLERANCE_OPTIONS: { label: string; km: Kilometres }[] = [
   { label: "ברגל", km: 1.5 },
   { label: "בשכונה", km: 3 },
   { label: "חצי מהעיר", km: 8 },
-  { label: "בכל מקום", km: 20 },
+  { label: "בכל מקום", km: 30 },
 ];

@@ -4,10 +4,10 @@
  * Venue choice is deterministic — the same pool, the same group and the same
  * free evening give the same ranked list, and so the same rank 1, every time
  * a meeting is made. So a venue the group has lately been to is held back
- * from the model **when there is somewhere else everyone is within range
- * of**; when there is not, it stays, so a small group in a quiet
- * neighbourhood still gets an answer. The venue the initiator named is never
- * held back: it was asked for.
+ * from the model **when there is somewhere else nearly as fair**
+ * (`withoutVisited`); when there is not, it stays, so a small group in a
+ * quiet neighbourhood still gets an answer. The venue the initiator named is
+ * never held back: it was asked for.
  *
  * "Been to" is a meeting that closed — everyone approved it — dated in the
  * last `VISITED_VENUE_DAYS` or later. Its venue is rank 1 of its last run.
@@ -50,10 +50,19 @@ export function visitedVenues(
 }
 
 /**
+ * How much worse an alternative may be for its worst-off person than the
+ * visited venue was, in burden — a quarter of that person's range. Tunable;
+ * Ron owns the product answer.
+ */
+export const VISITED_MARGIN = 0.25;
+
+/**
  * Drops the visited venues, all but `keep`, from what the model may choose —
- * only when what is left has a venue within everyone's range: a worst-off
- * burden (`leximin[0]`) of at most 1.0, exactly as far as that person said
- * they would travel. Otherwise returns both lists unchanged.
+ * only when what is left has a venue nearly as fair: its worst-off burden
+ * (`leximin[0]`) within everyone's range (1.0), or within `VISITED_MARGIN`
+ * of the fairest visited venue's. The second is for a group that lives far
+ * apart, where nothing is within everyone's range (Modiin, Ashdod and Ramat
+ * Gan). Otherwise returns both lists unchanged.
  */
 export function withoutVisited(
   ranked: CandidateScore[],
@@ -63,7 +72,13 @@ export function withoutVisited(
 ): { ranked: CandidateScore[]; viable: ViablePair[] } {
   const held = (placeId: string) => visited.has(placeId) && placeId !== keep;
   const left = ranked.filter((score) => !held(score.candidate.placeId));
-  if (!left.some((score) => score.leximin[0] <= 1)) return { ranked, viable };
+  const visitedWorst = Math.min(
+    ...ranked
+      .filter((score) => held(score.candidate.placeId))
+      .map((score) => score.leximin[0])
+  );
+  const bar = Math.max(1, visitedWorst + VISITED_MARGIN);
+  if (!left.some((score) => score.leximin[0] <= bar)) return { ranked, viable };
   return {
     ranked: left,
     viable: viable.filter((pair) => !held(pair.candidatePlaceId)),
