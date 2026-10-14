@@ -23,6 +23,32 @@ says so.
 
 ---
 
+## Setting a neighbourhood from a meeting did not return to the meeting — 2026-10-13
+
+- **Seen:** manual test 6.5: "After C sets their neighbourhood through the
+  link and presses save, send them back to the proposal."
+- **Cause:** every "הגדר עכשיו" link — on the meeting screen
+  (`MeetingDetail.tsx`), in the banner on the group screens
+  (`MissingHomeBanner.tsx`), and `/groups`'s own redirect for a profile with
+  no home — went to `/profile/location` with no word of where it came from,
+  and the form (`LocationForm.tsx`) only said "נשמר." and stayed.
+- **Fix:** [#260](https://github.com/ron14y-sys/squad_lock/issues/260). Each
+  link carries `?next=` — the meeting, the page the banner is on, or
+  `/groups`. The page passes it to the form through `localPath`, and the form
+  goes there once the save succeeds. Without `next` (from the profile menu)
+  it stays as before. `localPath` (`app/_components/local-path.ts`) accepts
+  only a path on this site; the calendar-connect route now uses it too,
+  instead of its own copy.
+- **Proof:** these fail on the old code: `LocationForm.test.tsx` (goes back
+  to the meeting once saved), `MeetingDetail.test.tsx` and
+  `MissingHomeBanner.test.tsx` (the links carry `next`). Guards: a failed
+  save goes nowhere; `local-path.test.ts` refuses `https://…`, `//…` and
+  `/\…`. Each checked by breaking it. The page and `/groups`'s redirect are
+  async server components, not unit-tested.
+- **Still open:** nothing.
+
+---
+
 ## A closed meeting's venue came back for a group that lives far apart — 2026-10-14
 
 - **Seen:** a meeting was opened, everyone approved and it closed; a new

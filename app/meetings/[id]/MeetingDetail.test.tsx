@@ -449,9 +449,10 @@ test("tells the viewer where to fix it when they are the one missing", async () 
 
   render(<MeetingDetail meetingId="meeting-1" />);
 
+  // #260: and to come back to this meeting once it is set.
   expect(
     await screen.findByRole("link", { name: "הגדר עכשיו" })
-  ).toHaveAttribute("href", "/profile/location");
+  ).toHaveAttribute("href", "/profile/location?next=/meetings/meeting-1");
 });
 
 test("a proposal says when what was asked for tonight was not found (#221)", async () => {
