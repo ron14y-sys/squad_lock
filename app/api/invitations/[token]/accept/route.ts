@@ -8,6 +8,7 @@
 import { auth } from "@/auth";
 import { getPrisma } from "@/lib/db/client";
 import { GROUP_SIZE_CAP, GroupFullError } from "@/lib/db/groups";
+import { mailboxKey } from "@/lib/groups/schema";
 
 export async function POST(
   _request: Request,
@@ -44,9 +45,9 @@ export async function POST(
   // The token is the link's whole identity, but the invitation was still
   // addressed to a specific person — accepting it under a different email
   // than the one it was sent to would let a forwarded link enroll someone
-  // the inviter never chose (lib/groups/schema.ts normalises the same way
-  // on the way in, so this compares like with like).
-  if (invitation.email !== userEmail.trim().toLowerCase()) {
+  // the inviter never chose. Compared by mailbox (#255): an invitation to
+  // `ron14y@gmail.com` reached `ron14.y@gmail.com`, and is theirs.
+  if (mailboxKey(invitation.email) !== mailboxKey(userEmail)) {
     return Response.json(
       { error: "This invitation was sent to a different address." },
       { status: 403 }

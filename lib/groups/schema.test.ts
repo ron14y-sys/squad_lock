@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createGroupSchema, inviteToGroupSchema } from "./schema";
+import { createGroupSchema, inviteToGroupSchema, mailboxKey } from "./schema";
 
 describe("createGroupSchema", () => {
   it("accepts a plain name", () => {
@@ -61,5 +61,26 @@ describe("inviteToGroupSchema", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe("mailboxKey (#255)", () => {
+  it("treats a Gmail address with or without dots as one mailbox", () => {
+    expect(mailboxKey("ron14y@gmail.com")).toBe(
+      mailboxKey("ron14.y@gmail.com")
+    );
+  });
+
+  it("drops a +tag, ignores case, and reads googlemail.com as gmail.com", () => {
+    expect(mailboxKey(" Ron14.Y+squad@GoogleMail.com ")).toBe(
+      "ron14y@gmail.com"
+    );
+  });
+
+  it("only lowercases other providers, where a dot can be another person", () => {
+    expect(mailboxKey("Ron.Y@Walla.co.il")).toBe("ron.y@walla.co.il");
+    expect(mailboxKey("ron.y@walla.co.il")).not.toBe(
+      mailboxKey("rony@walla.co.il")
+    );
   });
 });
