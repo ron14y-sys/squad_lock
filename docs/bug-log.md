@@ -23,6 +23,60 @@ says so.
 
 ---
 
+## The header's notification count never went down — 2026-10-13
+
+- **Seen:** manual test 13.2: the number next to «התראות» in the header stayed
+  the same after opening a notification. Wanted instead: the count goes down
+  by one for each notification opened, and the list shows the unread ones
+  bold and the opened ones faded.
+- **Cause:** two things. `GET /api/notifications` marked every notification
+  read the moment the list loaded (`markAllNotificationsRead`), so "read"
+  meant "the list was seen", not "this one was opened". And the count is
+  drawn by `AppHeader`, a server component in the root layout, which moving
+  between pages with a `<Link>` never draws again — so even the reset never
+  showed until a full reload.
+- **Fix:** [#238](https://github.com/ron14y-sys/squad_lock/issues/238). The
+  list marks nothing. Opening a card calls a server action,
+  `openNotification` (`app/notifications/actions.ts`), which marks that one
+  read (`markNotificationRead`, scoped by user) and revalidates the root
+  layout so the header is drawn again; only then does the card go where it
+  leads. A card already read is not marked again; one with nowhere to lead (a
+  deleted group) is now a button that marks it and fades it in place. A
+  failed mark still goes.
+- **Proof:** `NotificationsList.test.tsx` (marked before going, not again,
+  goes on failure, fades in place), `app/api/notifications/route.test.ts`
+  (the list marks nothing), `app/notifications/actions.test.ts` (marks for
+  the signed-in user, revalidates the layout), `lib/db/notifications.test.ts`
+  (one row, this user's). All fail on the old code, and each of ten
+  mutations of the new code fails one.
+- **Still open:** the header is redrawn by the revalidation, which no unit
+  test exercises — checked by manual test 13.2. A notification that arrives
+  while you are already in the app still shows only on the next full load.
+
+---
+
+## Not a bug: a broken invitation link said the meeting was not found — 2026-10-13
+
+- **Seen:** manual test 5.5: one character of the token changed showed
+  «הפגישה הזו לא נמצאה, או שאתה לא משתתף בה.» instead of «ההזמנה הזו לא
+  נמצאה.»
+- **Cause:** none in the code. That message exists only on the meeting screen
+  (`app/meetings/[id]/MeetingDetail.tsx`, `/meetings/<id>`), so the edited link
+  was a meeting link — the «יש הצעה חדשה שמחכה לך» email carries one — not an
+  invitation link (`/invitations/<token>`). The invitation page always opens
+  with «הוזמנת להצטרף לקבוצה.»; only after «הצטרף לקבוצה» does
+  `app/api/invitations/[token]/accept/route.ts` look the token up, and an
+  unknown one answers `Invitation not found.`, which `AcceptInvitation.tsx`
+  shows as «ההזמנה הזו לא נמצאה.»
+- **Fix:** none needed. Test 5.5 now says to edit the invitation link
+  (`/invitations/…`) and press join.
+  [#257](https://github.com/ron14y-sys/squad_lock/issues/257), closed.
+- **Proof:** not applicable.
+- **Still open:** no test covers an unknown invitation token, on the route or
+  on the screen.
+
+---
+
 ## Setting a neighbourhood from a meeting did not return to the meeting — 2026-10-13
 
 - **Seen:** manual test 6.5: "After C sets their neighbourhood through the

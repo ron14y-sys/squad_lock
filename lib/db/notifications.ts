@@ -48,7 +48,7 @@ export type NotificationCardDTO = {
   /** Only on the group kinds (#250). */
   group?: NotificationGroupDTO;
   createdAt: string;
-  /** Whether this one was still unread *before* `markAllNotificationsRead` last ran — see that function's own comment on why the read state a screen renders is not the one the next query would return. */
+  /** Whether this one is still unread — not yet opened from the list (#238). */
   isNew: boolean;
 };
 
@@ -108,10 +108,8 @@ const LIST_LIMIT = 50;
 
 /**
  * This user's most recent notifications, newest first, capped at
- * `LIST_LIMIT`. `isNew` reflects `readAt` as it stood *at this read* — the
- * caller (the notifications page) marks everything read immediately after,
- * so the one render where something is new is the one that would otherwise
- * never be seen as new at all.
+ * `LIST_LIMIT`. `isNew` is whether it is still unread — opened from the list
+ * or not (#238, `markNotificationRead`).
  */
 export async function listNotifications(
   userId: string,
@@ -159,17 +157,17 @@ export async function listNotifications(
 }
 
 /**
- * Marks every one of this user's notifications read. Called once, right
- * after `listNotifications` for the same request — see that function's own
- * comment on why the two run in that order rather than one combined query.
+ * #238: marks one of this user's notifications read — the one they opened
+ * from the list. Scoped by `userId` too, so nobody marks someone else's.
  */
-export async function markAllNotificationsRead(
+export async function markNotificationRead(
   userId: string,
+  id: string,
   now: Date = new Date(),
   client: NotificationsClient = getPrisma()
 ): Promise<void> {
   await client.notification.updateMany({
-    where: { userId, readAt: null },
+    where: { id, userId, readAt: null },
     data: { readAt: now },
   });
 }

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   countUnreadNotifications,
   listNotifications,
-  markAllNotificationsRead,
+  markNotificationRead,
   recordInAppNotification,
 } from "./notifications";
 import { NotificationKind } from "@/lib/generated/prisma/enums";
@@ -223,15 +223,15 @@ describe("listNotifications, group notices (#250)", () => {
   });
 });
 
-describe("markAllNotificationsRead", () => {
-  it("sets readAt on every unread row for this user, to the given time", async () => {
+describe("markNotificationRead (#238)", () => {
+  it("sets readAt on that one unread row of this user's, to the given time", async () => {
     const client = fakeClient();
     const now = new Date("2026-10-01T12:00:00.000Z");
 
-    await markAllNotificationsRead("user-1", now, client);
+    await markNotificationRead("user-1", "n1", now, client);
 
     expect(client.notification.updateMany).toHaveBeenCalledWith({
-      where: { userId: "user-1", readAt: null },
+      where: { id: "n1", userId: "user-1", readAt: null },
       data: { readAt: now },
     });
   });
