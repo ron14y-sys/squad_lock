@@ -23,6 +23,26 @@ says so.
 
 ---
 
+## Opening a meeting went back to the group, not to the meeting — 2026-10-13
+
+- **Seen:** manual test 6.1: after «פתח פגישה» the app went back to the group
+  screen. Wanted: straight to the new meeting, to watch its proposal being
+  prepared and then see it.
+- **Cause:** `NewMeeting.tsx` sent every successful open to
+  `/groups/<id>`, though `POST /api/groups/[id]/meetings` already answers
+  with the new meeting (its id included) before the first run starts in
+  `after()`.
+- **Fix:** [#258](https://github.com/ron14y-sys/squad_lock/issues/258). It
+  goes to `/meetings/<id>` from the response. The meeting screen needed
+  nothing: a meeting with no proposal yet shows «מחפשים הצעה» with the run's
+  stage, asks every 3 s (its next run is under a minute away), and is the
+  clock that starts the run if `after()` did not.
+- **Proof:** the two tests in `NewMeeting.test.tsx` that open a meeting now
+  expect `/meetings/meeting-1`; both fail on the old code.
+- **Still open:** nothing.
+
+---
+
 ## The header's notification count never went down — 2026-10-13
 
 - **Seen:** manual test 13.2: the number next to «התראות» in the header stayed

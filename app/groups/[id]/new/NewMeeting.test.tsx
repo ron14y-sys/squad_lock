@@ -24,7 +24,9 @@ afterEach(() => {
 
 test("pressing the button with nothing filled in opens an all-blank meeting", async () => {
   const user = userEvent.setup();
-  const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({}, 201)));
+  const fetchMock = vi.fn(() =>
+    Promise.resolve(jsonResponse({ id: "meeting-1" }, 201))
+  );
   vi.stubGlobal("fetch", fetchMock);
 
   render(<NewMeeting groupId="group-1" />);
@@ -37,7 +39,7 @@ test("pressing the button with nothing filled in opens an all-blank meeting", as
   expect(url).toBe("/api/groups/group-1/meetings");
   expect(init.method).toBe("POST");
   expect(JSON.parse(init.body as string)).toEqual({});
-  expect(pushMock).toHaveBeenCalledWith("/groups/group-1");
+  expect(pushMock).toHaveBeenCalledWith("/meetings/meeting-1");
 });
 
 test("sends only the fields that were filled in", async () => {
@@ -262,7 +264,7 @@ test("locks the field on the last miss, and opens the meeting without a place", 
         422
       )
     )
-    .mockResolvedValueOnce(jsonResponse({}, 201));
+    .mockResolvedValueOnce(jsonResponse({ id: "meeting-1" }, 201));
   vi.stubGlobal("fetch", fetchMock);
 
   render(<NewMeeting groupId="group-1" />);
@@ -277,7 +279,7 @@ test("locks the field on the last miss, and opens the meeting without a place", 
   await user.click(screen.getByRole("button", { name: "פתח פגישה" }));
   const [, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
   expect(JSON.parse(init.body as string)).toEqual({});
-  expect(pushMock).toHaveBeenCalledWith("/groups/group-1");
+  expect(pushMock).toHaveBeenCalledWith("/meetings/meeting-1");
 });
 
 test("locks the field when the server says lookups are already used up", async () => {
