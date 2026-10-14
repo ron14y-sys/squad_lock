@@ -48,6 +48,37 @@ says so.
 
 ---
 
+## An invitation to your own Gmail address, without the dot, went out — 2026-10-14
+
+- **Seen:** re-checking manual test 4.4: "An invitation to an address that
+  looks like mine went through and I got an email, but when I clicked it to
+  get in it said it was sent to another address." Signed in as
+  `ron14.y@gmail.com`; the invitation was typed as `ron14y@gmail.com`.
+- **Cause:** Gmail ignores dots (and anything after a `+`) in the name, so
+  both addresses are one mailbox. The app compared addresses as lowercased
+  strings: the invite route's "your own address" and "already a member"
+  checks (#210) saw two people, so the invitation was created and emailed;
+  the accept route saw a different address and refused it with 403.
+- **Fix:** [#255](https://github.com/ron14y-sys/squad_lock/issues/255).
+  `mailboxKey` (`lib/groups/schema.ts`): lowercase; for `gmail.com` and
+  `googlemail.com`, drop dots and any `+tag` and read the domain as
+  `gmail.com`. Other providers are only lowercased, since a dot can be
+  another person there. Used for your own address, every member's address,
+  a pending invitation under another spelling (no second email), and
+  accepting. The invitation is still sent to the address as typed.
+- **Proof:** `__tests__/invitations-db.test.ts` (#255 block, local Postgres):
+  four fail on the old code — your own address without the dot, a member's,
+  a pending invitation under the other spelling, accepting with the dot.
+  `lib/groups/schema.test.ts` covers the key, each rule checked by breaking
+  it.
+- **Still open:**
+  - Other providers' aliases (Outlook `+tags`, custom domains) are compared
+    as typed.
+  - A typo in the domain that someone registered (`ron@gmil.com`) still
+    passes: it has a real mail server, so the DNS check accepts it.
+
+---
+
 ## Not a bug: a new account was sent to the preference game — 2026-10-13
 
 - **Seen:** manual test 4.1: opening `/groups` with a new account "sends to

@@ -40,6 +40,8 @@ vi.mock("@/lib/email/mail-domain", () => ({
 const { POST } = await import("@/app/api/groups/[id]/invitations/route");
 const { DELETE } =
   await import("@/app/api/groups/[id]/invitations/[invitationId]/route");
+const { POST: ACCEPT } =
+  await import("@/app/api/invitations/[token]/accept/route");
 
 if (!CONNECTED) {
   console.info(
@@ -152,6 +154,86 @@ describe.skipIf(!CONNECTED)("invitations against a real database", () => {
       const [row] = await invitationsOf(group.id);
       expect(row?.email).toBe(`${PREFIX}-maya@example.test`);
       expect(notifyInvitation).toHaveBeenCalledWith(row!.id);
+    });
+  });
+
+  describe("one Gmail mailbox, spelled with or without dots (#255)", () => {
+    /** A member whose Google account is a Gmail address. */
+    async function gmailMember(tag: string) {
+      const seeded = await seed(tag);
+      const ron = await prisma!.user.create({
+        data: {
+          email: `${PREFIX}-${tag}-ron14.y@gmail.com`,
+          name: "ron",
+          googleId: `${PREFIX}-${tag}-ron`,
+        },
+      });
+      await prisma!.groupMember.create({
+        data: { groupId: seeded.group.id, userId: ron.id },
+      });
+      return { ...seeded, ron };
+    }
+
+    it("refuses your own address typed without the dot, with no email", async () => {
+      const { group, ron } = await gmailMember("gself");
+      session.current = { user: { id: ron.id, email: ron.email } };
+
+      const res = await invite(group.id, `${PREFIX}-gself-ron14y@gmail.com`);
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "That is your own address." });
+      expect(await invitationsOf(group.id)).toEqual([]);
+      expect(notifyInvitation).not.toHaveBeenCalled();
+    });
+
+    it("refuses a member's address typed without the dot, with no email", async () => {
+      const { group } = await gmailMember("gmember");
+
+      const res = await invite(group.id, `${PREFIX}-gmember-ron14y@gmail.com`);
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: "This person is already a member.",
+      });
+      expect(await invitationsOf(group.id)).toEqual([]);
+      expect(notifyInvitation).not.toHaveBeenCalled();
+    });
+
+    it("sends no second email to an invitation pending under the other spelling", async () => {
+      const { group } = await seed("gpending");
+      const first = await invite(group.id, `${PREFIX}-gpending-maya@gmail.com`);
+      notifyInvitation.mockReset();
+
+      const again = await invite(
+        group.id,
+        `${PREFIX}-gpending-ma.ya@gmail.com`
+      );
+
+      expect(again.status).toBe(200);
+      expect((await again.json()).id).toBe((await first.json()).id);
+      expect(await invitationsOf(group.id)).toHaveLength(1);
+      expect(notifyInvitation).not.toHaveBeenCalled();
+    });
+
+    it("lets the invitee accept when they sign in with the dot", async () => {
+      const { group } = await seed("gaccept");
+      const res = await invite(group.id, `${PREFIX}-gaccept-ron14y@gmail.com`);
+      const { token } = await res.json();
+      const ron = await prisma!.user.create({
+        data: {
+          email: `${PREFIX}-gaccept-ron14.y@gmail.com`,
+          name: "ron",
+          googleId: `${PREFIX}-gaccept-ron`,
+        },
+      });
+      session.current = { user: { id: ron.id, email: ron.email } };
+
+      const accepted = await ACCEPT(new Request("http://test/accept"), {
+        params: Promise.resolve({ token }),
+      });
+
+      expect(accepted.status).toBe(200);
+      expect(await accepted.json()).toEqual({ groupId: group.id });
     });
   });
 
