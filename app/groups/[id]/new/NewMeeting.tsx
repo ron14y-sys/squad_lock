@@ -116,7 +116,8 @@ export function NewMeeting({ groupId }: { groupId: string }) {
         return;
       }
 
-      router.push(`/groups/${groupId}`);
+      // #258: straight to the new meeting, to watch its proposal arrive.
+      router.push(`/meetings/${(await res.json()).id}`);
     } catch {
       setErrorMessage("לא הצלחנו לפתוח את הפגישה. נסה שוב.");
       setSubmitState("error");
