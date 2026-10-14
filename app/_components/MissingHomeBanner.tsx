@@ -12,8 +12,11 @@ import Link from "next/link";
  * Stays silent on anything but a clear "signed in, and home is empty": a
  * signed-out visitor, a network error or a slow response must never put a
  * warning on a screen that is otherwise fine.
+ *
+ * `here` is the page it is on: saving the neighbourhood comes back to it
+ * (#260).
  */
-export function MissingHomeBanner() {
+export function MissingHomeBanner({ here }: { here: string }) {
   const [missing, setMissing] = useState(false);
 
   useEffect(() => {
@@ -37,7 +40,10 @@ export function MissingHomeBanner() {
     <div role="alert" className="sl-page !pb-0">
       <div className="sl-warn">
         עוד לא הגדרת שכונת מגורים, ובלי זה אי אפשר למצוא מקום שמתאים לכולם.{" "}
-        <Link href="/profile/location" className="font-bold underline">
+        <Link
+          href={`/profile/location?next=${here}`}
+          className="font-bold underline"
+        >
           הגדר עכשיו
         </Link>
       </div>

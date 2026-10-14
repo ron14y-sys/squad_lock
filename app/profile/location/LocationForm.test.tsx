@@ -4,6 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { findNeighbourhoodById } from "@/lib/geo/neighbourhoods";
 import { LocationForm } from "./LocationForm";
 
+const pushMock = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
+  usePathname: () => "/profile/location",
+}));
+
 function jsonResponse(body: unknown, status = 200) {
   return {
     ok: status >= 200 && status < 300,
@@ -69,6 +75,8 @@ test("saving sends the picked area's name AND its coordinates (#132)", async () 
   await user.click(screen.getByRole("button", { name: "שמור" }));
 
   await waitFor(() => expect(screen.getByText("נשמר.")).toBeInTheDocument());
+  // Opened from the profile, with nowhere to go back to: it stays (#260).
+  expect(pushMock).not.toHaveBeenCalled();
 
   const putCall = fetchMock.mock.calls.find(
     ([, init]) => init?.method === "PUT"
@@ -80,6 +88,39 @@ test("saving sends the picked area's name AND its coordinates (#132)", async () 
     toleranceKm: 30,
     recurringMobilityRules: [],
   });
+});
+
+/** Picks an area and presses save, answering the save with `saved`. */
+async function pickAndSave(saved: Response) {
+  const user = userEvent.setup();
+  await screen.findByRole("button", { name: "ברגל" });
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "שכונת מגורים" }),
+    "נווה צדק, תל אביב"
+  );
+  fetchMock.mockResolvedValueOnce(saved);
+  await user.click(screen.getByRole("button", { name: "שמור" }));
+}
+
+test("once saved, goes back to the meeting whose link led here (#260)", async () => {
+  pushMock.mockClear();
+  fetchMock.mockResolvedValueOnce(jsonResponse(EMPTY_PROFILE));
+  render(<LocationForm next="/meetings/m1" />);
+
+  await pickAndSave(jsonResponse(EMPTY_PROFILE));
+
+  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/meetings/m1"));
+});
+
+test("goes nowhere when the save fails (#260)", async () => {
+  pushMock.mockClear();
+  fetchMock.mockResolvedValueOnce(jsonResponse(EMPTY_PROFILE));
+  render(<LocationForm next="/meetings/m1" />);
+
+  await pickAndSave(jsonResponse({}, 500));
+
+  await screen.findByText(/לא הצלחנו לשמור|נסה שוב/);
+  expect(pushMock).not.toHaveBeenCalled();
 });
 
 test("cannot save until an area is picked", async () => {

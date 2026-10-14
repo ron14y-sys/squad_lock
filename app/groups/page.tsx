@@ -22,13 +22,13 @@ export default async function GroupsPage() {
     });
     if (!profile) redirect("/onboarding/preferences");
     if (profile.homeLat === null || profile.homeLng === null) {
-      redirect("/profile/location");
+      redirect("/profile/location?next=/groups");
     }
   }
 
   return (
     <div className="flex flex-1 flex-col">
-      <MissingHomeBanner />
+      <MissingHomeBanner here="/groups" />
       <GroupsList />
     </div>
   );

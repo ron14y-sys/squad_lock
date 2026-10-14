@@ -8,18 +8,12 @@
 // here asks for consent every time (`prompt=consent` in auth.ts), which is
 // what shows the calendar checkbox again and issues a new refresh token.
 
+import { localPath } from "@/app/_components/local-path";
 import { signIn } from "@/auth";
-
-/** Only a path on this site — never an absolute URL somebody put in a link. */
-function safeRedirect(callbackUrl: string | null): string {
-  return callbackUrl?.startsWith("/") && !callbackUrl.startsWith("//")
-    ? callbackUrl
-    : "/groups";
-}
 
 export async function GET(request: Request): Promise<Response> {
   const callbackUrl = new URL(request.url).searchParams.get("callbackUrl");
   // Throws Next's redirect to Google; nothing after it runs.
-  await signIn("google", { redirectTo: safeRedirect(callbackUrl) });
+  await signIn("google", { redirectTo: localPath(callbackUrl) ?? "/groups" });
   return new Response(null, { status: 500 });
 }

@@ -21,19 +21,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("tells a user with no home point where to set one", async () => {
+test("tells a user with no home point where to set one, and to come back here (#260)", async () => {
   fetchMock.mockResolvedValueOnce(jsonResponse({ home: null }));
-  render(<MissingHomeBanner />);
+  render(<MissingHomeBanner here="/groups/g1" />);
 
   const link = await screen.findByRole("link", { name: "הגדר עכשיו" });
-  expect(link).toHaveAttribute("href", "/profile/location");
+  expect(link).toHaveAttribute("href", "/profile/location?next=/groups/g1");
 });
 
 test("says nothing to a user who already has one", async () => {
   fetchMock.mockResolvedValueOnce(
     jsonResponse({ home: { lat: 32.0158, lng: 34.7874 } })
   );
-  render(<MissingHomeBanner />);
+  render(<MissingHomeBanner here="/groups" />);
 
   await waitFor(() => expect(fetchMock).toHaveBeenCalled());
   await Promise.resolve();
@@ -42,13 +42,13 @@ test("says nothing to a user who already has one", async () => {
 
 test("says nothing when signed out or when the request fails", async () => {
   fetchMock.mockResolvedValueOnce(jsonResponse({ error: "no" }, 401));
-  const { unmount } = render(<MissingHomeBanner />);
+  const { unmount } = render(<MissingHomeBanner here="/groups" />);
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   unmount();
 
   fetchMock.mockRejectedValueOnce(new Error("offline"));
-  render(<MissingHomeBanner />);
+  render(<MissingHomeBanner here="/groups" />);
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });

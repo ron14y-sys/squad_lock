@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type {
   Kilometres,
   LocalWeekday,
@@ -35,7 +36,12 @@ const MOBILITY_MODES: MobilityMode[] = ["car", "transit", "walk"];
 type LoadState = "loading" | "ready" | "signed-out" | "error";
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-export function LocationForm() {
+/**
+ * `next` is where to go once saved — the meeting or page whose "הגדר עכשיו"
+ * led here (#260). Without one, the form stays and says "נשמר.".
+ */
+export function LocationForm({ next = null }: { next?: string | null }) {
+  const router = useRouter();
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   // The picked list entry's id, or "" for nothing picked yet.
@@ -94,6 +100,7 @@ export function LocationForm() {
       });
       if (!res.ok) throw new Error(`PUT /api/preferences: ${res.status}`);
       setSaveState("saved");
+      if (next) router.push(next);
     } catch {
       setSaveState("error");
     }

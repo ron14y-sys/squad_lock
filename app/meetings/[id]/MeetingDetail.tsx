@@ -366,9 +366,11 @@ function TimelineBlock({ timeline }: { timeline: TimelineEvent[] }) {
 function MissingHomeNotice({
   missing,
   viewerId,
+  meetingId,
 }: {
   missing: MissingHome[];
   viewerId: string;
+  meetingId: string;
 }) {
   const mine = missing.some((p) => p.userId === viewerId);
   const others = missing.filter((p) => p.userId !== viewerId);
@@ -379,7 +381,11 @@ function MissingHomeNotice({
       {mine && (
         <p>
           עוד לא הגדרת שכונת מגורים.{" "}
-          <Link href="/profile/location" className="font-bold underline">
+          {/* #260: saving the neighbourhood comes back to this meeting. */}
+          <Link
+            href={`/profile/location?next=/meetings/${meetingId}`}
+            className="font-bold underline"
+          >
             הגדר עכשיו
           </Link>
         </p>
@@ -535,6 +541,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
         <MissingHomeNotice
           missing={detail.missingHome}
           viewerId={detail.viewerId}
+          meetingId={meetingId}
         />
       )}
       {!detail.isStuck && detail.retryInMinutes !== null && (

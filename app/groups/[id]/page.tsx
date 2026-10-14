@@ -11,7 +11,7 @@ export default async function GroupPage({
 
   return (
     <div className="flex flex-1 flex-col">
-      <MissingHomeBanner />
+      <MissingHomeBanner here={`/groups/${id}`} />
       <GroupDetail groupId={id} />
       <GroupFeed groupId={id} />
     </div>
