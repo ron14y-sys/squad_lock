@@ -11,7 +11,7 @@
 
 import { auth } from "@/auth";
 import { getPrisma } from "@/lib/db/client";
-import { inviteToGroupSchema } from "@/lib/groups/schema";
+import { inviteToGroupSchema, mailboxKey } from "@/lib/groups/schema";
 import { Prisma } from "@/lib/generated/prisma/client";
 import {
   GROUP_SIZE_CAP,
@@ -108,27 +108,29 @@ export async function POST(
   // Asked of members, not of invitations: whoever created the group, or
   // joined before invitations were recorded, has no accepted invitation,
   // so the check below never saw them — inviting yourself sent you an
-  // invitation to a group you were already in.
-  if (session.user?.email?.trim().toLowerCase() === email) {
+  // invitation to a group you were already in. Compared by mailbox (#255):
+  // a dot more or less in a Gmail address is still the same person.
+  const key = mailboxKey(email);
+  if (mailboxKey(session.user?.email ?? "") === key) {
     return Response.json(
       { error: "That is your own address." },
       { status: 409 }
     );
   }
-  const alreadyMember = await prisma.groupMember.findFirst({
-    where: { groupId, user: { email: { equals: email, mode: "insensitive" } } },
-    select: { id: true },
+  const members = await prisma.groupMember.findMany({
+    where: { groupId },
+    select: { user: { select: { email: true } } },
   });
-  if (alreadyMember) {
+  if (members.some((member) => mailboxKey(member.user.email) === key)) {
     return Response.json(
       { error: "This person is already a member." },
       { status: 409 }
     );
   }
 
-  const existing = await prisma.invitation.findUnique({
-    where: { groupId_email: { groupId, email } },
-  });
+  const existing = (
+    await prisma.invitation.findMany({ where: { groupId } })
+  ).find((invitation) => mailboxKey(invitation.email) === key);
 
   if (existing?.status === "accepted") {
     return Response.json(
