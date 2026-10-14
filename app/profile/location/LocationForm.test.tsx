@@ -77,7 +77,7 @@ test("saving sends the picked area's name AND its coordinates (#132)", async () 
   expect(JSON.parse(init.body)).toEqual({
     homeNeighbourhood: "נווה צדק, תל אביב",
     home: findNeighbourhoodById("ta-neve-tzedek")!.centre,
-    toleranceKm: 20,
+    toleranceKm: 30,
     recurringMobilityRules: [],
   });
 });

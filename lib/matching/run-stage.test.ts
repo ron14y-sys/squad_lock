@@ -893,6 +893,59 @@ describe("venues the group has lately been to (#213)", () => {
     expect(paired).toEqual(["p2"]);
   });
 
+  it("holds it back for a group that lives far apart, where nowhere is within everyone's range", async () => {
+    // Modiin, Ashdod and Ramat Gan: from Ashdod every venue in Ramat Gan is
+    // past even "anywhere". Two in Ramat Gan, a kilometre or two apart.
+    const [dana] = MEETING.responses;
+    const living = (
+      userId: string,
+      name: string,
+      lat: number,
+      lng: number
+    ) => ({
+      ...dana,
+      userId,
+      user: {
+        ...dana.user,
+        name,
+        preferenceProfile: {
+          ...dana.user.preferenceProfile,
+          id: `pp-${userId}`,
+          userId,
+          homeLat: lat,
+          homeLng: lng,
+          toleranceKm: 30,
+        },
+      },
+    });
+    meetingRow = {
+      ...MEETING,
+      responses: [
+        living("u1", "Modiin", 31.898, 35.01),
+        living("u2", "Ashdod", 31.804, 34.655),
+        living("u3", "Ramat Gan", 32.07, 34.824),
+      ],
+    } as unknown as typeof MEETING;
+    const bialik = {
+      ...NEXT_DOOR,
+      placeId: "rg1",
+      name: "Bialik",
+      location: { lat: 32.0823, lng: 34.8105 },
+    };
+    const krinitzi = {
+      ...NEXT_DOOR,
+      placeId: "rg2",
+      name: "Krinitzi",
+      location: { lat: 32.07, lng: 34.824 },
+    };
+    searchNeighbourhoodCached.mockResolvedValue([bialik, krinitzi]);
+    groupHistory(meetingAt("rg1", "closed"));
+
+    const { candidates } = await venuesSent();
+
+    expect(candidates).toEqual(["rg2"]);
+  });
+
   it("keeps it when the only other venue is beyond someone's range", async () => {
     searchNeighbourhoodCached.mockResolvedValue([NEXT_DOOR, ACROSS_TOWN]);
     groupHistory(meetingAt("p1", "closed"));

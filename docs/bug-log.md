@@ -23,6 +23,31 @@ says so.
 
 ---
 
+## A closed meeting's venue came back for a group that lives far apart — 2026-10-14
+
+- **Seen:** a meeting was opened, everyone approved and it closed; a new
+  meeting for the same group proposed the same venue. The group lives in
+  Modiin, Ashdod and Ramat Gan; "there are other places in Ramat Gan".
+- **Cause:** the #213 rule held a visited venue back only while another venue
+  had **everyone within their range** (worst burden ≤ 1.0). From Ashdod,
+  every venue in Ramat Gan is about 34 km — past even "anywhere" (then
+  20 km) — so no venue ever qualified and the rule never fired. It asked the
+  wrong question: not "is anywhere in range?" but "is anywhere nearly as
+  fair as the visited venue?".
+- **Fix:** [#213](https://github.com/ron14y-sys/squad_lock/issues/213),
+  reopened. `withoutVisited` also accepts an alternative whose worst burden
+  is at most `VISITED_MARGIN` (0.25, a quarter of a range) above the fairest
+  visited venue's. "בכל מקום" is now 30 km; a data migration moves profiles
+  stored at 20 to 30.
+- **Proof:** `run-stage.test.ts`: the Modiin / Ashdod / Ramat Gan group with
+  two venues in Ramat Gan gets the other one (fails on the old rule).
+  `recent.test.ts`: 1.7 → 1.9 is held back, 1.7 → 2.0 is not; each bound
+  checked by breaking it. The migration's SQL was run against seeded local
+  rows (20 → 30; 8 and 5 unchanged).
+- **Still open:** nothing.
+
+---
+
 ## An invitation to your own Gmail address, without the dot, went out — 2026-10-14
 
 - **Seen:** re-checking manual test 4.4: "An invitation to an address that
