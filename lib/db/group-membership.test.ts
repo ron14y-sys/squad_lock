@@ -113,7 +113,7 @@ describe("leaveGroup", () => {
   it("passes the admin role to one of those who stay, and tells them", async () => {
     groupOf(member("a", true), member("b"), member("c"), member("d"));
 
-    await leaveGroup("a", "g1", () => 0);
+    await leaveGroup("a", "g1", { random: () => 0 });
 
     expect(tx.groupMember.update).toHaveBeenCalledWith({
       where: { groupId_userId: { groupId: "g1", userId: "b" } },
@@ -223,6 +223,99 @@ describe("leaveGroup", () => {
     tx.groupMember.findMany.mockResolvedValue([member("c")]);
 
     await expect(leaveGroup("c", "g1")).rejects.toThrow(LastMemberError);
+
+    expect(tx.groupMember.delete).not.toHaveBeenCalled();
+    expect(tx.notification.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("leaveGroup, removed by the admin (#256)", () => {
+  it("removes them like a departure, and says so to them and to those who stay", async () => {
+    groupOf(member("a", true), member("b"), member("c"), member("d"));
+    prisma.meeting.findMany.mockResolvedValue([{ id: "m1" }]);
+    respondToMeeting.mockResolvedValueOnce({ justClosed: true });
+
+    const result = await leaveGroup("d", "g1", { removedBy: "a" });
+
+    expect(respondToMeeting).toHaveBeenCalledWith("m1", "d", {
+      kind: "cant_make_it",
+    });
+    expect(result).toEqual({ closedMeetingIds: ["m1"] });
+    expect(tx.groupMember.delete).toHaveBeenCalledWith({
+      where: { groupId_userId: { groupId: "g1", userId: "d" } },
+    });
+    expect(tx.response.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "d", meeting: { groupId: "g1", status: { in: OPEN } } },
+    });
+    expect(tx.groupMember.update).not.toHaveBeenCalled();
+    expect(tx.notification.createMany).toHaveBeenCalledWith({
+      data: [
+        ...["a", "b", "c"].map((userId) => ({
+          userId,
+          kind: NotificationKind.member_removed,
+          groupId: "g1",
+          groupName: "השישיה",
+          actorName: "name-d",
+        })),
+        {
+          userId: "d",
+          kind: NotificationKind.removed_from_group,
+          groupId: "g1",
+          groupName: "השישיה",
+        },
+      ],
+    });
+  });
+
+  it("below three, those who stay are told the group is inactive", async () => {
+    groupOf(member("a", true), member("b"), member("c"));
+    tx.meeting.updateMany.mockResolvedValue({ count: 1 });
+
+    await leaveGroup("c", "g1", { removedBy: "a" });
+
+    expect(tx.meeting.updateMany).toHaveBeenCalledWith({
+      where: { groupId: "g1", status: { in: OPEN } },
+      data: { status: MeetingStatus.cancelled },
+    });
+    const { data } = tx.notification.createMany.mock.calls[0][0];
+    expect(data.map((n: { kind: string }) => n.kind)).toEqual([
+      NotificationKind.group_inactive,
+      NotificationKind.group_inactive,
+      NotificationKind.removed_from_group,
+    ]);
+  });
+
+  it("is the admin's alone, refused before anything changes", async () => {
+    groupOf(member("a", true), member("b"), member("c"), member("d"));
+
+    await expect(leaveGroup("d", "g1", { removedBy: "b" })).rejects.toThrow(
+      NotTheAdminError
+    );
+    await expect(leaveGroup("d", "g1", { removedBy: "z" })).rejects.toThrow(
+      NotInGroupError
+    );
+
+    expect(prisma.meeting.findMany).not.toHaveBeenCalled();
+    expect(respondToMeeting).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses inside the lock too, when the remover is no longer the admin", async () => {
+    prisma.groupMember.findMany.mockResolvedValue([
+      member("a", true),
+      member("b"),
+      member("c"),
+      member("d"),
+    ]);
+    tx.groupMember.findMany.mockResolvedValue([
+      member("b", true),
+      member("c"),
+      member("d"),
+    ]);
+
+    await expect(leaveGroup("d", "g1", { removedBy: "a" })).rejects.toThrow(
+      NotInGroupError
+    );
 
     expect(tx.groupMember.delete).not.toHaveBeenCalled();
     expect(tx.notification.createMany).not.toHaveBeenCalled();

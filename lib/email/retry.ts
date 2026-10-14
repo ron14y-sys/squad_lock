@@ -237,7 +237,9 @@ async function regenerateContent(
     case NotificationKind.group_inactive:
     case NotificationKind.group_deleted:
     case NotificationKind.became_admin:
-      // #250: in-app only, never emailed, so there is no `notification_log`
+    case NotificationKind.member_removed:
+    case NotificationKind.removed_from_group:
+      // #250, #256: in-app only, never emailed, so there is no `notification_log`
       // row to retry. Listed so this switch stays exhaustive.
       return null;
   }

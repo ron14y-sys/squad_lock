@@ -47,6 +47,7 @@ const KNOWN_MANAGE_ERRORS: Record<string, string> = {
   "You are the last member. Delete the group instead.":
     "אתה החבר האחרון, ולכן אפשר רק למחוק את הקבוצה.",
   "Only the admin can delete the group.": "רק המנהל/ת יכול/ה למחוק את הקבוצה.",
+  "Only the admin can remove a member.": "רק המנהל/ת יכול/ה להסיר חברים.",
 };
 
 function groupFullMessage(message: string): string | null {
@@ -72,6 +73,9 @@ export function GroupDetail({ groupId }: { groupId: string }) {
   );
   const [managing, setManaging] = useState(false);
   const [manageMessage, setManageMessage] = useState<string | null>(null);
+  // #256: the member the admin is asked about removing.
+  const [removing, setRemoving] = useState<GroupMember | null>(null);
+  const [removeMessage, setRemoveMessage] = useState<string | null>(null);
 
   function load() {
     Promise.all([
@@ -192,6 +196,31 @@ export function GroupDetail({ groupId }: { groupId: string }) {
     }
   }
 
+  async function removeMember(member: GroupMember) {
+    setManaging(true);
+    setRemoveMessage(null);
+    try {
+      const res = await fetch(
+        `/api/groups/${groupId}/members/${member.userId}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setRemoveMessage(
+          KNOWN_MANAGE_ERRORS[body.error] ?? "לא הצלחנו. נסה שוב."
+        );
+        return;
+      }
+      setRemoving(null);
+      setRemoveMessage(`${member.user.name} הוסר/ה מהקבוצה.`);
+      load();
+    } catch {
+      setRemoveMessage("לא הצלחנו. נסה שוב.");
+    } finally {
+      setManaging(false);
+    }
+  }
+
   if (loadState === "loading") {
     return <ScreenState kind="loading">טוען את הקבוצה…</ScreenState>;
   }
@@ -235,17 +264,70 @@ export function GroupDetail({ groupId }: { groupId: string }) {
         <h2 className="sl-sec">חברים ({group.members.length})</h2>
         <div className="flex flex-col gap-2">
           {group.members.map((member) => (
-            <div key={member.userId} className="sl-field">
-              <div className="font-bold">
-                {member.user.name}
-                {member.isAdmin && (
-                  <span className="sl-sub font-normal"> · מנהל/ת</span>
-                )}
+            <div
+              key={member.userId}
+              className="sl-field flex items-center justify-between gap-2"
+            >
+              <div className="min-w-0">
+                <div className="font-bold">
+                  {member.user.name}
+                  {member.isAdmin && (
+                    <span className="sl-sub font-normal"> · מנהל/ת</span>
+                  )}
+                </div>
+                <div className="sl-sub break-all">{member.user.email}</div>
               </div>
-              <div className="sl-sub">{member.user.email}</div>
+              {/* #256: the admin removes anyone but themselves. */}
+              {group.viewerIsAdmin && !member.isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRemoving(member);
+                    setRemoveMessage(null);
+                  }}
+                  className="sl-btn shrink-0"
+                  aria-label={`הסר את ${member.user.name}`}
+                >
+                  הסר
+                </button>
+              )}
             </div>
           ))}
         </div>
+
+        {removing && (
+          <div className="sl-panel">
+            <p>
+              להסיר את {removing.user.name} מ-&quot;{group.name}&quot;?
+              יוסר/תוסר מהפגישות הפתוחות בקבוצה.
+            </p>
+            {remainingAfterLeaving < GROUP_SIZE_FLOOR && (
+              <p className="sl-sub">
+                הפגישות הפתוחות בקבוצה יבוטלו, ולא יהיה אפשר לפתוח חדשות עד
+                שיצטרפו עוד חברים.
+              </p>
+            )}
+            <div className="sl-row">
+              <button
+                type="button"
+                disabled={managing}
+                onClick={() => removeMember(removing)}
+                className="sl-btn"
+              >
+                כן, להסיר
+              </button>
+              <button
+                type="button"
+                disabled={managing}
+                onClick={() => setRemoving(null)}
+                className="sl-btn"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        )}
+        {removeMessage && <p className="sl-sub">{removeMessage}</p>}
       </section>
 
       {pendingInvitations.length > 0 && (

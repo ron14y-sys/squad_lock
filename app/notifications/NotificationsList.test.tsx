@@ -89,7 +89,7 @@ test("a group notice links to its group while the person is still in it", async 
 
   const link = await screen.findByRole("link");
   expect(link).toHaveAttribute("href", "/groups/group-1");
-  expect(screen.getByText(/דנה עזב\/ה את הקבוצה "השישיה"/)).toBeInTheDocument();
+  expect(screen.getByText(/דנה יצא\/ה מהקבוצה "השישיה"/)).toBeInTheDocument();
 });
 
 test("a notice about a deleted group has nowhere to go", async () => {

@@ -467,3 +467,81 @@ test("cancelling closes the question without calling anything", async () => {
   ).toBeInTheDocument();
   expect(screen.queryByText(/לעזוב את/)).not.toBeInTheDocument();
 });
+
+test("#256: only the admin can remove, and not themselves", async () => {
+  vi.stubGlobal("fetch", manageFetch(groupOfSize(4)));
+  const { unmount } = render(<GroupDetail groupId="group-1" />);
+  await screen.findByRole("button", { name: "עזיבת הקבוצה" });
+  expect(screen.queryByRole("button", { name: /^הסר את/ })).toBeNull();
+  unmount();
+
+  vi.stubGlobal("fetch", manageFetch(groupOfSize(4, { viewerIsAdmin: true })));
+  render(<GroupDetail groupId="group-1" />);
+  await screen.findByRole("button", { name: "מחיקת הקבוצה" });
+  expect(
+    screen.getAllByRole("button", { name: /^הסר את/ }).map((b) => b.ariaLabel)
+  ).toEqual(["הסר את name-u2", "הסר את name-u3", "הסר את name-u4"]);
+});
+
+test("#256: removing asks first, then DELETEs the member and says so", async () => {
+  const user = userEvent.setup();
+  const fetchMock = manageFetch(groupOfSize(4, { viewerIsAdmin: true }), {
+    "/api/groups/group-1/members/u3": () => jsonResponse({}, 204),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<GroupDetail groupId="group-1" />);
+  await user.click(
+    await screen.findByRole("button", { name: "הסר את name-u3" })
+  );
+
+  expect(screen.getByText(/להסיר את name-u3/)).toBeInTheDocument();
+  expect(screen.queryByText(/יבוטלו/)).not.toBeInTheDocument();
+  expect(fetchMock.mock.calls.some(([url]) => url.includes("/members/"))).toBe(
+    false
+  );
+
+  await user.click(screen.getByRole("button", { name: "כן, להסיר" }));
+
+  const call = fetchMock.mock.calls.find(([url]) => url.includes("/members/"));
+  expect(call![0]).toBe("/api/groups/group-1/members/u3");
+  expect(call![1]).toMatchObject({ method: "DELETE" });
+  expect(
+    await screen.findByText("name-u3 הוסר/ה מהקבוצה.")
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/להסיר את/)).not.toBeInTheDocument();
+});
+
+test("#256: removing from a group of three warns that the open meetings are cancelled", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal("fetch", manageFetch(groupOfSize(3, { viewerIsAdmin: true })));
+
+  render(<GroupDetail groupId="group-1" />);
+  await user.click(
+    await screen.findByRole("button", { name: "הסר את name-u2" })
+  );
+
+  expect(screen.getByText(/הפגישות הפתוחות בקבוצה יבוטלו/)).toBeInTheDocument();
+});
+
+test("#256: a refused removal keeps the question open and says why", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    manageFetch(groupOfSize(4, { viewerIsAdmin: true }), {
+      "/api/groups/group-1/members/u2": () =>
+        jsonResponse({ error: "Only the admin can remove a member." }, 403),
+    })
+  );
+
+  render(<GroupDetail groupId="group-1" />);
+  await user.click(
+    await screen.findByRole("button", { name: "הסר את name-u2" })
+  );
+  await user.click(screen.getByRole("button", { name: "כן, להסיר" }));
+
+  expect(
+    await screen.findByText("רק המנהל/ת יכול/ה להסיר חברים.")
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "כן, להסיר" })).toBeInTheDocument();
+});

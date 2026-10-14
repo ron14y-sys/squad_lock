@@ -195,6 +195,21 @@ describe("notificationText (#250)", () => {
     );
   });
 
+  it("#256: says who was removed, and tells the one removed", () => {
+    expect(
+      notificationText({ kind: "member_removed", group: group(null) })
+    ).toBe('דנה הוסר/ה מהקבוצה "השישיה".');
+    expect(
+      notificationText({ kind: "removed_from_group", group: group(null) })
+    ).toBe('המנהל/ת הסיר/ה אותך מהקבוצה "השישיה".');
+  });
+
+  it("#256: an inactive group says the person went out, left or removed", () => {
+    expect(
+      notificationText({ kind: "group_inactive", group: group(0) })
+    ).toContain('דנה יצא/ה מהקבוצה "השישיה"');
+  });
+
   it("tells a new admin which group", () => {
     expect(
       notificationText({ kind: "became_admin", group: group(null) })

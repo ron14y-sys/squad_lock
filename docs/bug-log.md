@@ -23,6 +23,34 @@ says so.
 
 ---
 
+## No way to remove a member from a group — 2026-10-13
+
+- **Seen:** manual test 4.4: "there is no way to undo an invitation or to
+  remove someone from a group." Cancelling a pending invitation already
+  existed (#210); removing a member did not.
+- **Cause:** not a bug in what was there — #250 built leaving and deleting a
+  group, and nothing for the admin to take one member out.
+- **Fix:** [#256](https://github.com/ron14y-sys/squad_lock/issues/256),
+  decided with Ron: the admin only, the same as leaving, everyone told.
+  `leaveGroup` (`lib/db/group-membership.ts`) takes `removedBy`, checked to
+  be the admin before anything changes and again under the group's lock; the
+  rest is the departure as it was. `DELETE /api/groups/[id]/members/[userId]`
+  calls it (the admin removing themselves is sent to leaving). Two in-app
+  kinds, `member_removed` to those who stay and `removed_from_group` to the
+  one removed (migration `20261019120000_remove_member_notifications`, enum
+  values only); below three those who stay still get `group_inactive`, whose
+  text now says "יצא/ה" so it fits leaving and removal both. On the group
+  screen the admin has «הסר» beside every other member, asking first.
+- **Proof:** `lib/db/group-membership.test.ts` (removal block),
+  `app/api/groups/[id]/members/[userId]/route.test.ts`,
+  `GroupDetail.test.tsx` (#256 tests), `hebrew-labels.test.ts`. All fail on
+  the old code, and each of seventeen mutations of the new code fails one.
+  The migration was applied to the local database only, with no drift from
+  the schema.
+- **Still open:** nothing.
+
+---
+
 ## Opening a meeting went back to the group, not to the meeting — 2026-10-13
 
 - **Seen:** manual test 6.1: after «פתח פגישה» the app went back to the group
