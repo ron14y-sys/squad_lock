@@ -71,7 +71,8 @@ export type ProposalDTO = {
 };
 
 export type TimelineEvent =
-  | { kind: "initiated"; at: string; by: string }
+  // `byId` is who `by` names (#262): the screen marks the viewer's own.
+  | { kind: "initiated"; at: string; by: string; byId: string }
   | {
       kind: "proposed";
       at: string;
@@ -83,6 +84,7 @@ export type TimelineEvent =
       kind: "response";
       at: string;
       by: string;
+      byId: string;
       status: ResponseStatus;
       reasonText: string | null;
     }
@@ -95,6 +97,7 @@ export type TimelineEvent =
       kind: "amendment";
       at: string;
       by: string;
+      byId: string;
       description: string;
     };
 
@@ -463,6 +466,7 @@ export async function getMeetingDetail(
       kind: "initiated",
       at: meeting.createdAt.toISOString(),
       by: row.initiator.name,
+      byId: row.initiatorId,
     },
   ];
 
@@ -514,6 +518,7 @@ export async function getMeetingDetail(
         kind: "response",
         at: context.createdAt.toISOString(),
         by: context.user.name,
+        byId: context.userId,
         status: "doesnt_suit",
         reasonText: context.rejectionText,
       });
@@ -522,6 +527,7 @@ export async function getMeetingDetail(
         kind: "amendment",
         at: context.createdAt.toISOString(),
         by: context.user.name,
+        byId: context.userId,
         description: describeContext(context),
       });
     }
@@ -544,6 +550,7 @@ export async function getMeetingDetail(
       kind: "response",
       at: response.respondedAt.toISOString(),
       by: user.name,
+      byId: response.userId,
       status: response.status,
       reasonText: response.reasonText,
     });

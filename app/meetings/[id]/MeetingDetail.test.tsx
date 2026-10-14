@@ -277,6 +277,63 @@ test("shows the timeline in order, including why a re-weighing happened", async 
   ).toBeInTheDocument();
 });
 
+test("#262: marks the viewer's own name in the timeline, by id, and nobody else's", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(
+          detail({
+            // The viewer is u2, "דני"; u3 is another "דני".
+            timeline: [
+              {
+                kind: "initiated",
+                at: "2026-09-13T10:00:00.000Z",
+                by: "דני",
+                byId: "u2",
+              },
+              {
+                kind: "amendment",
+                at: "2026-09-13T11:00:00.000Z",
+                by: "דני",
+                byId: "u2",
+                description: "מגיע/ה מהעבודה",
+              },
+              {
+                kind: "response",
+                at: "2026-09-13T12:00:00.000Z",
+                by: "דני",
+                byId: "u2",
+                status: "approved",
+                reasonText: null,
+              },
+              {
+                kind: "response",
+                at: "2026-09-13T13:00:00.000Z",
+                by: "דני",
+                byId: "u3",
+                status: "approved",
+                reasonText: null,
+              },
+            ],
+          })
+        )
+      )
+    )
+  );
+
+  render(<MeetingDetail meetingId="meeting-1" />);
+
+  expect(
+    await screen.findByText("דני (את/ה) יזם/ה את הפגישה")
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText('דני (את/ה) עדכנ/ה את המצב: "מגיע/ה מהעבודה"')
+  ).toBeInTheDocument();
+  expect(screen.getByText("דני (את/ה): אישר")).toBeInTheDocument();
+  expect(screen.getByText("דני: אישר")).toBeInTheDocument();
+});
+
 test("shows a placeholder when no proposal exists yet", async () => {
   vi.stubGlobal(
     "fetch",
