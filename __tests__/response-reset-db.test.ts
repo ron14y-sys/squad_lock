@@ -74,7 +74,8 @@ describe.skipIf(!CONNECTED)(
           groupId: group.id,
           initiatorId: dana.id,
           status: MeetingStatus.awaiting,
-          currentDatetime: new Date("2026-09-10T17:00:00.000Z"),
+          // Far ahead: a meeting whose time has started takes no responses.
+          currentDatetime: new Date("2099-09-10T17:00:00.000Z"),
           responses: {
             create: [
               { userId: dana.id },

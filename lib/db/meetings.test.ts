@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { MeetingStatus, ResponseStatus } from "@/lib/generated/prisma/client";
-import { allStillInHaveApproved, transitionFlags } from "./meetings";
+import {
+  allStillInHaveApproved,
+  isMeetingOver,
+  transitionFlags,
+} from "./meetings";
 
 /**
  * `lib/db/meetings.ts` had no test file at all before B8's confirmation
@@ -83,5 +87,80 @@ describe("transitionFlags", () => {
     expect(
       transitionFlags(MeetingStatus.awaiting, MeetingStatus.weighing)
     ).toEqual({ justClosed: false, justStuck: false });
+  });
+});
+
+describe("isMeetingOver", () => {
+  const NOW = new Date("2026-10-14T12:00:00.000Z").getTime();
+  const STARTED = new Date("2026-10-14T09:00:00.000Z");
+  const LATER = new Date("2026-10-14T18:00:00.000Z");
+
+  it("is over once the time has started, even if nobody closed it", () => {
+    expect(
+      isMeetingOver(
+        { status: MeetingStatus.awaiting, currentDatetime: STARTED },
+        NOW
+      )
+    ).toBe(true);
+    expect(
+      isMeetingOver(
+        { status: MeetingStatus.stuck, currentDatetime: STARTED },
+        NOW
+      )
+    ).toBe(true);
+  });
+
+  it("is over at the very moment it starts", () => {
+    expect(
+      isMeetingOver(
+        {
+          status: MeetingStatus.awaiting,
+          currentDatetime: new Date(NOW),
+        },
+        NOW
+      )
+    ).toBe(true);
+  });
+
+  it("is not over before it starts", () => {
+    expect(
+      isMeetingOver(
+        { status: MeetingStatus.awaiting, currentDatetime: LATER },
+        NOW
+      )
+    ).toBe(false);
+  });
+
+  it("is over when closed or cancelled, whatever the time", () => {
+    expect(
+      isMeetingOver(
+        { status: MeetingStatus.closed, currentDatetime: LATER },
+        NOW
+      )
+    ).toBe(true);
+    expect(
+      isMeetingOver(
+        { status: MeetingStatus.cancelled, currentDatetime: null },
+        NOW
+      )
+    ).toBe(true);
+  });
+
+  it("is not over while being re-weighed: the old time is about to be replaced", () => {
+    expect(
+      isMeetingOver(
+        { status: MeetingStatus.weighing, currentDatetime: STARTED },
+        NOW
+      )
+    ).toBe(false);
+  });
+
+  it("is not over when it has no time yet", () => {
+    expect(
+      isMeetingOver(
+        { status: MeetingStatus.awaiting, currentDatetime: null },
+        NOW
+      )
+    ).toBe(false);
   });
 });

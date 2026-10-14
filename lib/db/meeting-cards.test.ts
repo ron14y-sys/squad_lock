@@ -58,6 +58,62 @@ describe("deriveMeetingCardStatus", () => {
     expect(status).toBe("closed");
   });
 
+  it("is closed once the meeting's time has started, though nobody closed it", () => {
+    const status = deriveMeetingCardStatus({
+      meeting: meeting({
+        status: "awaiting",
+        currentDatetime: new Date("2026-10-14T09:00:00.000Z"),
+      }),
+      responses: [response({ status: "pending" })],
+      viewerId: "user-viewer",
+      hasConflict: true,
+      now: new Date("2026-10-14T12:00:00.000Z"),
+    });
+    expect(status).toBe("closed");
+  });
+
+  it("is closed for a stuck meeting whose time has started", () => {
+    const status = deriveMeetingCardStatus({
+      meeting: meeting({
+        status: "stuck",
+        currentDatetime: new Date("2026-10-14T09:00:00.000Z"),
+      }),
+      responses: [],
+      viewerId: "user-viewer",
+      hasConflict: false,
+      now: new Date("2026-10-14T12:00:00.000Z"),
+    });
+    expect(status).toBe("closed");
+  });
+
+  it("stays open before its time, and while re-weighing under an old time", () => {
+    const now = new Date("2026-10-14T12:00:00.000Z");
+    expect(
+      deriveMeetingCardStatus({
+        meeting: meeting({
+          status: "awaiting",
+          currentDatetime: new Date("2026-10-14T18:00:00.000Z"),
+        }),
+        responses: [response({ status: "pending" })],
+        viewerId: "user-viewer",
+        hasConflict: false,
+        now,
+      })
+    ).toBe("waiting_on_you");
+    expect(
+      deriveMeetingCardStatus({
+        meeting: meeting({
+          status: "weighing",
+          currentDatetime: new Date("2026-10-14T09:00:00.000Z"),
+        }),
+        responses: [],
+        viewerId: "user-viewer",
+        hasConflict: false,
+        now,
+      })
+    ).toBe("reweighing");
+  });
+
   it("puts conflicting ahead of stuck — spec §5.7 requires it be unmissable", () => {
     const status = deriveMeetingCardStatus({
       meeting: meeting({ status: "stuck" }),

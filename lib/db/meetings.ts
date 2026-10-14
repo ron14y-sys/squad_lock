@@ -56,6 +56,46 @@ export const OPEN_MEETING_STATUSES: MeetingStatus[] = [
  */
 export const CYCLE_CAP = 3;
 
+/**
+ * A meeting is over — shown as closed, closed to responses, and no longer
+ * holding one of the group's open places — once it is closed or cancelled,
+ * or its time has started. Nothing writes that to the row: the start of the
+ * meeting is the clock, so there is nothing to schedule and nothing to miss.
+ *
+ * `weighing` is left out on purpose: a run is about to give it a new time,
+ * and the one on the row is the old proposal. A meeting with no time yet is
+ * not over either.
+ */
+export function isMeetingOver(
+  meeting: { status: MeetingStatus; currentDatetime: Date | null },
+  now: number
+): boolean {
+  if (
+    meeting.status === MeetingStatus.closed ||
+    meeting.status === MeetingStatus.cancelled
+  ) {
+    return true;
+  }
+  if (meeting.status === MeetingStatus.weighing) return false;
+  return (
+    meeting.currentDatetime !== null && meeting.currentDatetime.getTime() <= now
+  );
+}
+
+/**
+ * Prisma's side of `isMeetingOver` for the still-open statuses: leaves out
+ * the meetings whose time has started. Combine with
+ * `status: { in: OPEN_MEETING_STATUSES }`.
+ */
+export function notStartedYet(now: Date) {
+  return {
+    NOT: {
+      status: { in: [MeetingStatus.awaiting, MeetingStatus.stuck] },
+      currentDatetime: { lte: now },
+    },
+  };
+}
+
 /** Statuses a meeting can no longer be responded to in. */
 const CLOSED_MEETING_STATUSES: MeetingStatus[] = [
   MeetingStatus.closed,
@@ -77,7 +117,7 @@ export class NotAMeetingParticipantError extends Error {
   }
 }
 
-/** The meeting is closed or cancelled — nothing left to respond to. */
+/** The meeting is closed, cancelled or has started — nothing left to respond to. */
 export class MeetingNotOpenError extends Error {
   constructor(meetingId: string) {
     super(`Meeting ${meetingId} is no longer open.`);
@@ -116,7 +156,11 @@ export async function initiateMeeting(
 
   const row = await prisma.$transaction(async (tx) => {
     const openCount = await tx.meeting.count({
-      where: { groupId, status: { in: OPEN_MEETING_STATUSES } },
+      where: {
+        groupId,
+        status: { in: OPEN_MEETING_STATUSES },
+        ...notStartedYet(new Date()),
+      },
     });
     if (openCount >= OPEN_MEETING_CAP) {
       throw new OpenMeetingCapReachedError(groupId);
@@ -415,7 +459,10 @@ export async function respondToMeeting(
     if (!existingResponse) {
       throw new NotAMeetingParticipantError(meetingId);
     }
-    if (CLOSED_MEETING_STATUSES.includes(existingResponse.meeting.status)) {
+    if (
+      CLOSED_MEETING_STATUSES.includes(existingResponse.meeting.status) ||
+      isMeetingOver(existingResponse.meeting, Date.now())
+    ) {
       throw new MeetingNotOpenError(meetingId);
     }
 

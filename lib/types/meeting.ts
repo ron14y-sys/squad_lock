@@ -244,6 +244,11 @@ export type MeetingCardStatusInput = {
    * signature that suggested otherwise would invite it to try.
    */
   hasConflict: boolean;
+  /**
+   * The moment to judge "has it started" against; defaults to the real now.
+   * Only a test, or a caller that already has a clock, passes one.
+   */
+  now?: Date;
 };
 
 /** Convenience for the feed: a meeting with its viewer-specific label. */

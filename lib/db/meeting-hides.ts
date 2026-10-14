@@ -4,9 +4,9 @@
 // records that *this* user no longer wants to see it. Nothing about the
 // meeting changes, and nobody else's lists do.
 
-import { MeetingStatus } from "@/lib/generated/prisma/client";
+import type { MeetingStatus } from "@/lib/generated/prisma/client";
 
-import { NotAMeetingParticipantError } from "./meetings";
+import { NotAMeetingParticipantError, isMeetingOver } from "./meetings";
 import { getPrisma } from "./client";
 
 /** The meeting is still going: hiding it would hide something that needs an answer. */
@@ -17,24 +17,12 @@ export class MeetingNotOverError extends Error {
   }
 }
 
-/**
- * A meeting is over — and so may be hidden — once it is closed or cancelled,
- * or its date has passed. Mirrors what the feed calls a past meeting
- * (`isPast`), plus the two statuses that end one early.
- */
+/** A meeting may be hidden once it is over (see `isMeetingOver`). */
 export function canHideMeeting(
   meeting: { status: MeetingStatus; currentDatetime: Date | null },
   now: number
 ): boolean {
-  if (
-    meeting.status === MeetingStatus.closed ||
-    meeting.status === MeetingStatus.cancelled
-  ) {
-    return true;
-  }
-  return (
-    meeting.currentDatetime !== null && meeting.currentDatetime.getTime() < now
-  );
+  return isMeetingOver(meeting, now);
 }
 
 /**

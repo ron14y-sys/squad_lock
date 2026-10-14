@@ -67,7 +67,7 @@ describe.skipIf(!CONNECTED)("a confirmed meeting is a conflict", () => {
             initiatorId: user.id,
             status,
             // 19:00 and 20:00 in Israel — same evening, an hour apart.
-            currentDatetime: new Date(Date.UTC(2026, 9, 15, 16 + i, 0, 0)),
+            currentDatetime: new Date(Date.UTC(2099, 9, 15, 16 + i, 0, 0)),
             responses: { create: [{ userId: user.id }] },
           },
         })
