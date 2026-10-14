@@ -779,6 +779,11 @@ enum NotificationKind {
   group_deleted
   /// #250 -- the admin left and this member was chosen to take over.
   became_admin
+  /// #256 -- the admin removed somebody from a group that still has three
+  /// members or more. Below that, those who stay get `group_inactive`.
+  member_removed
+  /// #256 -- to the one the admin removed.
+  removed_from_group
 }
 
 enum NotificationStatus {

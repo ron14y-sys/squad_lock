@@ -22,6 +22,10 @@
 // also what ends their access: a meeting is open to whoever has a Response
 // for it, so nothing else needs to check membership. Meetings already closed
 // or cancelled are history, and stay as they were.
+//
+// #256: the admin removing a member is the same departure, asked for by
+// someone else — `removedBy`. Checked to be the admin at both stages, and the
+// notices say "removed", to the one removed too.
 
 import { getPrisma } from "./client";
 import { MeetingNotOpenError, respondToMeeting } from "./meetings";
@@ -31,10 +35,10 @@ import { NotInGroupError, planDeparture } from "@/lib/groups/departure";
 
 export { LastMemberError, NotInGroupError } from "@/lib/groups/departure";
 
-/** Only the group's admin can delete it. */
+/** Only the group's admin can delete it, or remove a member (#256). */
 export class NotTheAdminError extends Error {
   constructor(groupId: string) {
-    super(`Only the admin of group ${groupId} can delete it.`);
+    super(`Only the admin of group ${groupId} can do that.`);
     this.name = "NotTheAdminError";
   }
 }
@@ -55,10 +59,29 @@ export type LeaveGroupResult = {
   closedMeetingIds: string[];
 };
 
+/** #256: a removal must be asked for by a member who is the admin. */
+function checkRemover(
+  members: readonly { userId: string; isAdmin: boolean }[],
+  removedBy: string | undefined,
+  groupId: string
+) {
+  if (removedBy === undefined) return;
+  const remover = members.find((member) => member.userId === removedBy);
+  if (!remover) throw new NotInGroupError(removedBy);
+  if (!remover.isAdmin) throw new NotTheAdminError(groupId);
+}
+
+/**
+ * `random` is a parameter only so a test can say who becomes admin.
+ * `removedBy` is the admin removing `userId` (#256); without it, they left.
+ */
 export async function leaveGroup(
   userId: string,
   groupId: string,
-  random: () => number = Math.random
+  {
+    random = Math.random,
+    removedBy,
+  }: { random?: () => number; removedBy?: string } = {}
 ): Promise<LeaveGroupResult> {
   const prisma = getPrisma();
 
@@ -74,6 +97,7 @@ export async function leaveGroup(
     adminId: before.find((member) => member.isAdmin)?.userId ?? null,
     leaverId: userId,
   });
+  checkRemover(before, removedBy, groupId);
 
   const openMeetings = await prisma.meeting.findMany({
     where: {
@@ -116,6 +140,7 @@ export async function leaveGroup(
       leaverId: userId,
       random,
     });
+    checkRemover(members, removedBy, groupId);
     const leaver = members.find((member) => member.userId === userId)!;
 
     await tx.groupMember.delete({
@@ -162,12 +187,25 @@ export async function leaveGroup(
       data: [
         ...plan.remaining.map((remainingId) => ({
           userId: remainingId,
-          kind: NotificationKind[plan.notice],
+          kind:
+            removedBy && plan.notice === "member_left"
+              ? NotificationKind.member_removed
+              : NotificationKind[plan.notice],
           groupId,
           groupName: group.name,
           actorName: leaver.user.name,
           ...(plan.notice === "group_inactive" && { meetingsCancelled }),
         })),
+        ...(removedBy
+          ? [
+              {
+                userId,
+                kind: NotificationKind.removed_from_group,
+                groupId,
+                groupName: group.name,
+              },
+            ]
+          : []),
         ...(plan.newAdminId
           ? [
               {

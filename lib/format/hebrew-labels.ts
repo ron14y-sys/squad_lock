@@ -205,7 +205,7 @@ export function membersLabel(count: number): string {
  * even though `lib/db/notifications.ts` never actually writes one of this
  * kind — see that file's own comment.
  *
- * The four group kinds (#250) are in-app only, never emailed. These are
+ * The group kinds (#250, #256) are in-app only, never emailed. These are
  * their short headings; the card adds the group and the person from the
  * columns the notification carries.
  */
@@ -220,6 +220,8 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   group_inactive: "הקבוצה כבר לא פעילה",
   group_deleted: "הקבוצה נמחקה",
   became_admin: "אתה המנהל החדש של הקבוצה",
+  member_removed: "חבר הוסר מהקבוצה",
+  removed_from_group: "הוסרת מקבוצה",
 };
 
 /**
@@ -255,7 +257,8 @@ export function notificationText(card: {
           : cancelled > 1
             ? ` ${cancelled} פגישות פתוחות בוטלו.`
             : "";
-      return `${who} עזב/ה את הקבוצה ${name}, ונשארו בה פחות מ-3 חברים, ולכן אי אפשר לפתוח בה פגישות.${meetings} הזמינו עוד חברים כדי להמשיך.`;
+      // Left or removed (#256): either way, out.
+      return `${who} יצא/ה מהקבוצה ${name}, ונשארו בה פחות מ-3 חברים, ולכן אי אפשר לפתוח בה פגישות.${meetings} הזמינו עוד חברים כדי להמשיך.`;
     }
     case "group_deleted": {
       const meetings =
@@ -266,6 +269,10 @@ export function notificationText(card: {
             : "";
       return `המנהל/ת מחק/ה את הקבוצה ${name}.${meetings}`;
     }
+    case "member_removed":
+      return `${who} הוסר/ה מהקבוצה ${name}.`;
+    case "removed_from_group":
+      return `המנהל/ת הסיר/ה אותך מהקבוצה ${name}.`;
     case "became_admin":
       return `הפכת למנהל/ת של הקבוצה ${name}, כי המנהל/ת הקודם/ת עזב/ה.`;
     default:
